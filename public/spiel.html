@@ -111,13 +111,16 @@
 </div>
 
 <!-- Firebase (COMPAT-SDK, damit dieselbe .collection()/.doc()-API wie in
-     src/game/*.js verwendet werden kann). Die Konfiguration kommt über die
-     von Firebase Hosting automatisch bereitgestellte /__/firebase/init.js
-     (siehe TASK-001/TASK-002) – kein Schlüssel wird hier fest hinterlegt. -->
-<script src="/__/firebase/init.js"></script>
+     src/game/*.js verwendet werden kann). WICHTIG: /__/firebase/init.js
+     muss NACH den SDK-Skripten stehen, weil es beim Ausführen bereits das
+     globale `firebase`-Objekt braucht, um firebase.initializeApp(...)
+     automatisch aufzurufen (dokumentiertes Verhalten der Firebase-Hosting-
+     Web-Setup-Automatisierung). Ursprüngliche Reihenfolge war vertauscht –
+     das war die Ursache für "No Firebase App '[DEFAULT]' has been created". -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="/__/firebase/init.js"></script>
 <script src="js/game/createGame.js"></script>
 <script src="js/game/joinGame.js"></script>
 <script src="js/game/hostSession.js"></script>
