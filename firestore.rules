@@ -10,14 +10,27 @@ service cloud.firestore {
     // 2026-07-17 final abgestimmt, siehe Backlog.md FEATURE-001):
     //   - Jede Person meldet sich anonym per Firebase Authentication an und
     //     bekommt dabei eine stabile UID für ihre Browser-Sitzung.
-    //   - Zugehörigkeit zu einem Spiel wird NICHT über Auth-Custom-Claims
-    //     geprüft (die liessen sich ohne Server/Cloud Function nicht setzen),
-    //     sondern ausschliesslich darüber, ob unter
+    //   - Zugehörigkeit zu einem Spiel wird darüber geprüft, ob unter
     //     spiele/{spielId}/teilnehmende/{eigene-uid} ein Dokument existiert.
     //   - Die Host-Rolle wird nach Geräteneuladen/Sitzungsverlust über einen
-    //     eigenen Schreibvorgang zurückerobert, der die im Spieldokument
-    //     hinterlegte Host-Kennung als Nachweis verlangt (siehe
-    //     match /teilnehmende/{uid} allow create weiter unten).
+    //     eigenen Schreibvorgang zurückerobert, der die im Spiel hinterlegte
+    //     Host-Kennung als Nachweis verlangt.
+    //
+    // KORREKTUR (2026-07-17, nach echtem Browser-Test durch Stephan):
+    //  1. "Missing or insufficient permissions" beim Spiel-Erstellen: die
+    //     Regel für teilnehmende/{uid} (rolle=host) prüfte per get() das
+    //     übergeordnete spiele/{spielId}-Dokument, das aber in DERSELBEN
+    //     Transaktion gerade erst entsteht und für ein normales get() noch
+    //     nicht sichtbar ist. Fix: getAfter() statt get() für genau diesen
+    //     Vergleich (liefert den Stand NACH allen Schreibvorgängen im
+    //     selben Commit – dokumentierte Firestore-Rules-Funktion für exakt
+    //     diesen Fall).
+    //  2. Beim Beheben von (1) fiel auf: eine neue, noch nicht beigetretene
+    //     Person muss spiele/{spielId} lesen können dürfen (Beitritts-Fluss,
+    //     Stationsverfügbarkeit vor dem Beitritt) – das hätte hostKennung
+    //     offengelegt, wäre es weiterhin Teil dieses Dokuments gewesen.
+    //     Fix: hostKennung liegt jetzt in einem eigenen, nie client-lesbaren
+    //     Unterdokument spiele/{spielId}/geheim/kennung.
 
     function istAktiv(spiel) {
       // Verwaiste Spiele (>24h ohne Aktivität, geklärte Frage 7) sind über
@@ -31,32 +44,57 @@ service cloud.firestore {
     }
 
     match /spiele/{spielId} {
-      allow get: if istTeilnehmer(spielId) && istAktiv(resource.data);
+      // Lesbar für jede angemeldete Person (auch anonym), die den Code kennt
+      // oder rät – das ist die Grundlage des Beitritts-Flusses (Code-Prüfung,
+      // Stationsverfügbarkeit VOR dem Beitritt). Enthält bewusst keine
+      // sensiblen Felder mehr (siehe geheim/kennung). Ein noch nicht
+      // existierendes Dokument ist ebenfalls "lesbar" (liefert schlicht
+      // "existiert nicht") – nötig für die Eindeutigkeitsprüfung beim
+      // Erstellen eines neuen Codes in createGame.js.
+      allow get: if request.auth != null
+        && (!exists(/databases/$(database)/documents/spiele/$(spielId)) || istAktiv(resource.data));
 
-      // Erstellen: passiert, bevor irgendeine Rolle in diesem gerade erst
-      // entstehenden Spiel existiert – erlaubt für jede angemeldete Person,
-      // solange das neue Dokument in sich konsistent und leer ist (Code ==
-      // Dokument-ID, frische Zeitstempel, noch keine Stationsbelegung).
       allow create: if request.auth != null
         && request.resource.data.code == spielId
-        && request.resource.data.keys().hasAll(['code', 'hostKennung', 'erstelltAm', 'letzteAktivitaet', 'belegteStationen'])
+        && request.resource.data.keys().hasAll(['code', 'erstelltAm', 'letzteAktivitaet', 'belegteStationen'])
+        && !('hostKennung' in request.resource.data.keys())
         && request.resource.data.belegteStationen == {}
         && request.resource.data.erstelltAm is number
         && request.resource.data.letzteAktivitaet is number;
 
       // Ändern (z. B. letzteAktivitaet, belegteStationen beim Beitritt): nur
       // wer bereits ein eigenes Teilnehmenden-Dokument in diesem aktiven
-      // Spiel hat. hostKennung und code dürfen nie nachträglich verändert werden.
+      // Spiel hat. code darf nie nachträglich verändert werden.
       allow update: if istTeilnehmer(spielId) && istAktiv(resource.data)
-        && request.resource.data.hostKennung == resource.data.hostKennung
-        && request.resource.data.code == resource.data.code;
+        && request.resource.data.code == resource.data.code
+        && !('hostKennung' in request.resource.data.keys());
 
       allow delete: if false;
 
+      // Enthält ausschliesslich { hostKennung }. KEINE allow read/get-Regel –
+      // absichtlich für jeden Client permanent unlesbar. Wird nur intern von
+      // anderen Regeln über get()/getAfter() konsultiert (das umgeht die
+      // Leseregeln dieses Dokuments nicht etwa unsicher, sondern ist der
+      // dafür vorgesehene, dokumentierte Mechanismus).
+      match /geheim/kennung {
+        allow create: if request.auth != null
+          && !exists(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung)
+          && request.resource.data.keys().hasOnly(['hostKennung'])
+          && request.resource.data.hostKennung is string;
+        allow read, update, delete: if false;
+      }
+
       match /teilnehmende/{uid} {
+        // Das eigene Dokument ist immer lesbar. Dokumente ANDERER
+        // Teilnehmender sind nur lesbar, wenn sie NICHT der Host-Datensatz
+        // sind – der Host-Datensatz enthält zur Validierung eine hostKennung
+        // (siehe "allow create" unten) und darf deshalb niemals von jemand
+        // anderem als dem Host selbst gelesen werden (sonst könnte sich
+        // jede/r Mitspielende die Kennung abgreifen und selbst zum Host
+        // erklären).
         allow read: if request.auth != null
           && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
-          && (uid == request.auth.uid || istTeilnehmer(spielId));
+          && (uid == request.auth.uid || (istTeilnehmer(spielId) && resource.data.rolle != 'host'));
 
         // Beitritt bzw. Host-Zurückeroberung: eine Person darf ausschliesslich
         // ihr EIGENES Dokument anlegen (Doc-ID == eigene Auth-UID).
@@ -65,17 +103,21 @@ service cloud.firestore {
         //    Firestore-Transaktion (siehe src/game/joinGame.js), nicht in
         //    dieser Regel.
         //  - rolle 'host': nur erlaubt, wenn die mitgeschickte hostKennung
-        //    mit der im Spieldokument hinterlegten übereinstimmt – das ist
-        //    der alleinige Nachweis für die Host-Session-Wiederherstellung,
-        //    ohne Cloud Function.
+        //    mit der in spiele/{spielId}/geheim/kennung hinterlegten
+        //    übereinstimmt. getAfter() statt get(), damit das auch beim
+        //    ALLERERSTEN Erstellen funktioniert, wenn geheim/kennung in
+        //    genau derselben Transaktion gerade erst entsteht.
         allow create: if request.auth != null
           && uid == request.auth.uid
-          && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          && (
+            !exists(/databases/$(database)/documents/spiele/$(spielId))
+            || istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          )
           && (
             request.resource.data.rolle in ['spielende', 'beobachtende']
             || (
               request.resource.data.rolle == 'host'
-              && request.resource.data.hostKennung == get(/databases/$(database)/documents/spiele/$(spielId)).data.hostKennung
+              && request.resource.data.hostKennung == getAfter(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung).data.hostKennung
             )
           );
 

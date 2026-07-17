@@ -6,25 +6,25 @@
  * Sperr-Regel aus TASK-002 (`allow read, write: if false;`) ablösen.
  *
  * ÄNDERUNG (flow-game-impl, 2026-07-17, mit Stephan abgestimmt): Ursprünglich
- * gingen diese Tests von Auth-Custom-Claims (spielId/rolle/hostKennung direkt
- * im Token) aus. Custom Claims lassen sich ohne Server/Cloud Function nicht
- * setzen – das widerspricht der getroffenen Entscheidung "keine Cloud
- * Functions" (Product.md §10). Stephan hat sich für Option B entschieden:
- * Zugehörigkeit zu einem Spiel wird stattdessen darüber geprüft, ob unter
- * spiele/{spielId}/teilnehmende/{eigene-Auth-UID} ein Dokument existiert.
- * Die Host-Session-Wiederherstellung läuft über einen "create"-Schreibvorgang
- * auf das eigene Teilnehmenden-Dokument, der die im Spieldokument hinterlegte
- * hostKennung als Nachweis verlangt (statt eines "update" mit Auth-Claim).
- * Die fachlichen Given/When/Then-Szenarien selbst sind unverändert, nur die
- * technische Simulation der Auth-Identität (jetzt: reine UID statt Claims-Objekt).
+ * gingen diese Tests von Auth-Custom-Claims aus. Jetzt: Zugehörigkeit zu einem
+ * Spiel wird darüber geprüft, ob unter spiele/{spielId}/teilnehmende/{eigene-
+ * Auth-UID} ein Dokument existiert.
  *
- * KORREKTUR (2026-07-17, nach Stephans erstem echten Emulator-Lauf): Der
- * Test "Getrennte Spiele" nutzte ursprünglich zwei getrennte
- * withSecurityRulesDisabled-Aufrufe in einem Test (seedGameA() + ein
- * zweiter eigener Block für Spiel B) – das führte real im Emulator zu
- * "FirebaseError: Firestore has already been started and its settings can
- * no longer be changed." Jetzt: genau EIN withSecurityRulesDisabled-Aufruf,
- * der beide Spiele in einem Rutsch seedet.
+ * ÄNDERUNG 2 (2026-07-17, nach echtem Browser-Test durch Stephan):
+ *  - hostKennung liegt jetzt in einem eigenen, nie client-lesbaren
+ *    Unterdokument spiele/{spielId}/geheim/kennung statt direkt im
+ *    spiele-Dokument (Vertraulichkeit: das oberste Spiel-Dokument muss für
+ *    den Beitritts-Fluss breit lesbar sein).
+ *  - Das oberste spiele/{spielId}-Dokument ist jetzt für jede angemeldete
+ *    Person lesbar (nötig für Code-Prüfung/Stationsverfügbarkeit vor dem
+ *    Beitritt) – nur die Teilnehmendenliste (mit echten Namen/Rollen/Status)
+ *    bleibt strikt auf die eigenen Mitspielenden beschränkt. Das
+ *    "Getrennte Spiele"-Szenario wurde entsprechend in zwei Tests
+ *    aufgeteilt, die diese beiden unterschiedlichen Sichtbarkeitsstufen
+ *    einzeln abbilden.
+ *  - Host-Zurückeroberung: die Host-Kennung wird jetzt per getAfter() gegen
+ *    spiele/{spielId}/geheim/kennung geprüft statt gegen ein Feld im
+ *    spiele-Dokument.
  *
  * Framework: Jest + @firebase/rules-unit-testing (Firestore-Emulator).
  * Voraussetzung zum Ausführen: `firebase emulators:exec --only firestore "jest tests/game-rooms.security.rules.test.js"`
@@ -42,7 +42,6 @@ let testEnv;
 
 const PROJECT_ID = 'flow-game-19f01-test';
 
-// Feste Test-Spiel-IDs, um Szenarien reproduzierbar zu machen.
 const GAME_A = 'game-a';
 const GAME_B = 'game-b';
 
@@ -71,20 +70,17 @@ beforeEach(async () => {
 /**
  * Hilfsfunktion: legt Spiel A mit einem Host, einem Spielenden (Station "packstation")
  * und einer Beobachterin an, per Admin-Kontext (umgeht Regeln, reiner Testaufbau).
- * Die Teilnehmenden-Dokument-IDs entsprechen den Auth-UIDs, mit denen die
- * jeweilige Person in den Tests unten auftritt (uid == Dokument-ID, wie es die
- * echten Regeln verlangen).
  */
 async function seedGameA() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await db.doc(`spiele/${GAME_A}`).set({
       code: 'AB3DE7GK',
-      hostKennung: 'host-secret-a',
       erstelltAm: Date.now(),
       letzteAktivitaet: Date.now(),
       belegteStationen: { packstation: 'spielerin-a' },
     });
+    await db.doc(`spiele/${GAME_A}/geheim/kennung`).set({ hostKennung: 'host-secret-a' });
     await db.doc(`spiele/${GAME_A}/teilnehmende/host-a`).set({
       rolle: 'host',
       anzeigename: 'Host A',
@@ -104,19 +100,19 @@ async function seedGameA() {
 
 /**
  * Seedet Spiel A UND Spiel B in einem einzigen withSecurityRulesDisabled-
- * Aufruf (siehe Korrektur-Hinweis oben) – ausschliesslich für den
- * "Getrennte Spiele"-Test unten, der Daten aus beiden Spielen braucht.
+ * Aufruf (mehrere getrennte Aufrufe in einem Test führten real im Emulator
+ * zu "Firestore has already been started..." – siehe frühere Korrektur).
  */
 async function seedGameAUndB() {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await db.doc(`spiele/${GAME_A}`).set({
       code: 'AB3DE7GK',
-      hostKennung: 'host-secret-a',
       erstelltAm: Date.now(),
       letzteAktivitaet: Date.now(),
       belegteStationen: { packstation: 'spielerin-a' },
     });
+    await db.doc(`spiele/${GAME_A}/geheim/kennung`).set({ hostKennung: 'host-secret-a' });
     await db.doc(`spiele/${GAME_A}/teilnehmende/host-a`).set({
       rolle: 'host',
       anzeigename: 'Host A',
@@ -129,11 +125,11 @@ async function seedGameAUndB() {
     });
     await db.doc(`spiele/${GAME_B}`).set({
       code: 'ZZ9YY8XX',
-      hostKennung: 'host-secret-b',
       erstelltAm: Date.now(),
       letzteAktivitaet: Date.now(),
       belegteStationen: {},
     });
+    await db.doc(`spiele/${GAME_B}/geheim/kennung`).set({ hostKennung: 'host-secret-b' });
     await db.doc(`spiele/${GAME_B}/teilnehmende/spielerin-b`).set({
       rolle: 'spielende',
       anzeigename: 'Spielerin B',
@@ -163,12 +159,20 @@ describe('FEATURE-001 – Spielraum-Sicherheitsregeln', () => {
     });
   });
 
-  describe('Szenario: Fremdes Spiel lesen/schreiben wird abgelehnt', () => {
-    test('Gegeben Spiel A und Spiel B existieren, wenn eine Person ohne Rolle in Spiel A dessen Teilnehmendenliste liest, dann wird es abgelehnt', async () => {
-      await seedGameA();
-      const fremdeKontext = testEnv.authenticatedContext('unbeteiligt');
+  describe('Szenario: Minimale Spiel-Metadaten sind bewusst codebasiert lesbar, Teilnehmendendaten bleiben getrennt', () => {
+    test('Gegeben Spiel A und Spiel B, wenn eine Person aus Spiel B die minimalen Metadaten von Spiel A liest (Code-Prüfung/Stationsverfügbarkeit vor dem Beitritt), dann wird das erlaubt', async () => {
+      await seedGameAUndB();
+      const spielBKontext = testEnv.authenticatedContext('spielerin-b');
+      await assertSucceeds(
+        spielBKontext.firestore().doc(`spiele/${GAME_A}`).get()
+      );
+    });
+
+    test('Gegeben Spiel A und Spiel B, wenn eine Person aus Spiel B versucht, die Teilnehmendenliste von Spiel A zu lesen, dann wird es abgelehnt (Spielstand/Teilnehmende bleiben getrennt)', async () => {
+      await seedGameAUndB();
+      const spielBKontext = testEnv.authenticatedContext('spielerin-b');
       await assertFails(
-        fremdeKontext.firestore().collection(`spiele/${GAME_A}/teilnehmende`).get()
+        spielBKontext.firestore().collection(`spiele/${GAME_A}/teilnehmende`).get()
       );
     });
 
@@ -180,14 +184,6 @@ describe('FEATURE-001 – Spielraum-Sicherheitsregeln', () => {
           .firestore()
           .doc(`spiele/${GAME_A}/teilnehmende/spielerin-a`)
           .update({ letzteAktion: Date.now() })
-      );
-    });
-
-    test('Gegeben Spiel A und Spiel B, wenn Teilnehmende aus Spiel B versuchen, den Spielstand von Spiel A zu lesen, dann wird es abgelehnt (Spiele bleiben getrennt)', async () => {
-      await seedGameAUndB();
-      const spielBKontext = testEnv.authenticatedContext('spielerin-b');
-      await assertFails(
-        spielBKontext.firestore().doc(`spiele/${GAME_A}`).get()
       );
     });
   });
@@ -245,6 +241,16 @@ describe('FEATURE-001 – Spielraum-Sicherheitsregeln', () => {
     });
   });
 
+  describe('Szenario: Niemand ausser dem Host selbst kann das Host-Teilnehmenden-Dokument lesen (Vertraulichkeit der Host-Kennung)', () => {
+    test('Gegeben eine Spielende ist Teil von Spiel A, wenn sie versucht, das Teilnehmenden-Dokument des Hosts zu lesen, dann wird es abgelehnt', async () => {
+      await seedGameA();
+      const spielerKontext = testEnv.authenticatedContext('spielerin-a');
+      await assertFails(
+        spielerKontext.firestore().doc(`spiele/${GAME_A}/teilnehmende/host-a`).get()
+      );
+    });
+  });
+
   describe('Regressionstest TASK-002: bereits geprüfte Zugriffsfälle bleiben abgelehnt', () => {
     test('Gegeben Spiel A existiert, wenn unauthentifiziert (kein Auth-Kontext) gelesen wird, dann wird es abgelehnt', async () => {
       await seedGameA();
@@ -283,11 +289,11 @@ describe('FEATURE-001 – Spielraum-Sicherheitsregeln', () => {
         const db = context.firestore();
         await db.doc(`spiele/${GAME_A}`).set({
           code: 'AB3DE7GK',
-          hostKennung: 'host-secret-a',
           erstelltAm: Date.now() - 30 * 60 * 60 * 1000,
           letzteAktivitaet: Date.now() - 25 * 60 * 60 * 1000, // 25h inaktiv
           belegteStationen: {},
         });
+        await db.doc(`spiele/${GAME_A}/geheim/kennung`).set({ hostKennung: 'host-secret-a' });
         await db.doc(`spiele/${GAME_A}/teilnehmende/neue-person`).set({
           rolle: 'spielende',
           anzeigename: 'Neue Person',

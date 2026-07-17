@@ -1,10 +1,14 @@
 /**
  * FEATURE-001 – Browser-Version von src/game/createGame.js.
- * Identische Logik wie das Node-Modul (getestet in tests/game-rooms.logic.test.js
- * und tests/_manual-smoke/), hier als klassisches <script> (kein Bundler im
- * Projekt) über window.FlowGame verfügbar gemacht. Läuft gegen die Firebase
- * COMPAT-SDK (firebase.firestore()), die dieselbe .collection()/.doc()-API
- * wie im Node-Modul bereitstellt.
+ * Identische Logik wie das Node-Modul, hier als klassisches <script> (kein
+ * Bundler im Projekt) über window.FlowGame verfügbar gemacht. Läuft gegen
+ * die Firebase COMPAT-SDK (firebase.firestore()).
+ *
+ * KORREKTUR (2026-07-17): erzeugt jetzt zusätzlich spiele/{code}/geheim/kennung
+ * (hostKennung liegt dort, nie client-lesbar) statt hostKennung direkt im
+ * spiele-Dokument zu speichern – siehe firestore.rules für die Begründung
+ * (Vertraulichkeit: das oberste Spiel-Dokument muss für den Beitritts-Fluss
+ * breit lesbar sein und darf deshalb keine Geheimnisse mehr enthalten).
  *
  * WICHTIG: Bei Änderungen an src/game/createGame.js muss diese Datei
  * inhaltlich synchron gehalten werden (kein Build-Schritt im Projekt).
@@ -66,11 +70,11 @@
           const jetzt = Date.now();
           tx.set(spielRef, {
             code,
-            hostKennung,
             erstelltAm: jetzt,
             letzteAktivitaet: jetzt,
             belegteStationen: {},
           });
+          tx.set(spielRef.collection('geheim').doc('kennung'), { hostKennung });
           tx.set(spielRef.collection('teilnehmende').doc(uid), {
             rolle: 'host',
             anzeigename: hostAnzeigename.trim(),

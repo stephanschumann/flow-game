@@ -4,15 +4,11 @@
  * als ersten Teilnehmenden an.
  *
  * Datenmodell (Option B, von Stephan freigegeben):
- *  - spiele/{code}                       Spiel-Metadaten
+ *  - spiele/{code}                       Spiel-Metadaten (keine Geheimnisse)
+ *  - spiele/{code}/geheim/kennung        NUR { hostKennung }, nie client-lesbar
  *  - spiele/{code}/teilnehmende/{uid}    ein Dokument pro Teilnehmendem
  *
- * Zugriffsmodell OHNE Cloud Functions (Option B, mit Stephan am 2026-07-17
- * final abgestimmt): jede Person meldet sich anonym per Firebase
- * Authentication an und bekommt dabei eine stabile UID für ihre Sitzung.
- * `uid` muss daher von der aufrufenden Stelle (Browser-Code) mitgegeben
- * werden – dort kommt sie von `firebase.auth().currentUser.uid` nach
- * anonymer Anmeldung.
+ * uid kommt von firebase.auth().currentUser.uid nach anonymer Anmeldung.
  */
 
 const STATIONEN = [
@@ -39,8 +35,6 @@ function zufallsGeheimnis() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
   }
-  // Fallback für Umgebungen ohne crypto.randomUUID (sollte in Node 18+ und
-  // allen modernen Browsern nicht nötig sein).
   let ergebnis = '';
   for (let i = 0; i < 48; i += 1) {
     ergebnis += Math.floor(Math.random() * 16).toString(16);
@@ -64,9 +58,6 @@ async function createGame({ hostAnzeigename, uid }, db) {
     const spielRef = db.collection('spiele').doc(code);
 
     try {
-      // Stationszuweisung/Code-Eindeutigkeit müssen serverseitig unteilbar
-      // sein (Pre-Mortem Punkt 1) – daher immer eine Transaktion, auch beim
-      // Erstellen (Kollision zweier zeitgleicher Hosts, siehe geklärte Frage 6/Beispiel).
       // eslint-disable-next-line no-await-in-loop
       await db.runTransaction(async (tx) => {
         const bestehend = await tx.get(spielRef);
@@ -76,11 +67,11 @@ async function createGame({ hostAnzeigename, uid }, db) {
         const jetzt = Date.now();
         tx.set(spielRef, {
           code,
-          hostKennung,
           erstelltAm: jetzt,
           letzteAktivitaet: jetzt,
           belegteStationen: {},
         });
+        tx.set(spielRef.collection('geheim').doc('kennung'), { hostKennung });
         tx.set(spielRef.collection('teilnehmende').doc(uid), {
           rolle: 'host',
           anzeigename: hostAnzeigename.trim(),

@@ -11,19 +11,27 @@
  * Zuweisung), NICHT die Sicherheitsregeln – dafür ist
  * tests/game-rooms.security.rules.test.js zuständig. Deshalb bekommt der
  * Emulator hier bewusst ein offenes Testregelwerk (`allow read, write: if true`)
- * statt der echten firestore.rules; ohne einen expliziten `rules`-Parameter
- * verweigert der Emulator standardmässig ALLES (PERMISSION_DENIED), was diese
- * reinen Logik-Tests fälschlich rot laufen liesse (gefunden von Stephan beim
- * ersten echten Emulator-Lauf, 2026-07-17).
+ * statt der echten firestore.rules.
  *
  * ÄNDERUNG (flow-game-impl, 2026-07-17, mit Stephan abgestimmt – Option B ohne
  * Cloud Function statt Auth-Custom-Claims): Jede Person hat eine eigene,
  * stabile Auth-UID (anonyme Firebase-Authentifizierung pro Browser-Sitzung).
  * `createGame`/`joinGame`/`restoreHostSession` bekommen diese `uid` deshalb
- * jetzt als Parameter mit (ursprünglich nicht vorgesehen). Das Teilnehmenden-
- * Dokument des Hosts liegt dadurch unter `teilnehmende/{uid}` statt unter dem
- * ursprünglich angenommenen festen Pfad `teilnehmende/host`. Die fachlichen
- * Given/When/Then-Szenarien selbst sind unverändert.
+ * jetzt als Parameter mit. Das Teilnehmenden-Dokument des Hosts liegt dadurch
+ * unter `teilnehmende/{uid}` statt unter dem ursprünglich angenommenen festen
+ * Pfad `teilnehmende/host`. Die fachlichen Given/When/Then-Szenarien selbst
+ * sind unverändert.
+ *
+ * ÄNDERUNG 2 (2026-07-17, nach echtem Browser-Test): hostKennung liegt jetzt
+ * in spiele/{code}/geheim/kennung und ist nie client-lesbar (Vertraulichkeit,
+ * siehe firestore.rules). restoreHostSession() prüft die Kennung deshalb
+ * nicht mehr selbst, sondern verlässt sich auf die Sicherheitsregel
+ * (Schreibversuch schlägt bei falscher Kennung fehl). Der Testfall "falsche/
+ * fremde Host-Session-Kennung wird abgelehnt" ist deshalb hier NICHT mehr
+ * sinnvoll prüfbar (diese Datei läuft mit offenen Regeln, jeder Schreibversuch
+ * gelingt) und wurde nach tests/game-rooms.security.rules.test.js verschoben
+ * (dort bereits als "ungültige/fremde Host-Kennung ... wird abgelehnt"
+ * vorhanden, prüft denselben Sachverhalt direkt gegen die echten Regeln).
  *
  * Module:
  *  - src/game/createGame.js   -> erzeugt Spiel + eindeutigen Beitritts-Code
@@ -202,12 +210,10 @@ describe('Szenario: Host bekommt nach eigenem Neuladen die Moderationsrechte zur
     expect(wiederhergestellt.spielCode).toBe(code);
   });
 
-  test('Gegeben eine falsche/fremde Host-Session-Kennung, wenn jemand versucht, damit Moderationsrechte an einem Spiel zu bekommen, dann wird das abgelehnt', async () => {
-    const { code } = await createGame({ hostAnzeigename: 'Host A', uid: neueUid('host') }, db);
-    await expect(
-      restoreHostSession({ code, hostSessionKennung: 'falsche-kennung', uid: neueUid() }, db)
-    ).rejects.toThrow();
-  });
+  // "Falsche/fremde Host-Session-Kennung wird abgelehnt" ist hier absichtlich
+  // NICHT mehr enthalten (siehe Kommentar am Dateianfang, ÄNDERUNG 2) – geprüft
+  // wird das jetzt in tests/game-rooms.security.rules.test.js gegen die echten
+  // Regeln, da restoreHostSession() die Kennung nicht mehr selbst prüft.
 });
 
 describe('Szenario: Verwaistes Spiel nach 24 Stunden Inaktivität nicht mehr erreichbar', () => {

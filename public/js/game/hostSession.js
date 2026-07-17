@@ -1,7 +1,12 @@
 /**
- * FEATURE-001 – Browser-Version von src/game/hostSession.js. Siehe Hinweis in
- * public/js/game/createGame.js zur manuellen Synchronhaltung mit dem
- * Node-Modul (kein Bundler im Projekt).
+ * FEATURE-001 – Browser-Version von src/game/hostSession.js.
+ *
+ * KORREKTUR (2026-07-17): hostKennung liegt jetzt in spiele/{code}/geheim/kennung
+ * und ist NIE client-lesbar (siehe firestore.rules). Diese Funktion prüft die
+ * Kennung deshalb nicht mehr selbst per Lesevergleich, sondern versucht direkt
+ * den Schreibvorgang – die Sicherheitsregel entscheidet serverseitig, ob die
+ * mitgeschickte Kennung korrekt ist. Schlägt der Schreibvorgang fehl
+ * (PERMISSION_DENIED), war die Kennung falsch.
  */
 (function (global) {
   'use strict';
@@ -13,27 +18,23 @@
     if (!uid) {
       throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
     }
-
-    const spielRef = db.collection('spiele').doc(code);
-    const spielSnap = await spielRef.get();
-    if (!spielSnap.exists) {
-      throw new Error(`Kein Spiel mit dem Code "${code}" gefunden.`);
-    }
-    const spiel = spielSnap.data();
-
-    if (!hostSessionKennung || hostSessionKennung !== spiel.hostKennung) {
+    if (!hostSessionKennung) {
       throw new Error('Host-Session-Kennung ist ungültig.');
     }
 
-    const teilnehmerRef = spielRef.collection('teilnehmende').doc(uid);
-    await teilnehmerRef.set(
-      {
-        rolle: 'host',
-        hostKennung: spiel.hostKennung,
-        wiederhergestelltAm: Date.now(),
-      },
-      { merge: true }
-    );
+    const teilnehmerRef = db.collection('spiele').doc(code).collection('teilnehmende').doc(uid);
+    try {
+      await teilnehmerRef.set(
+        {
+          rolle: 'host',
+          hostKennung: hostSessionKennung,
+          wiederhergestelltAm: Date.now(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      throw new Error('Host-Session-Kennung ist ungültig.');
+    }
 
     return { rolle: 'host', spielCode: code };
   }
