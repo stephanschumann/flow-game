@@ -1,11 +1,95 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      // Platzhalter-Regel (TASK-002): sperrt aktuell alles.
-      // Wird in FEATURE-001 durch rollen-/spielraumbasierte Regeln ersetzt,
-      // nicht nur additiv gelockert.
-      allow read, write: if false;
+
+    // FEATURE-001: Spiel-Räume.
+    // Löst die sperrende Platzhalter-Regel aus TASK-002 ab
+    // (`allow read, write: if false;`).
+    //
+    // Zugriffsmodell OHNE Cloud Functions (Option B, mit Stephan am
+    // 2026-07-17 final abgestimmt, siehe Backlog.md FEATURE-001):
+    //   - Jede Person meldet sich anonym per Firebase Authentication an und
+    //     bekommt dabei eine stabile UID für ihre Browser-Sitzung.
+    //   - Zugehörigkeit zu einem Spiel wird NICHT über Auth-Custom-Claims
+    //     geprüft (die liessen sich ohne Server/Cloud Function nicht setzen),
+    //     sondern ausschliesslich darüber, ob unter
+    //     spiele/{spielId}/teilnehmende/{eigene-uid} ein Dokument existiert.
+    //   - Die Host-Rolle wird nach Geräteneuladen/Sitzungsverlust über einen
+    //     eigenen Schreibvorgang zurückerobert, der die im Spieldokument
+    //     hinterlegte Host-Kennung als Nachweis verlangt (siehe
+    //     match /teilnehmende/{uid} allow create weiter unten).
+
+    function istAktiv(spiel) {
+      // Verwaiste Spiele (>24h ohne Aktivität, geklärte Frage 7) sind über
+      // die Regeln nicht mehr erreichbar, unabhängig von der TTL-Löschung.
+      return spiel.letzteAktivitaet > (request.time.toMillis() - 24 * 60 * 60 * 1000);
+    }
+
+    function istTeilnehmer(spielId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid));
+    }
+
+    match /spiele/{spielId} {
+      allow get: if istTeilnehmer(spielId) && istAktiv(resource.data);
+
+      // Erstellen: passiert, bevor irgendeine Rolle in diesem gerade erst
+      // entstehenden Spiel existiert – erlaubt für jede angemeldete Person,
+      // solange das neue Dokument in sich konsistent und leer ist (Code ==
+      // Dokument-ID, frische Zeitstempel, noch keine Stationsbelegung).
+      allow create: if request.auth != null
+        && request.resource.data.code == spielId
+        && request.resource.data.keys().hasAll(['code', 'hostKennung', 'erstelltAm', 'letzteAktivitaet', 'belegteStationen'])
+        && request.resource.data.belegteStationen == {}
+        && request.resource.data.erstelltAm is number
+        && request.resource.data.letzteAktivitaet is number;
+
+      // Ändern (z. B. letzteAktivitaet, belegteStationen beim Beitritt): nur
+      // wer bereits ein eigenes Teilnehmenden-Dokument in diesem aktiven
+      // Spiel hat. hostKennung und code dürfen nie nachträglich verändert werden.
+      allow update: if istTeilnehmer(spielId) && istAktiv(resource.data)
+        && request.resource.data.hostKennung == resource.data.hostKennung
+        && request.resource.data.code == resource.data.code;
+
+      allow delete: if false;
+
+      match /teilnehmende/{uid} {
+        allow read: if request.auth != null
+          && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          && (uid == request.auth.uid || istTeilnehmer(spielId));
+
+        // Beitritt bzw. Host-Zurückeroberung: eine Person darf ausschliesslich
+        // ihr EIGENES Dokument anlegen (Doc-ID == eigene Auth-UID).
+        //  - rolle 'spielende'/'beobachtende': die Stationszuweisung selbst
+        //    passiert serverseitig in der Anwendungslogik über eine
+        //    Firestore-Transaktion (siehe src/game/joinGame.js), nicht in
+        //    dieser Regel.
+        //  - rolle 'host': nur erlaubt, wenn die mitgeschickte hostKennung
+        //    mit der im Spieldokument hinterlegten übereinstimmt – das ist
+        //    der alleinige Nachweis für die Host-Session-Wiederherstellung,
+        //    ohne Cloud Function.
+        allow create: if request.auth != null
+          && uid == request.auth.uid
+          && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          && (
+            request.resource.data.rolle in ['spielende', 'beobachtende']
+            || (
+              request.resource.data.rolle == 'host'
+              && request.resource.data.hostKennung == get(/databases/$(database)/documents/spiele/$(spielId)).data.hostKennung
+            )
+          );
+
+        // Aktualisieren des eigenen Datensatzes (z. B. eigener Spielzug/eigene
+        // Aktivität, ab FEATURE-002). Niemand darf sich per Update nachträglich
+        // selbst zum Host machen – das geht ausschliesslich über "create" mit
+        // Nachweis der hostKennung.
+        allow update: if request.auth != null
+          && uid == request.auth.uid
+          && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          && request.resource.data.rolle == resource.data.rolle;
+
+        allow delete: if false;
+      }
     }
   }
 }

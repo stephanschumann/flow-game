@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow Game – Spiel-Raum</title>
+<style>
+  :root{
+    --bg:#0e1116;--panel:#161b22;--panel2:#1c232d;--line:#2a323d;
+    --text:#e6edf3;--muted:#9aa7b4;--dim:#6b7683;
+    --blue:#4c8dff;--green:#3fb950;--amber:#f0a531;--red:#f85149;--purple:#b98bff;
+    --shadow:0 10px 40px rgba(0,0,0,.45);--r:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{background:var(--bg)}
+  body{background:radial-gradient(1200px 700px at 80% -10%, #1a2432 0%, var(--bg) 60%) no-repeat, var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px 90px}
+  .hud{position:sticky;top:0;z-index:60;background:rgba(14,17,22,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .hud-in{max-width:1080px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .brand{font-weight:800;letter-spacing:.14em;font-size:13px;text-transform:uppercase}
+  .brand b{color:var(--amber)}
+  .hero{text-align:center;padding:38px 0 6px}
+  .hero .logo{font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--amber);font-weight:800}
+  .hero h1{font-size:40px;line-height:1;margin:14px 0 8px;font-weight:900;letter-spacing:-.02em}
+  .hero .tag{font-size:18px;color:var(--muted);max-width:660px;margin:0 auto}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px;margin-top:22px;box-shadow:var(--shadow)}
+  .btn{appearance:none;border:0;border-radius:12px;padding:14px 22px;font-size:16px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}
+  .btn.primary{background:linear-gradient(180deg,#5a97ff,#3f7ff0);color:#fff;box-shadow:0 6px 20px rgba(63,127,240,.35)} .btn.primary:hover{transform:translateY(-1px)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)} .btn.ghost:hover{color:var(--text);border-color:var(--dim)}
+  .btn:disabled{opacity:.5;cursor:default;transform:none}
+  .stage{margin-top:32px;animation:rise .45s cubic-bezier(.2,.7,.2,1)}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:18px}
+  .field{display:flex;flex-direction:column;gap:6px;text-align:left;margin-top:16px}
+  .field label{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+  .field input,.field select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:12px 14px;font-size:16px;font-family:inherit}
+  .field input:focus,.field select:focus{outline:2px solid var(--blue);outline-offset:1px}
+  .code-display{font-size:40px;letter-spacing:.16em;font-weight:900;color:var(--amber);text-align:center;padding:18px 0}
+  .teilnehmer-liste{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .teilnehmer-liste li{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .badge{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:4px 9px;border-radius:999px}
+  .badge.host{background:rgba(240,165,49,.16);color:var(--amber)}
+  .badge.spielende{background:rgba(76,141,255,.16);color:var(--blue)}
+  .badge.beobachtende{background:rgba(185,139,255,.16);color:var(--purple)}
+  .hinweis{margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px}
+  .hinweis.fehler{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.4);color:#ffb4af}
+  .hinweis.info{background:rgba(76,141,255,.1);border:1px solid rgba(76,141,255,.35);color:#cfe0ff}
+  .tabs{display:flex;gap:8px;justify-content:center;margin-top:10px}
+  .tabs button{background:transparent;border:1px solid var(--line);color:var(--muted);padding:10px 18px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}
+  .tabs button.aktiv{color:var(--text);border-color:var(--blue);background:rgba(76,141,255,.1)}
+  .center{text-align:center}
+  .muted{color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="hud"><div class="hud-in">
+  <div class="brand">FLOW <b>GAME</b></div>
+  <a href="index.html" class="btn ghost" style="padding:8px 14px;font-size:13px;margin-left:auto">Zur Startseite</a>
+</div></div>
+<div class="wrap">
+  <div class="stage">
+    <div class="hero">
+      <div class="logo">Spiel-Räume</div>
+      <h1 id="titel">Flow Game</h1>
+      <div class="tag" id="untertitel">Lädt…</div>
+    </div>
+
+    <div class="panel" id="auswahl-panel" hidden>
+      <div class="tabs">
+        <button type="button" id="tab-erstellen" class="aktiv">Spiel erstellen</button>
+        <button type="button" id="tab-beitreten">Spiel beitreten</button>
+      </div>
+
+      <form id="form-erstellen">
+        <div class="field">
+          <label for="host-name">Dein Anzeigename (als Host)</label>
+          <input id="host-name" name="host-name" type="text" maxlength="40" required autocomplete="off" placeholder="z. B. Chris">
+        </div>
+        <div class="row"><button type="submit" class="btn primary">Spiel erstellen</button></div>
+      </form>
+
+      <form id="form-beitreten" hidden>
+        <div class="field">
+          <label for="beitritt-code">Beitritts-Code</label>
+          <input id="beitritt-code" name="beitritt-code" type="text" maxlength="8" required autocomplete="off" placeholder="8 Zeichen, z. B. AB3DE7GK" style="text-transform:uppercase;letter-spacing:.1em">
+        </div>
+        <div class="field">
+          <label for="beitritt-name">Dein Anzeigename</label>
+          <input id="beitritt-name" name="beitritt-name" type="text" maxlength="40" required autocomplete="off" placeholder="z. B. Robin">
+        </div>
+        <div class="field" id="rollen-feld" hidden>
+          <label for="beitritt-rolle">Alle Stationen sind belegt – bitte Rolle wählen</label>
+          <select id="beitritt-rolle" name="beitritt-rolle">
+            <option value="beobachtende">Als Beobachtende beitreten</option>
+          </select>
+        </div>
+        <div class="row"><button type="submit" class="btn primary">Beitreten</button></div>
+      </form>
+
+      <div class="hinweis fehler" id="fehler" hidden></div>
+    </div>
+
+    <div class="panel center" id="lobby-panel" hidden>
+      <div id="lobby-rolle-hinweis" class="muted"></div>
+      <div class="code-display" id="lobby-code"></div>
+      <div class="muted" id="lobby-eigene-station"></div>
+      <ul class="teilnehmer-liste" id="teilnehmer-liste"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase (COMPAT-SDK, damit dieselbe .collection()/.doc()-API wie in
+     src/game/*.js verwendet werden kann). Die Konfiguration kommt über die
+     von Firebase Hosting automatisch bereitgestellte /__/firebase/init.js
+     (siehe TASK-001/TASK-002) – kein Schlüssel wird hier fest hinterlegt. -->
+<script src="/__/firebase/init.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="js/game/createGame.js"></script>
+<script src="js/game/joinGame.js"></script>
+<script src="js/game/hostSession.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const untertitel = document.getElementById('untertitel');
+  const auswahlPanel = document.getElementById('auswahl-panel');
+  const lobbyPanel = document.getElementById('lobby-panel');
+  const fehlerBox = document.getElementById('fehler');
+  const tabErstellen = document.getElementById('tab-erstellen');
+  const tabBeitreten = document.getElementById('tab-beitreten');
+  const formErstellen = document.getElementById('form-erstellen');
+  const formBeitreten = document.getElementById('form-beitreten');
+  const rollenFeld = document.getElementById('rollen-feld');
+  const lobbyCode = document.getElementById('lobby-code');
+  const lobbyRolleHinweis = document.getElementById('lobby-rolle-hinweis');
+  const lobbyEigeneStation = document.getElementById('lobby-eigene-station');
+  const teilnehmerListe = document.getElementById('teilnehmer-liste');
+
+  function zeigeFehler(nachricht) {
+    fehlerBox.textContent = nachricht;
+    fehlerBox.hidden = false;
+  }
+  function versteckeFehler() {
+    fehlerBox.hidden = true;
+    fehlerBox.textContent = '';
+  }
+
+  function speichereHostSession(code, hostSessionKennung) {
+    localStorage.setItem('flowGameHost:' + code, hostSessionKennung);
+    localStorage.setItem('flowGameLetztesSpiel', code);
+  }
+  function geladeneHostSession(code) {
+    return localStorage.getItem('flowGameHost:' + code);
+  }
+
+  tabErstellen.addEventListener('click', function () {
+    tabErstellen.classList.add('aktiv');
+    tabBeitreten.classList.remove('aktiv');
+    formErstellen.hidden = false;
+    formBeitreten.hidden = true;
+    versteckeFehler();
+  });
+  tabBeitreten.addEventListener('click', function () {
+    tabBeitreten.classList.add('aktiv');
+    tabErstellen.classList.remove('aktiv');
+    formBeitreten.hidden = false;
+    formErstellen.hidden = true;
+    versteckeFehler();
+  });
+
+  const ROLLEN_LABEL = { host: 'Host', spielende: 'Spielende', beobachtende: 'Beobachtende' };
+
+  function zeigeLobby(db, code, eigeneRolleText) {
+    auswahlPanel.hidden = true;
+    lobbyPanel.hidden = false;
+    lobbyCode.textContent = code;
+    lobbyRolleHinweis.textContent = eigeneRolleText;
+
+    db.collection('spiele').doc(code).collection('teilnehmende')
+      .onSnapshot(function (snapshot) {
+        teilnehmerListe.innerHTML = '';
+        snapshot.forEach(function (docSnap) {
+          const daten = docSnap.data();
+          const li = document.createElement('li');
+          const name = document.createElement('span');
+          name.textContent = daten.anzeigename + (daten.station ? ' – ' + daten.station : '');
+          const badge = document.createElement('span');
+          badge.className = 'badge ' + (daten.rolle === 'host' ? 'host' : daten.rolle === 'spielende' ? 'spielende' : 'beobachtende');
+          badge.textContent = ROLLEN_LABEL[daten.rolle] || daten.rolle;
+          li.appendChild(name);
+          li.appendChild(badge);
+          teilnehmerListe.appendChild(li);
+        });
+      }, function (err) {
+        zeigeFehler('Teilnehmendenliste konnte nicht geladen werden: ' + err.message);
+      });
+  }
+
+  async function init() {
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    let user = auth.currentUser;
+    if (!user) {
+      const cred = await auth.signInAnonymously();
+      user = cred.user;
+    } else {
+      await new Promise(function (resolve) {
+        const unsub = auth.onAuthStateChanged(function (u) {
+          if (u) { user = u; unsub(); resolve(); }
+        });
+      });
+    }
+
+    untertitel.textContent = 'Erstelle ein Spiel oder tritt mit einem Beitritts-Code bei.';
+
+    const letztesSpiel = localStorage.getItem('flowGameLetztesSpiel');
+    if (letztesSpiel) {
+      const hostSessionKennung = geladeneHostSession(letztesSpiel);
+      if (hostSessionKennung) {
+        try {
+          const ergebnis = await window.FlowGame.restoreHostSession(
+            { code: letztesSpiel, hostSessionKennung, uid: user.uid },
+            db
+          );
+          zeigeLobby(db, ergebnis.spielCode, 'Du bist Host dieses Spiels.');
+          return;
+        } catch (err) {
+          // Kennung nicht mehr gültig – normal weiter zur Start-Auswahl.
+        }
+      }
+    }
+
+    auswahlPanel.hidden = false;
+
+    formErstellen.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      versteckeFehler();
+      const hostAnzeigename = document.getElementById('host-name').value;
+      try {
+        const ergebnis = await window.FlowGame.createGame({ hostAnzeigename, uid: user.uid }, db);
+        speichereHostSession(ergebnis.code, ergebnis.hostSessionKennung);
+        zeigeLobby(db, ergebnis.code, 'Du bist Host dieses Spiels. Teile den Code mit deiner Gruppe.');
+      } catch (err) {
+        zeigeFehler(err.message);
+      }
+    });
+
+    formBeitreten.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      versteckeFehler();
+      const code = document.getElementById('beitritt-code').value.trim().toUpperCase();
+      const anzeigename = document.getElementById('beitritt-name').value;
+      const rolleWahl = rollenFeld.hidden ? 'spielende' : document.getElementById('beitritt-rolle').value;
+      try {
+        const ergebnis = await window.FlowGame.joinGame({ code, anzeigename, rolle: rolleWahl, uid: user.uid }, db);
+        if (ergebnis.rolle === 'stationenVoll') {
+          rollenFeld.hidden = false;
+          zeigeFehler('Alle Stationen wurden gerade in diesem Moment vergeben. Bitte Rolle wählen und erneut beitreten.');
+          return;
+        }
+        lobbyEigeneStation.textContent = ergebnis.station
+          ? 'Deine Station: ' + ergebnis.station
+          : 'Du bist als Beobachtende dabei.';
+        zeigeLobby(db, code, 'Du bist ' + ROLLEN_LABEL[ergebnis.rolle] + ' in diesem Spiel.');
+      } catch (err) {
+        if (/belegt/i.test(err.message)) {
+          rollenFeld.hidden = false;
+        }
+        zeigeFehler(err.message);
+      }
+    });
+  }
+
+  init().catch(function (err) {
+    untertitel.textContent = 'Fehler beim Laden: ' + err.message;
+  });
+})();
+</script>
+</body>
+</html>
