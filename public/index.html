@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow Game</title>
+<style>
+  :root{
+    --bg:#0e1116;--panel:#161b22;--panel2:#1c232d;--line:#2a323d;
+    --text:#e6edf3;--muted:#9aa7b4;--dim:#6b7683;
+    --blue:#4c8dff;--green:#3fb950;--amber:#f0a531;--red:#f85149;--purple:#b98bff;
+    --shadow:0 10px 40px rgba(0,0,0,.45);--r:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{background:var(--bg)}
+  body{background:radial-gradient(1200px 700px at 80% -10%, #1a2432 0%, var(--bg) 60%) no-repeat, var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px 90px}
+  .hud{position:sticky;top:0;z-index:60;background:rgba(14,17,22,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .hud-in{max-width:1080px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .brand{font-weight:800;letter-spacing:.14em;font-size:13px;text-transform:uppercase}
+  .brand b{color:var(--amber)}
+  .hero{text-align:center;padding:38px 0 6px}
+  .hero .logo{font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--amber);font-weight:800}
+  .hero h1{font-size:54px;line-height:1;margin:14px 0 8px;font-weight:900;letter-spacing:-.02em}
+  .hero .tag{font-size:20px;color:var(--muted);max-width:660px;margin:0 auto}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px;margin-top:22px;box-shadow:var(--shadow)}
+  .btn{appearance:none;border:0;border-radius:12px;padding:14px 22px;font-size:16px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}
+  .btn.primary{background:linear-gradient(180deg,#5a97ff,#3f7ff0);color:#fff;box-shadow:0 6px 20px rgba(63,127,240,.35)} .btn.primary:hover{transform:translateY(-1px)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)} .btn.ghost:hover{color:var(--text);border-color:var(--dim)}
+  .stage{margin-top:32px;animation:rise .45s cubic-bezier(.2,.7,.2,1)}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="hud"><div class="hud-in">
+  <div class="brand">FLOW <b>GAME</b></div>
+</div></div>
+<div class="wrap">
+  <div class="stage">
+    <div class="hero">
+      <div class="logo">Ein Lernspiel zu Flow, Batchsizing und Kontextwechsel</div>
+      <h1>FLOW&nbsp;GAME</h1>
+      <div class="tag">Grundgerüst live — die eigentliche Spiellogik folgt in den nächsten Phasen.</div>
+    </div>
+    <div class="panel" style="text-align:center;color:var(--muted);font-size:15px">
+      Diese Seite bestätigt: Hosting, Deploy-Pipeline und Design-Übernahme aus „Agent Contract“ funktionieren (Phase 0, Teil 1).
+    </div>
+  </div>
+</div>
+</body>
+</html>
