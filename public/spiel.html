@@ -146,6 +146,7 @@
   const formErstellen = document.getElementById('form-erstellen');
   const formBeitreten = document.getElementById('form-beitreten');
   const rollenFeld = document.getElementById('rollen-feld');
+  const beitrittCodeInput = document.getElementById('beitritt-code');
   const lobbyCode = document.getElementById('lobby-code');
   const lobbyRolleHinweis = document.getElementById('lobby-rolle-hinweis');
   const lobbyEigeneStation = document.getElementById('lobby-eigene-station');
@@ -258,6 +259,48 @@
         zeigeLobby(db, ergebnis.code, 'Du bist Host dieses Spiels. Teile den Code mit deiner Gruppe.');
       } catch (err) {
         zeigeFehler(err.message);
+      }
+    });
+
+    // Verfügbarkeit VOR dem Beitritt prüfen (statt erst nach einem
+    // fehlgeschlagenen ersten Versuch), damit die Rollenauswahl gleich
+    // sichtbar ist, sobald ein vollständiger Code eingegeben wurde – ein
+    // einziger Klick auf "Beitreten" genügt dann. Der Pre-Check in
+    // joinGame.js sowie der "stationenVoll"-Zweig im Erfolgsfall unten
+    // bleiben zusätzlich als Sicherheitsnetz für den Fall, dass sich die
+    // Belegung zwischen dieser Prüfung und dem tatsächlichen Beitritt noch
+    // ändert (z. B. eine andere Person belegt gerade in diesem Moment die
+    // letzte freie Station).
+    async function pruefeStationsVerfuegbarkeit() {
+      const code = beitrittCodeInput.value.trim().toUpperCase();
+      if (code.length !== 8) {
+        rollenFeld.hidden = true;
+        return;
+      }
+      try {
+        const snap = await db.collection('spiele').doc(code).get();
+        if (!snap.exists) {
+          rollenFeld.hidden = true;
+          return;
+        }
+        const belegt = snap.data().belegteStationen || {};
+        const alleBelegt = window.FlowGame.STATIONEN.every(function (s) {
+          return Boolean(belegt[s]);
+        });
+        rollenFeld.hidden = !alleBelegt;
+      } catch (err) {
+        // Stiller Fallback bei Lesefehlern (z. B. unbekannter/inaktiver
+        // Code): die eigentliche, verständliche Fehlermeldung kommt beim
+        // tatsächlichen Beitrittsversuch weiter unten.
+        rollenFeld.hidden = true;
+      }
+    }
+    beitrittCodeInput.addEventListener('blur', pruefeStationsVerfuegbarkeit);
+    beitrittCodeInput.addEventListener('input', function () {
+      if (beitrittCodeInput.value.trim().length === 8) {
+        pruefeStationsVerfuegbarkeit();
+      } else {
+        rollenFeld.hidden = true;
       }
     });
 
