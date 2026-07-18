@@ -159,6 +159,47 @@ describe('FEATURE-001 – Spielraum-Sicherheitsregeln', () => {
     });
   });
 
+  describe('Szenario: Beitritt schreibt im selben Commit das eigene Teilnehmenden-Dokument UND die Stationsbelegung im Spiel-Dokument (echter Client-Ablauf aus joinGame.js)', () => {
+    // Regressionstest für einen echten Bug (2026-07-17, im Browser bei Stephan
+    // aufgetreten): joinGame.js führt tx.set(teilnehmerRef, ...) und
+    // tx.update(spielRef, ...) in EINEM einzigen Commit aus. Die Regel für das
+    // Update des Spiel-Dokuments prüft über istTeilnehmer() per exists(), ob
+    // schon ein eigenes Teilnehmenden-Dokument existiert – das sieht bei
+    // exists() aber nur den Stand VOR diesem Commit und lehnt den Beitritt
+    // fälschlich ab, obwohl das Dokument im selben Commit gerade erst entsteht.
+    // Der frühere Testaufbau legte das Teilnehmenden-Dokument immer VORHER per
+    // withSecurityRulesDisabled an und hat diesen Fall nie geprüft. Dieser Test
+    // bildet den echten, atomaren Zwei-Schreibvorgänge-Client-Ablauf nach.
+    test('Gegeben Spiel A existiert mit freier Station, wenn eine neue Person im selben Commit beitritt UND die Stationsbelegung aktualisiert, dann wird beides erlaubt', async () => {
+      await seedGameA();
+      const beitretendeKontext = testEnv.authenticatedContext('neue-spielerin');
+      const db = beitretendeKontext.firestore();
+      const batch = db.batch();
+      batch.set(db.doc(`spiele/${GAME_A}/teilnehmende/neue-spielerin`), {
+        rolle: 'spielende',
+        anzeigename: 'Neue Spielerin',
+        station: 'wareneingang',
+      });
+      batch.update(db.doc(`spiele/${GAME_A}`), {
+        'belegteStationen.wareneingang': 'neue-spielerin',
+        letzteAktivitaet: Date.now(),
+      });
+      await assertSucceeds(batch.commit());
+    });
+
+    test('Gegeben Spiel A existiert, wenn eine neue Person im selben Commit NUR die Stationsbelegung aktualisiert (ohne eigenes Teilnehmenden-Dokument anzulegen), dann wird es abgelehnt', async () => {
+      await seedGameA();
+      const fremdeKontext = testEnv.authenticatedContext('unbeteiligt-beim-beitritt');
+      const db = fremdeKontext.firestore();
+      await assertFails(
+        db.doc(`spiele/${GAME_A}`).update({
+          'belegteStationen.wareneingang': 'unbeteiligt-beim-beitritt',
+          letzteAktivitaet: Date.now(),
+        })
+      );
+    });
+  });
+
   describe('Szenario: Minimale Spiel-Metadaten sind bewusst codebasiert lesbar, Teilnehmendendaten bleiben getrennt', () => {
     test('Gegeben Spiel A und Spiel B, wenn eine Person aus Spiel B die minimalen Metadaten von Spiel A liest (Code-Prüfung/Stationsverfügbarkeit vor dem Beitritt), dann wird das erlaubt', async () => {
       await seedGameAUndB();

@@ -39,8 +39,18 @@ service cloud.firestore {
     }
 
     function istTeilnehmer(spielId) {
+      // existsAfter() statt exists(): beim Beitreten legt joinGame.js in
+      // EINEM Commit sowohl das eigene teilnehmende-Dokument an ALS AUCH
+      // das Update von belegteStationen/letzteAktivitaet im spiele-Dokument.
+      // exists() sähe dabei nur den Stand VOR diesem Commit (Dokument
+      // existiert noch nicht) und würde das Update fälschlich ablehnen –
+      // dieselbe Fehlerklasse wie das getAfter()-Problem beim Host-Beitritt
+      // weiter oben. existsAfter() prüft den Stand NACH allen Schreib-
+      // vorgängen desselben Commits und funktioniert dadurch für beide
+      // Fälle (Update im selben Commit wie das Anlegen, oder ein Update zu
+      // einem späteren Zeitpunkt, wenn das Dokument längst existiert).
       return request.auth != null
-        && exists(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid));
+        && existsAfter(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid));
     }
 
     match /spiele/{spielId} {
