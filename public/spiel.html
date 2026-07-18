@@ -12,6 +12,15 @@
     --shadow:0 10px 40px rgba(0,0,0,.45);--r:16px;
   }
   *{box-sizing:border-box}
+  /* BUGFIX (2026-07-18, live im Browser gefunden): [hidden] hat dieselbe
+     CSS-Spezifität wie eine Klassen-Regel (0,1,0). Ohne diese Regel gewinnt
+     z. B. .field{display:flex} gegen die native [hidden]{display:none}-Regel
+     des Browsers, sobald beide auf dasselbe Element treffen (z. B.
+     #rollen-feld) - das Element bleibt dann sichtbar, obwohl sein
+     hidden-Attribut/die hidden-Eigenschaft weiterhin true ist. !important
+     stellt sicher, dass hidden immer gewinnt, unabhängig von künftigen
+     Klassen-Styles. */
+  [hidden]{display:none !important}
   html,body{margin:0;padding:0}
   html{background:var(--bg)}
   body{background:radial-gradient(1200px 700px at 80% -10%, #1a2432 0%, var(--bg) 60%) no-repeat, var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;}
