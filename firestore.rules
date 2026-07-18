@@ -53,6 +53,98 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid));
     }
 
+    // FEATURE-002: Rundenzustand + Kartenbewegung. Zusätzliche Helfer-
+    // Funktionen, siehe Kommentare bei den runden-/karten-Regeln weiter unten.
+
+    function istHost(spielId) {
+      // Bewusst flach gehalten (kein Aufruf von istTeilnehmer() von innen
+      // heraus) – existsAfter()/get() direkt hier, konsistent mit dem Muster,
+      // das in den bereits freigegebenen FEATURE-001-Regeln erfolgreich läuft
+      // (dort ruft ebenfalls nie eine Funktion eine andere Funktion auf).
+      return request.auth != null
+        && existsAfter(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid))
+        && get(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data.get('rolle', null) == 'host';
+    }
+
+    // WICHTIG: {runde} ist als Firestore-Pfadsegment (match /runden/{runde})
+    // IMMER ein String ("1"/"2"/"3"), nie eine Zahl – deshalb hier bewusst
+    // String-Literale statt Zahlen-Literale vergleichen. Ein Vergleich mit
+    // Zahlen-Literalen hätte hier für JEDE Runde still auf den else-Zweig (1)
+    // durchfallen können, ohne einen Fehler zu werfen (falscher, aber stiller
+    // Wert statt korrekt 6/3/1).
+    function stapelTorSchwelle(runde) {
+      return runde == '1' ? 6 : (runde == '2' ? 3 : 1);
+    }
+
+    // Zählt, wie viele der (bis zu) sechs Karten der Runde aktuell an
+    // `position` stehen, optional zusätzlich nach `stapel` gefiltert (Runde
+    // 2: die zwei Dreierstapel werden GETRENNT gezählt, Entscheidung
+    // 2026-07-18 – kein einmaliges Freischalten über die Gesamtsumme).
+    //
+    // Sicherheitsregeln können keine Sammlungs-Query ausführen (Pre-Mortem-
+    // Risiko 3). Da pro Runde immer genau sechs, namentlich bekannte
+    // Karten-IDs existieren (karte-1 .. karte-6), werden alle sechs einzeln
+    // per get() gelesen und gezählt – das bleibt klar unter dem Limit an
+    // get()/exists()-Aufrufen je Regelauswertung.
+    function karteAnPositionUndStapel(spielId, runde, kartenId, position, stapel) {
+      // OPTIMIERUNG (nach echtem Testlauf mit Stephan, 2026-07-18): kein
+      // separates exists()-Vorab-Check mehr - pro Karte nur noch EIN
+      // get()-Aufruf statt zwei. Sicher, weil laut Architektur
+      // (rundenStart.js) bei jedem Rundenstart immer exakt alle sechs
+      // Karten (karte-1..karte-6) ATOMAR zusammen angelegt werden; sobald
+      // DoR abgeschlossen ist (Vorbedingung in bewegungErlaubt()),
+      // existieren deshalb garantiert alle sechs. Grund: der reale
+      // Firestore-Testlauf zeigte "evaluation error ... Function: [exists]"
+      // fuer mehrere Kartenbewegungs-/Stapel-Tor-Szenarien - Ursache war
+      // das dokumentierte Firestore-Limit von 10 get()/exists()-Aufrufen
+      // pro Einzeldokument-Request: die alte Variante (exists() + bedingtes
+      // get() je Karte) brauchte bis zu 12 Aufrufe allein fuer die sechs
+      // Karten, zusammen mit den uebrigen Aufrufen in bewegungErlaubt()
+      // weit ueber dem Limit. Mit nur einem get() je Karte bleibt die
+      // gesamte Regelauswertung fuer eine Kartenbewegung bei maximal 9.
+      let daten = get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)/karten/$(kartenId)).data;
+      return daten.position == position
+        && (stapel == null || daten.get('stapel', null) == stapel)
+        ? 1 : 0;
+    }
+
+    function anzahlAnPosition(spielId, runde, position, stapel) {
+      return karteAnPositionUndStapel(spielId, runde, 'karte-1', position, stapel)
+           + karteAnPositionUndStapel(spielId, runde, 'karte-2', position, stapel)
+           + karteAnPositionUndStapel(spielId, runde, 'karte-3', position, stapel)
+           + karteAnPositionUndStapel(spielId, runde, 'karte-4', position, stapel)
+           + karteAnPositionUndStapel(spielId, runde, 'karte-5', position, stapel)
+           + karteAnPositionUndStapel(spielId, runde, 'karte-6', position, stapel);
+    }
+
+    function stapelTorOffen(spielId, runde, vonPosition, stapel) {
+      // Der Übergang vom Auftragseingang (Position 0) zu Station 1 ist immer
+      // offen, unabhängig von der Rundenschwelle (Entscheidung 2026-07-18) –
+      // deshalb hier keine Zählung/kein zusätzlicher get()-Aufwand nötig.
+      return vonPosition == 0
+        || anzahlAnPosition(spielId, runde, vonPosition, stapel) >= stapelTorSchwelle(runde);
+    }
+
+    // Bewegung ist erlaubt, wenn entweder die abgebende Station (Quelle,
+    // "abgebende Station löst die Bewegung aus", Entscheidung 2026-07-18)
+    // ODER die empfangende Station (Ziel – Sonderfall Auftragseingang, wo es
+    // niemanden "Abgebendes" gibt: Station 1 holt sich die erste Karte
+    // aktiv ab) mit der bewegenden Person übereinstimmt.
+    function bewegungErlaubt(spielId, runde, kartenId) {
+      let mitgliedStation = get(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data.get('station', null);
+      let vonPosition = resource.data.position;
+      let nachPosition = request.resource.data.position;
+      let vorherigerStapel = resource.data.get('stapel', null);
+      return get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)).data.dorAbgeschlossen == true
+        && nachPosition == vonPosition + 1
+        && nachPosition <= 6
+        && request.resource.data.letzteBewegungVon == request.auth.uid
+        && request.resource.data.letzteBewegungAm == request.time
+        && request.resource.data.get('stapel', null) == vorherigerStapel
+        && (mitgliedStation == vonPosition || mitgliedStation == nachPosition)
+        && stapelTorOffen(spielId, runde, vonPosition, vorherigerStapel);
+    }
+
     match /spiele/{spielId} {
       // Lesbar für jede angemeldete Person (auch anonym), die den Code kennt
       // oder rät – das ist die Grundlage des Beitritts-Flusses (Code-Prüfung,
@@ -141,6 +233,89 @@ service cloud.firestore {
           && request.resource.data.rolle == resource.data.rolle;
 
         allow delete: if false;
+      }
+
+      // FEATURE-002: Rundenzustand (Phase, DoR, Zeitstempel).
+      // Datenmodell (Option B, freigegeben 2026-07-18):
+      //   spiele/{spielId}/runden/{rundenNummer}
+      //     -> phase, dorAbgeschlossen, dorAbgeschlossenAm (nicht clientseitig
+      //        geprüft, siehe unten), durchlaufzeitStart/-Ende,
+      //        bearbeitungszeitStart/-Ende – alle Zeitwerte servergesetzt
+      //        (request.time), NIE ein vom Client mitgesendeter Zeitwert.
+      match /runden/{runde} {
+        allow read: if istTeilnehmer(spielId) && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data);
+
+        // Rundenstart bzw. Rundenwechsel: ausschliesslich der Host löst das
+        // aktiv aus (Entscheidung 2026-07-18) – niemals automatisch. Die
+        // Durchlaufzeit wird dabei ausschliesslich servergesetzt.
+        allow create: if istHost(spielId)
+          && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          && request.resource.data.dorAbgeschlossen == false
+          && request.resource.data.durchlaufzeitStart == request.time
+          && request.resource.data.bearbeitungszeitStart == null
+          && request.resource.data.durchlaufzeitEnde == null;
+
+        allow update: if istTeilnehmer(spielId) && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          && (
+            // Fall A: "Definition of Ready abgeschlossen" – Host ODER Team
+            // (Entscheidung 2026-07-17). Prüft ausschliesslich das RESULTAT,
+            // nicht den Vorzustand: ein zweiter/gleichzeitiger Auslöseversuch
+            // (Pre-Mortem-Risiko 1) landet in genau demselben Zweig, wirft
+            // also keinen Fehler, ändert aber inhaltlich nichts an einem
+            // bereits gesetzten dorAbgeschlossenAm (das hier bewusst nicht
+            // client-geprüft wird – der erste erfolgreiche Schreibvorgang
+            // gewinnt, alle weiteren sind reine No-Ops mit identischem Ziel-
+            // zustand).
+            (request.resource.data.dorAbgeschlossen == true
+              && request.resource.data.phase == 'dor_abgeschlossen')
+            ||
+            // Fall B: automatisches Rundenende (letzte Karte im Ziel) – nur
+            // mit servergesetztem Zeitstempel, niemals ein Client-Zeitwert.
+            // (Nicht Teil der gegebenen automatisierten Regel-Testfälle für
+            // dieses Ticket – Stephan sollte das end-to-end im Browser
+            // gegenprüfen, sobald die Spielfeld-Oberfläche existiert.)
+            (request.resource.data.phase == 'beendet'
+              && request.resource.data.durchlaufzeitEnde == request.time
+              && resource.data.dorAbgeschlossen == true)
+          );
+
+        allow delete: if false;
+
+        // FEATURE-002: eine Karte (Position 0 = Auftragseingang, 1-5 =
+        // Stationen, 6 = Ziel). In Runde 2 zusätzlich `stapel: "A" | "B"`
+        // (getrennte Stapelzählung, Entscheidung 2026-07-18).
+        match /karten/{kartenId} {
+          allow read: if istTeilnehmer(spielId) && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data);
+
+          // Karten werden ausschliesslich im selben Vorgang wie der
+          // Runden-Start/-Wechsel vom Host angelegt (immer exakt sechs, alle
+          // auf Position 0) – kein separates Client-"Nachschieben" einzelner
+          // Karten.
+          allow create: if istHost(spielId)
+            && request.resource.data.position == 0;
+
+          // Kartenbewegung: die abgebende ODER die empfangende Station löst
+          // aus (siehe bewegungErlaubt()-Kommentar oben für die Begründung
+          // des Sonderfalls Auftragseingang -> Station 1). Beobachtende haben
+          // keine `station` zugewiesen und können deshalb nie beide Seiten
+          // einer Bewegung treffen (FEATURE-001-Regression: weiterhin keine
+          // Schreibrechte auf Spielzüge).
+          // OPTIMIERUNG (2026-07-18, gleicher Grund wie bei
+          // karteAnPositionUndStapel oben): istTeilnehmer(spielId) hier
+          // NICHT mehr separat aufgerufen, um einen weiteren
+          // existsAfter()-Aufruf gegen das Firestore-Limit zu sparen -
+          // bewegungErlaubt() liest ohnehin per get() das eigene
+          // teilnehmende-Dokument, um die eigene Station zu ermitteln; ist
+          // die Person kein Teilnehmender, schlaegt dieser get()-Aufruf
+          // fehl (Regel lehnt den Zug dann per Auswertungsfehler statt
+          // per sauberem false ab) - sicherheitstechnisch gleichwertig
+          // abgelehnt, nur mit anderer Fehlerart.
+          allow update: if request.auth != null
+            && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+            && bewegungErlaubt(spielId, runde, kartenId);
+
+          allow delete: if false;
+        }
       }
     }
   }

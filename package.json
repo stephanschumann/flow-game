@@ -4,10 +4,11 @@
   "private": true,
   "description": "Flow Game - Lernspiel, Firebase Hosting + Firestore",
   "scripts": {
-    "test:emulator": "firebase emulators:exec --only firestore \"jest tests/game-rooms.security.rules.test.js tests/game-rooms.logic.test.js\"",
-    "test:emulator:logic": "firebase emulators:exec --only firestore \"jest tests/game-rooms.logic.test.js\"",
-    "test:emulator:rules": "firebase emulators:exec --only firestore \"jest tests/game-rooms.security.rules.test.js\"",
-    "test:deploy-regression": "jest tests/deploy-regression.test.js"
+    "test:emulator": "firebase emulators:exec --only firestore \"jest tests/game-rooms.security.rules.test.js tests/game-rooms.logic.test.js tests/game-round.security.rules.test.js tests/game-round.logic.test.js tests/game-round.stapel-zaehlung.test.js\"",
+    "test:emulator:logic": "firebase emulators:exec --only firestore \"jest tests/game-rooms.logic.test.js tests/game-round.logic.test.js tests/game-round.stapel-zaehlung.test.js\"",
+    "test:emulator:rules": "firebase emulators:exec --only firestore \"jest tests/game-rooms.security.rules.test.js tests/game-round.security.rules.test.js\"",
+    "test:emulator:feature-002": "firebase emulators:exec --only firestore \"jest tests/game-round.security.rules.test.js tests/game-round.logic.test.js tests/game-round.stapel-zaehlung.test.js\"",
+    "test:deploy-regression": "jest tests/deploy-regression.test.js tests/feature-002-deploy-regression.test.js"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",
