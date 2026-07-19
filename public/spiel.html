@@ -314,37 +314,84 @@
     aktuellerSpielCode = code;
     aktuelleDbInstanz = db;
 
+    // BUGFIX (2026-07-19, live beim Runden-1-3-Test mit Chrome-Automatisierung
+    // gefunden): Vorher wurde die GESAMTE teilnehmende-Sammlung mit einer
+    // einzigen Collection-Query gelesen. Darin liegt aber auch der
+    // Host-Datensatz (rolle: 'host'), den laut firestore.rules niemand außer
+    // dem Host selbst lesen darf (siehe Kommentar dort: "hostKennung ... darf
+    // deshalb niemals von jemand anderem als dem Host selbst gelesen
+    // werden"). Firestore kann bei einer ungefilterten Collection-Query nicht
+    // im Voraus beweisen, dass alle möglichen Treffer die Regel erfüllen –
+    // deshalb wird die KOMPLETTE Abfrage mit "permission-denied" abgelehnt,
+    // sobald ein Host-Datensatz überhaupt in der Sammlung existiert (nicht
+    // nur der eine unlesbare Eintrag). Für Host selbst fiel das nie auf,
+    // weil für ihn ausnahmslos jeder Datensatz lesbar ist (der eigene UND
+    // alle Nicht-Host-Datensätze) – für alle anderen blieb die eigene
+    // Stationsnummer dadurch dauerhaft unbekannt, wodurch nie ein
+    // Bewegen-Button erschien. Fix: zwei getrennte Listener, die JEWEILS
+    // für sich von der Regel klar erlaubt sind:
+    //   1. das eigene Dokument per doc(eigeneUid) – immer lesbar.
+    //   2. eine Collection-Query mit .where('rolle', '!=', 'host') – deckt
+    //      sich exakt mit der Regelbedingung "resource.data.rolle != 'host'"
+    //      und lässt sich von Firestore im Voraus beweisen, ohne den
+    //      Host-Datensatz jemals anzufragen.
+    // Beide Listener aktualisieren einen gemeinsamen Zwischenspeicher und
+    // rendern daraus die komplette Liste neu.
+    const teilnehmendeCache = {}; // uid -> Teilnehmenden-Daten
+
+    function verarbeiteTeilnehmerDoc(uid, daten) {
+      teilnehmendeNamenMap[uid] = daten.anzeigename;
+
+      // FEATURE-002: die eigene Stationsnummer (numerisch, Voraussetzung
+      // für Kartenbewegung) sicherstellen - siehe Kopfkommentar in
+      // kartenBewegung.js zum String->Zahl-Migrationsgrund.
+      if (uid === eigeneUid && daten.station != null) {
+        eigeneStationsNummer = window.FlowGame.stationsNummerVon(daten.station);
+        if (typeof daten.station === 'string') {
+          window.FlowGame.stelleEigeneStationsnummerSicher(
+            { code, uid: eigeneUid, teilnehmerDaten: daten }, db
+          ).catch(function () { /* nicht kritisch - naechster Snapshot versucht es erneut */ });
+        }
+      }
+
+      teilnehmendeCache[uid] = daten;
+    }
+
+    function renderTeilnehmerListe() {
+      teilnehmerListe.innerHTML = '';
+      Object.keys(teilnehmendeCache).forEach(function (uid) {
+        const daten = teilnehmendeCache[uid];
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        const stationsAnzeige = daten.stationName
+          || (typeof daten.station === 'string' ? daten.station : null);
+        name.textContent = daten.anzeigename + (stationsAnzeige ? ' – ' + stationsAnzeige : '');
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + (daten.rolle === 'host' ? 'host' : daten.rolle === 'spielende' ? 'spielende' : 'beobachtende');
+        badge.textContent = ROLLEN_LABEL[daten.rolle] || daten.rolle;
+        li.appendChild(name);
+        li.appendChild(badge);
+        teilnehmerListe.appendChild(li);
+      });
+    }
+
+    db.collection('spiele').doc(code).collection('teilnehmende').doc(eigeneUid)
+      .onSnapshot(function (docSnap) {
+        if (docSnap.exists) {
+          verarbeiteTeilnehmerDoc(docSnap.id, docSnap.data());
+          renderTeilnehmerListe();
+        }
+      }, function (err) {
+        zeigeFehler('Eigene Teilnahme konnte nicht geladen werden: ' + err.message);
+      });
+
     db.collection('spiele').doc(code).collection('teilnehmende')
+      .where('rolle', '!=', 'host')
       .onSnapshot(function (snapshot) {
-        teilnehmerListe.innerHTML = '';
         snapshot.forEach(function (docSnap) {
-          const daten = docSnap.data();
-          teilnehmendeNamenMap[docSnap.id] = daten.anzeigename;
-
-          // FEATURE-002: die eigene Stationsnummer (numerisch, Voraussetzung
-          // für Kartenbewegung) sicherstellen - siehe Kopfkommentar in
-          // kartenBewegung.js zum String->Zahl-Migrationsgrund.
-          if (docSnap.id === eigeneUid && daten.station != null) {
-            eigeneStationsNummer = window.FlowGame.stationsNummerVon(daten.station);
-            if (typeof daten.station === 'string') {
-              window.FlowGame.stelleEigeneStationsnummerSicher(
-                { code, uid: eigeneUid, teilnehmerDaten: daten }, db
-              ).catch(function () { /* nicht kritisch - naechster Snapshot versucht es erneut */ });
-            }
-          }
-
-          const li = document.createElement('li');
-          const name = document.createElement('span');
-          const stationsAnzeige = daten.stationName
-            || (typeof daten.station === 'string' ? daten.station : null);
-          name.textContent = daten.anzeigename + (stationsAnzeige ? ' – ' + stationsAnzeige : '');
-          const badge = document.createElement('span');
-          badge.className = 'badge ' + (daten.rolle === 'host' ? 'host' : daten.rolle === 'spielende' ? 'spielende' : 'beobachtende');
-          badge.textContent = ROLLEN_LABEL[daten.rolle] || daten.rolle;
-          li.appendChild(name);
-          li.appendChild(badge);
-          teilnehmerListe.appendChild(li);
+          verarbeiteTeilnehmerDoc(docSnap.id, docSnap.data());
         });
+        renderTeilnehmerListe();
       }, function (err) {
         zeigeFehler('Teilnehmendenliste konnte nicht geladen werden: ' + err.message);
       });
