@@ -90,6 +90,17 @@
   .kennzahl-box .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
   .beteiligung-liste{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
   .beteiligung-liste li{display:flex;justify-content:space-between;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px}
+
+  /* FEATURE-003: Auswertung/Vergleichsansicht + Freigabe. Nutzt dieselben
+     Farb-/Abstands-Variablen wie der Rest der Seite (kein neues Vokabular). */
+  .vergleichs-tabelle-wrap{overflow-x:auto;margin-top:10px}
+  .vergleichs-tabelle{width:100%;border-collapse:collapse;font-size:14px;min-width:420px}
+  .vergleichs-tabelle th,.vergleichs-tabelle td{border:1px solid var(--line);padding:8px 12px;text-align:center;white-space:nowrap}
+  .vergleichs-tabelle thead th{background:var(--panel2);color:var(--muted);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+  .vergleichs-tabelle th[scope="row"]{text-align:left;color:var(--text);text-transform:none;font-size:13px;letter-spacing:0;background:transparent;white-space:normal}
+  .vergleichs-tabelle tbody tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .host-vorschau{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
+  .host-vorschau h3{font-size:14px;margin:0 0 4px;color:var(--amber);text-transform:uppercase;letter-spacing:.06em}
 </style>
 </head>
 <body>
@@ -180,13 +191,48 @@
 
       <div class="panel" id="kennzahlen-panel" hidden>
         <h2 style="margin-top:0">Runde beendet – Kennzahlen</h2>
-        <div class="kennzahlen-grid" id="kennzahlen-grid"></div>
+
+        <!-- FEATURE-003: Solange die Ergebnisse nicht durch den Host
+             freigegeben sind, sehen Spielende/Beobachtende hier nur diesen
+             Hinweis statt der Zahlen (firestore.rules sperrt das Lesen des
+             Runden-Dokuments dafür bereits serverseitig - dieser Hinweis
+             wird angezeigt, wenn genau das passiert, siehe Skript unten). -->
+        <div class="hinweis info" id="kennzahlen-gesperrt-hinweis" hidden>Die Ergebnisse dieser Runde sind noch nicht freigegeben. Der Host gibt alle Kennzahlen gemeinsam frei, sobald alle Runden gespielt sind.</div>
+
+        <div id="kennzahlen-grid" class="kennzahlen-grid"></div>
         <div id="kennzahlen-beteiligung"></div>
+
+        <!-- FEATURE-003: Nur für den Host sichtbar - eigene Vorschau auf den
+             Rundenvergleich, bevor er für alle freigegeben wird (der Host
+             darf die Runden-Dokumente laut firestore.rules jederzeit lesen). -->
+        <div class="host-vorschau" id="host-vorschau-bereich" hidden>
+          <h3>Vorschau – nur für dich als Host sichtbar</h3>
+          <div class="muted">Vergleich aller bisher gespielten Runden, bevor du für alle freigibst.</div>
+          <div class="vergleichs-tabelle-wrap" id="host-vorschau-tabelle"></div>
+        </div>
+
         <div class="row" id="host-naechste-runde-bereich" hidden>
           <button type="button" class="btn primary" id="btn-naechste-runde">Nächste Runde starten</button>
         </div>
-        <div class="hinweis info" id="spiel-fertig-hinweis" hidden>Alle drei Runden sind gespielt – vergleicht eure Kennzahlen!</div>
+
+        <!-- FEATURE-003: Host-Aktion "Ergebnisse freigeben" - erscheint erst,
+             wenn die letzte Runde beendet ist, mit explizitem
+             Bestätigungsschritt (Confirm-Dialog, siehe Skript unten). -->
+        <div class="row" id="host-freigabe-bereich" hidden>
+          <button type="button" class="btn primary" id="btn-ergebnisse-freigeben">Ergebnisse für alle freigeben</button>
+        </div>
+        <div class="hinweis info" id="spiel-fertig-hinweis" hidden>Alle Runden sind gespielt – sobald du die Ergebnisse freigibst, sehen alle den vollständigen Vergleich.</div>
       </div>
+    </div>
+
+    <!-- FEATURE-003: Ersetzt runde-panel/lobby-panel vollständig, sobald
+         spiele/{code}.ergebnisseFreigegeben == true ist - für ALLE Rollen
+         identisch (Host, Spielende, Beobachtende sehen exakt denselben
+         Vergleich, kein personalisierter Teilausschnitt). -->
+    <div class="panel" id="auswertung-panel" hidden>
+      <h2 style="margin-top:0">Auswertung – Vergleich aller Runden</h2>
+      <div class="muted" id="auswertung-hinweis"></div>
+      <div class="vergleichs-tabelle-wrap" id="auswertung-tabelle"></div>
     </div>
   </div>
 </div>
@@ -212,9 +258,14 @@
 <script src="js/game/stapelTor.js"></script>
 <script src="js/game/rundenStart.js"></script>
 <script src="js/game/kartenBewegung.js"></script>
+<script src="js/game/kennzahlen.js"></script>
 <script src="js/game/rundenEnde.js"></script>
 <script src="js/game/rundenwechsel.js"></script>
-<script src="js/game/kennzahlen.js"></script>
+<!-- FEATURE-003: Auswertung. vergleichsansicht.js/ergebnisseFreigeben.js
+     müssen vor dem Hauptskript unten stehen, das window.FlowGame.* daraus
+     zur Klickzeit aufruft. -->
+<script src="js/game/vergleichsansicht.js"></script>
+<script src="js/game/ergebnisseFreigeben.js"></script>
 <script>
 (function () {
   'use strict';
@@ -254,6 +305,21 @@
   const btnNaechsteRunde = document.getElementById('btn-naechste-runde');
   const spielFertigHinweis = document.getElementById('spiel-fertig-hinweis');
 
+  // FEATURE-003: Auswertung.
+  const kennzahlenGesperrtHinweis = document.getElementById('kennzahlen-gesperrt-hinweis');
+  const hostVorschauBereich = document.getElementById('host-vorschau-bereich');
+  const hostVorschauTabelle = document.getElementById('host-vorschau-tabelle');
+  const hostFreigabeBereich = document.getElementById('host-freigabe-bereich');
+  const btnErgebnisseFreigeben = document.getElementById('btn-ergebnisse-freigeben');
+  const auswertungPanel = document.getElementById('auswertung-panel');
+  const auswertungHinweis = document.getElementById('auswertung-hinweis');
+  const auswertungTabelle = document.getElementById('auswertung-tabelle');
+
+  // Bewusst wie in rundenwechsel.js ("Runde 3 ist die letzte Runde - kein
+  // weiterer Wechsel möglich") - erst mit FEATURE-004 wird das auf 4
+  // erweitert. Zentral hier benannt statt an mehreren Stellen "3" zu wiederholen.
+  const LETZTE_RUNDE = 3;
+
   let eigeneUid = null;
   let eigeneRolle = null;
   let eigeneStationsNummer = null; // 1-5, oder null für Host/Beobachtende
@@ -268,6 +334,8 @@
   let unsubKartenCol = null;
   let timerIntervalId = null;
   let rundenEndeSchreibversuchLaeuft = false;
+  let ergebnisseFreigegeben = false; // FEATURE-003: aus spiele/{code}.ergebnisseFreigegeben
+  let auswertungBereitsAngezeigt = false; // FEATURE-003: verhindert doppeltes Laden
 
   function zeigeFehler(nachricht) {
     fehlerBox.textContent = nachricht;
@@ -411,6 +479,15 @@
       // keine Runde existiert.
       hostRundenstartBereich.hidden = !(eigeneRolle === 'host' && !aktuelle);
 
+      // FEATURE-003: Sobald der Host die Gesamtfreigabe ausgelöst hat, sehen
+      // ALLE Beteiligten (Host, Spielende, Beobachtende) ab sofort dieselbe
+      // vollständige Auswertung - ersetzt Lobby-/Rundenansicht vollständig.
+      ergebnisseFreigegeben = Boolean(daten.ergebnisseFreigegeben);
+      if (ergebnisseFreigegeben) {
+        zeigeAuswertung(db, code, aktuelle || aktuelleRundenNummer || LETZTE_RUNDE);
+        return;
+      }
+
       if (aktuelle && aktuelle !== aktuelleRundenNummer) {
         wechsleZuRunde(db, code, aktuelle);
       }
@@ -464,6 +541,11 @@
     lobbyPanel.hidden = true;
     rundePanel.hidden = false;
     kennzahlenPanel.hidden = true;
+    kennzahlenGesperrtHinweis.hidden = true;
+    kennzahlenGrid.hidden = false;
+    hostVorschauBereich.hidden = true;
+    hostFreigabeBereich.hidden = true;
+    btnErgebnisseFreigeben.disabled = false;
     brett.hidden = true;
     eigeneHinweis.hidden = true;
     rundeNummerEl.textContent = String(rundenNummer);
@@ -477,6 +559,16 @@
       renderBrett(db, code);
       versucheRundenEnde(db, code);
     }, function (err) {
+      // FEATURE-003: Sobald diese Runde beendet ist (phase=='beendet'),
+      // sperrt firestore.rules das Lesen des Runden-Dokuments für jede
+      // Nicht-Host-Rolle, solange der Host die Ergebnisse noch nicht
+      // freigegeben hat - der Listener wird dadurch mit permission-denied
+      // beendet. Das ist erwartetes, gewolltes Verhalten (kein Fehler aus
+      // Nutzersicht): statt einer Fehlermeldung zeigen wir den Sperr-Hinweis.
+      if (err.code === 'permission-denied') {
+        zeigeErgebnisseGesperrt();
+        return;
+      }
       zeigeFehler('Rundendaten konnten nicht geladen werden: ' + err.message);
     });
 
@@ -488,10 +580,18 @@
         if (change.type === 'modified') {
           const daten = change.doc.data();
           if (daten.letzteBewegungVon) {
+            // FEATURE-003: Station der Bewegung aus der NEUEN Position
+            // ableiten (daten.position ist bereits nachPosition, siehe
+            // kartenBewegung.js: position wird immer auf vonPosition+1
+            // gesetzt) - "die abgebende Station löst aus" (Ausnahme:
+            // Auftragseingang->Station 1, dort holt Station 1 aktiv ab,
+            // gleiche Zuordnungsregel wie in firestore.rules'
+            // bewegungErlaubt()). max(position-1, 1) bildet beide Fälle ab.
             bewegungsLog.push({
               uid: daten.letzteBewegungVon,
               kartenId: change.doc.id,
               wann: daten.letzteBewegungAm,
+              station: Math.max(daten.position - 1, 1),
             });
           }
         }
@@ -661,25 +761,180 @@
     rundenEndeSchreibversuchLaeuft = true;
     try {
       await window.FlowGame.pruefeUndSetzeRundenEnde({
-        code, rundenNummer: aktuelleRundenNummer, karten: aktuelleKartenListe, rundenPhase: aktuelleRundenDaten.phase,
+        code,
+        rundenNummer: aktuelleRundenNummer,
+        karten: aktuelleKartenListe,
+        rundenPhase: aktuelleRundenDaten.phase,
+        durchlaufzeitStart: aktuelleRundenDaten.durchlaufzeitStart,
+        bearbeitungszeitStart: aktuelleRundenDaten.bearbeitungszeitStart,
+        bewegungsLog,
       }, db);
     } finally {
       rundenEndeSchreibversuchLaeuft = false;
     }
   }
 
-  function zeigeKennzahlen(runde) {
+  // FEATURE-003: Sperr-Zustand für Nicht-Host-Rollen, sobald die Runde
+  // beendet, aber noch nicht freigegeben ist (siehe permission-denied-
+  // Behandlung im runden-Listener oben). Ersetzt die zuletzt bekannte
+  // (u. U. veraltete) Spielbrett-Ansicht durch einen klaren Hinweis statt
+  // eines stehenbleibenden Timers/Spielbretts.
+  function zeigeErgebnisseGesperrt() {
+    if (timerIntervalId) {
+      clearInterval(timerIntervalId);
+      timerIntervalId = null;
+    }
+    dorBereich.hidden = true;
+    brett.hidden = true;
+    eigeneHinweis.hidden = true;
+    rundePhaseBadge.className = 'badge phase-beendet';
+    rundePhaseBadge.textContent = PHASE_LABEL.beendet;
+
     kennzahlenPanel.hidden = false;
-    const kennzahlen = window.FlowGame.berechneKennzahlen({
-      runde, karten: aktuelleKartenListe, bewegungsLog, teilnehmendeNamen: teilnehmendeNamenMap,
+    kennzahlenGesperrtHinweis.hidden = false;
+    kennzahlenGrid.hidden = true;
+    kennzahlenGrid.innerHTML = '';
+    kennzahlenBeteiligung.innerHTML = '';
+    hostVorschauBereich.hidden = true;
+    hostNaechsteRundeBereich.hidden = true;
+    hostFreigabeBereich.hidden = true;
+    spielFertigHinweis.hidden = true;
+  }
+
+  // FEATURE-003: Lädt Runde 1..bisRundenNummer (nur tatsächlich bereits
+  // beendete) und baut daraus die Vergleichsansicht - genutzt sowohl für die
+  // Host-Vorschau (vor der Freigabe, nur für den Host lesbar) als auch für
+  // die finale Auswertung nach der Freigabe (dann für alle lesbar).
+  async function ladeVergleichsansicht(db, code, bisRundenNummer) {
+    const rohdaten = [];
+    for (let n = 1; n <= bisRundenNummer; n += 1) {
+      const snap = await db.collection('spiele').doc(code).collection('runden').doc(String(n)).get();
+      if (snap.exists && snap.data().phase === 'beendet') {
+        rohdaten.push(Object.assign({ rundenNummer: n }, snap.data()));
+      }
+    }
+    return window.FlowGame.erstelleVergleichsansicht({ runden: rohdaten });
+  }
+
+  // FEATURE-003: Baut die Vergleichstabelle - iteriert über die Runden-LISTE
+  // (nicht über feste Einzelfelder), damit eine spätere vierte Spalte
+  // (FEATURE-004, inkl. Fehlerzahl) ohne Umbau dazukommt (Pre-Mortem Risiko 4).
+  function renderVergleichsTabelle(container, vergleich) {
+    container.innerHTML = '';
+    if (!vergleich || vergleich.length === 0) {
+      const hinweis = document.createElement('div');
+      hinweis.className = 'muted';
+      hinweis.textContent = 'Es liegen noch keine ausgewerteten Runden vor.';
+      container.appendChild(hinweis);
+      return;
+    }
+
+    const tabelle = document.createElement('table');
+    tabelle.className = 'vergleichs-tabelle';
+    const thead = document.createElement('thead');
+    const kopfZeile = document.createElement('tr');
+    kopfZeile.appendChild(document.createElement('th'));
+    vergleich.forEach(function (runde) {
+      const th = document.createElement('th');
+      th.textContent = 'Runde ' + runde.rundenNummer;
+      kopfZeile.appendChild(th);
+    });
+    thead.appendChild(kopfZeile);
+    tabelle.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    function zeile(label, wertFn) {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = label;
+      tr.appendChild(th);
+      vergleich.forEach(function (runde) {
+        const td = document.createElement('td');
+        td.textContent = wertFn(runde);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+
+    zeile('Durchlaufzeit', function (r) { return formatiereZeit(r.durchlaufzeit); });
+    zeile('Bearbeitungszeit', function (r) { return formatiereZeit(r.bearbeitungszeit); });
+    zeile('Zeit bis 1. Lieferung', function (r) { return formatiereZeit(r.zeitBisErsterLieferung); });
+    zeile('Zeit bis letzte Lieferung', function (r) { return formatiereZeit(r.zeitBisLetzterLieferung); });
+    zeile('Abstand erste↔letzte Lieferung (Kundenerlebnis)', function (r) { return formatiereZeit(r.abstandErsteLetzteLieferung); });
+
+    window.FlowGame.STATIONEN.forEach(function (stationName, index) {
+      const station = index + 1;
+      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – Bewegungen', function (r) {
+        const eintrag = r.proStation && r.proStation[station];
+        return eintrag ? String(eintrag.anzahlBewegungen) : '0';
+      });
+      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – Beteiligungsspanne', function (r) {
+        const eintrag = r.proStation && r.proStation[station];
+        return eintrag ? formatiereZeit(eintrag.beteiligungsspanne) : '00:00';
+      });
     });
 
+    // FEATURE-004-Vorbau: erscheint nur, wenn mindestens eine Runde
+    // tatsächlich eine Fehlerzahl mitbringt - für Runde 1-3 (dieses Ticket)
+    // bleibt die Zeile schlicht weg, kein Sonderfall/keine leere Zeile.
+    if (vergleich.some(function (r) { return r.fehlerzahl != null; })) {
+      zeile('Fehlerzahl', function (r) { return r.fehlerzahl != null ? String(r.fehlerzahl) : '–'; });
+    }
+
+    tabelle.appendChild(tbody);
+    container.appendChild(tabelle);
+  }
+
+  // FEATURE-003: Host-Vorschau - der Host darf jede beendete Runde jederzeit
+  // lesen (firestore.rules), unabhängig von der Gesamtfreigabe.
+  async function ladeUndRenderHostVorschau() {
+    try {
+      const vergleich = await ladeVergleichsansicht(aktuelleDbInstanz, aktuellerSpielCode, aktuelleRundenNummer);
+      renderVergleichsTabelle(hostVorschauTabelle, vergleich);
+    } catch (err) {
+      zeigeFehler('Vorschau konnte nicht geladen werden: ' + err.message);
+    }
+  }
+
+  // FEATURE-003: Finale Auswertung nach der Gesamtfreigabe - für ALLE
+  // Beteiligten inhaltlich identisch (Entscheidung 3 der Spec).
+  async function zeigeAuswertung(db, code, anzahlRunden) {
+    if (auswertungBereitsAngezeigt) return;
+    auswertungBereitsAngezeigt = true;
+
+    if (timerIntervalId) {
+      clearInterval(timerIntervalId);
+      timerIntervalId = null;
+    }
+    lobbyPanel.hidden = true;
+    rundePanel.hidden = true;
+    auswertungPanel.hidden = false;
+    auswertungHinweis.textContent = 'Freigegeben durch den Host – alle Kennzahlen aller gespielten Runden, alle fünf Stationen.';
+
+    try {
+      const vergleich = await ladeVergleichsansicht(db, code, anzahlRunden || LETZTE_RUNDE);
+      renderVergleichsTabelle(auswertungTabelle, vergleich);
+    } catch (err) {
+      zeigeFehler('Auswertung konnte nicht geladen werden: ' + err.message);
+    }
+  }
+
+  function zeigeKennzahlen(runde) {
+    kennzahlenPanel.hidden = false;
+    kennzahlenGesperrtHinweis.hidden = true;
+    kennzahlenGrid.hidden = false;
+
+    // FEATURE-003: Felder werden NUR gelesen, nicht neu berechnet - die
+    // Werte stehen bereits serverseitig auf dem Runden-Dokument (siehe
+    // rundenEnde.js), Akzeptanzkriterium "clientseitig nichts neu berechnet".
     kennzahlenGrid.innerHTML = '';
     [
-      ['Durchlaufzeit', kennzahlen.durchlaufzeitMs],
-      ['Bearbeitungszeit', kennzahlen.bearbeitungszeitMs],
-      ['Bis 1. Lieferung', kennzahlen.ersteLieferungMs],
-      ['Bis letzte Lieferung', kennzahlen.letzteLieferungMs],
+      ['Durchlaufzeit', runde.durchlaufzeit],
+      ['Bearbeitungszeit', runde.bearbeitungszeit],
+      ['Bis 1. Lieferung', runde.zeitBisErsterLieferung],
+      ['Bis letzte Lieferung', runde.zeitBisLetzterLieferung],
+      ['Abstand 1.↔letzte Lieferung', runde.abstandErsteLetzteLieferung],
     ].forEach(function (eintrag) {
       const box = document.createElement('div');
       box.className = 'kennzahl-box';
@@ -695,29 +950,44 @@
     });
 
     kennzahlenBeteiligung.innerHTML = '';
-    if (kennzahlen.proPerson.length > 0) {
+    const stationsNummern = Object.keys(runde.proStation || {})
+      .map(Number)
+      .sort(function (a, b) { return a - b; });
+    if (stationsNummern.length > 0) {
       const titel = document.createElement('div');
       titel.className = 'muted';
       titel.style.marginTop = '10px';
-      titel.textContent = 'Beteiligung je Person (live während dieser Sitzung beobachtet):';
+      titel.textContent = 'Beteiligung je Station:';
       const liste = document.createElement('ul');
       liste.className = 'beteiligung-liste';
-      kennzahlen.proPerson.forEach(function (eintrag) {
+      stationsNummern.forEach(function (station) {
+        const eintrag = runde.proStation[station];
         const li = document.createElement('li');
-        const naam = document.createElement('span');
-        naam.textContent = eintrag.anzeigename;
-        const anzahl = document.createElement('span');
-        anzahl.textContent = eintrag.anzahlBewegungen + ' Bewegungen';
-        li.appendChild(naam);
-        li.appendChild(anzahl);
+        const name = document.createElement('span');
+        name.textContent = 'Station ' + station + ' (' + stationsLabel(window.FlowGame.STATIONEN[station - 1]) + ')';
+        const wert = document.createElement('span');
+        wert.textContent = eintrag.anzahlBewegungen + ' Bewegungen, ' + formatiereZeit(eintrag.beteiligungsspanne) + ' Beteiligungsspanne';
+        li.appendChild(name);
+        li.appendChild(wert);
         liste.appendChild(li);
       });
       kennzahlenBeteiligung.appendChild(titel);
       kennzahlenBeteiligung.appendChild(liste);
     }
 
-    hostNaechsteRundeBereich.hidden = !(eigeneRolle === 'host' && aktuelleRundenNummer < 3);
-    spielFertigHinweis.hidden = !(aktuelleRundenNummer >= 3);
+    const letzteRundeErreicht = aktuelleRundenNummer >= LETZTE_RUNDE;
+
+    // FEATURE-003: Host-Vorschau auf den Rundenvergleich - unabhängig von der
+    // Gesamtfreigabe, siehe Spec ("nur der Host hat bereits Einblick").
+    hostVorschauBereich.hidden = eigeneRolle !== 'host';
+    if (eigeneRolle === 'host') {
+      ladeUndRenderHostVorschau();
+    }
+
+    hostNaechsteRundeBereich.hidden = !(eigeneRolle === 'host' && !letzteRundeErreicht);
+    hostFreigabeBereich.hidden = !(eigeneRolle === 'host' && letzteRundeErreicht && !ergebnisseFreigegeben);
+    btnErgebnisseFreigeben.disabled = runde.phase !== 'beendet';
+    spielFertigHinweis.hidden = !(letzteRundeErreicht && !ergebnisseFreigegeben);
   }
 
   btnRundeStarten.addEventListener('click', async function () {
@@ -751,6 +1021,27 @@
     } catch (err) {
       zeigeFehler('Nächste Runde konnte nicht gestartet werden: ' + err.message);
       btnNaechsteRunde.disabled = false;
+    }
+  });
+
+  // FEATURE-003: Host-Aktion "Ergebnisse freigeben" - expliziter
+  // Bestätigungsschritt (Pre-Mortem Risiko 2: Freigabe ist einmalig und laut
+  // Annahme nicht rücknehmbar), Vorprüfung unten ist reiner UX-Komfort, die
+  // eigentliche Durchsetzung liegt in firestore.rules (siehe ergebnisseFreigeben.js).
+  btnErgebnisseFreigeben.addEventListener('click', async function () {
+    const bestaetigt = window.confirm(
+      'Ergebnisse jetzt für alle freigeben? Danach sehen alle Spielenden und Beobachtenden sofort alle Kennzahlen aller Runden - das lässt sich nicht zurücknehmen.'
+    );
+    if (!bestaetigt) return;
+    btnErgebnisseFreigeben.disabled = true;
+    try {
+      await window.FlowGame.gibErgebnisseFrei({
+        code: aktuellerSpielCode,
+        letzteRundePhase: aktuelleRundenDaten ? aktuelleRundenDaten.phase : null,
+      }, aktuelleDbInstanz);
+    } catch (err) {
+      zeigeFehler('Ergebnisse konnten nicht freigegeben werden: ' + err.message);
+      btnErgebnisseFreigeben.disabled = false;
     }
   });
 

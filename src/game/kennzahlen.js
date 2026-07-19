@@ -3,6 +3,17 @@
  * Kennzahlenberechnung: Bewegungen je Station ("0 Bewegungen" ohne
  * Sonderbehandlung, wenn eine Station nichts bewegt hat), Zeit bis
  * erster/letzter Lieferung und deren Abstand.
+ *
+ * FEATURE-003 – Phase 3: Auswertung. Erweitert um:
+ *   - durchlaufzeit / bearbeitungszeit: reine Differenz aus den bereits
+ *     servergesetzten *Start/*Ende-Zeitstempeln (FEATURE-002) – hier wird
+ *     NICHTS neu gemessen, nur die Differenz gebildet (Akzeptanzkriterium
+ *     "beruht ausschliesslich auf bereits serverseitig gemessenen Werten").
+ *   - proStation[station].beteiligungsspanne: Differenz aus erster und
+ *     letzter Bewegung je Station, 0 wenn die Station keine Bewegung hatte
+ *     (gleiche "0 Bewegungen ohne Sonderbehandlung"-Regel wie anzahlBewegungen).
+ *   Siehe tests/game-evaluation.logic.test.js für die exakten Erwartungen an
+ *   Feldnamen und Werte.
  */
 
 const { holeRunde } = require('./_rundenStatus');
@@ -10,6 +21,7 @@ const { holeRunde } = require('./_rundenStatus');
 async function berechneKennzahlen(eingabe = {}) {
   const {
     bewegungen, stationen, lieferungen, rundenStart, code, rundenNummer, nurKartenZustand,
+    durchlaufzeitStart, durchlaufzeitEnde, bearbeitungszeitStart, bearbeitungszeitEnde,
   } = eingabe;
 
   if (nurKartenZustand) {
@@ -23,13 +35,24 @@ async function berechneKennzahlen(eingabe = {}) {
 
   const ergebnis = {};
 
+  if (typeof durchlaufzeitStart === 'number' && typeof durchlaufzeitEnde === 'number') {
+    ergebnis.durchlaufzeit = durchlaufzeitEnde - durchlaufzeitStart;
+  }
+
+  if (typeof bearbeitungszeitStart === 'number' && typeof bearbeitungszeitEnde === 'number') {
+    ergebnis.bearbeitungszeit = bearbeitungszeitEnde - bearbeitungszeitStart;
+  }
+
   if (Array.isArray(stationen)) {
     const proStation = {};
     stationen.forEach((station) => {
       const eintrag = Array.isArray(bewegungen)
         ? bewegungen.find((b) => b.station === station)
         : undefined;
-      proStation[station] = { anzahlBewegungen: eintrag ? eintrag.anzahl : 0 };
+      proStation[station] = {
+        anzahlBewegungen: eintrag ? eintrag.anzahl : 0,
+        beteiligungsspanne: eintrag ? (eintrag.letzteBewegungAm - eintrag.ersteBewegungAm) : 0,
+      };
     });
     ergebnis.proStation = proStation;
   }

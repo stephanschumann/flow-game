@@ -2,20 +2,46 @@
 
 ## 📋 ToDo
 
-### FEATURE-003 Phase 3 – Auswertung
+### FEATURE-006 Mehrsprachigkeit (Deutsch/Englisch)
 
 | Feld | Wert |
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
 | **Status** | ToDo |
+| **Erstellt** | 2026-07-19 |
+
+**Beschreibung:** Das Spiel ist vollständig auf Deutsch und Englisch nutzbar. Grundeinstellung (Default) ist Englisch. Betrifft alle sichtbaren Texte für alle Rollen (Host, Spielende, Beobachtende) über alle Phasen/Runden hinweg — Startseite, Lobby, Spielbrett, Kennzahlen-/Auswertungsansicht, Fehlermeldungen.
+
+**User Story:** Als Host oder Spielender, möchte ich das Spiel in meiner bevorzugten Sprache (Deutsch oder Englisch) nutzen können, sodass internationale oder gemischtsprachige Gruppen den Workshop ohne Sprachbarriere durchführen können.
+
+**Kontext/Verweise:** `Product.md` Abschnitt 9 (nicht-fachliche Anforderungen, ergänzt am 2026-07-19). Noch offen (für die Analysephase): wie die Sprache gewählt/umgeschaltet wird (z. B. pro Gerät/Person individuell vs. einheitlich pro Spiel), ob die Wahl über den Beitritt hinweg gespeichert bleibt, und ob Host und Spielende unabhängig voneinander die Sprache wählen können.
+
+---
+
+### FEATURE-003 Phase 3 – Auswertung
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | In Progress |
 | **Erstellt** | 2026-07-17 |
+| **Analyse am** | 2026-07-18 |
+| **Spec freigegeben am** | 2026-07-18 |
+| **In Progress seit** | 2026-07-19 |
 
 **Beschreibung:** Alle Kennzahlen je Runde anzeigen, das Kundenerlebnis (Abstand erste↔letzte Lieferung) ausweisen, Runden-Vergleich nebeneinanderstellen, Ergebnisse erst nach Freigabe durch den Host sichtbar machen.
 
 **User Story:** Als Gruppe, möchte ich nach jeder Runde die Kennzahlen und den Vergleich zu vorherigen Runden sehen, sodass die Lernbotschaft (kleinere Stapel liefern früher und schneller) sichtbar wird.
 
-**Kontext/Verweise:** `Product.md` Abschnitt 7; `Flow-Game-Entscheidungen.md` (Akzeptanzkriterien Auswertung).
+**Kontext/Verweise:** `Product.md` Abschnitt 7; `Flow-Game-Entscheidungen.md` (Akzeptanzkriterien Auswertung). Vollständige Spec (Brainstorming, Akzeptanzkriterien, Pre-Mortem, Architektur, Implementierungsoptionen) liegt als `FEATURE-003-Spec.md` vor, freigegeben am 2026-07-18.
+
+**Umsetzungsstand (2026-07-19, flow-game-impl):**
+- Datenebene fertig: `src/game/kennzahlen.js` um `durchlaufzeit`/`bearbeitungszeit`/`proStation[].beteiligungsspanne` erweitert; neue Datei `src/game/vergleichsansicht.js` (`erstelleVergleichsansicht`).
+- `firestore.rules` erweitert: Freigabe-Feld (`ergebnisseFreigegeben`/`ergebnisseFreigegebenAm`) nur durch Host, nur wenn letzte gespielte Runde `phase == 'beendet'`, nur mit echtem `request.time`; Leseregel für `runden/{n}` sperrt Kennzahlen für Nicht-Host-Rollen bis zur Freigabe, laufende Runden bleiben unverändert lesbar.
+- **Regressionstest von Stephan lokal bestätigt (2026-07-19):** `npm run test:emulator` (kompletter Lauf über game-rooms.*, game-round.*, game-evaluation.*) — 7 Test-Suiten, 98/98 Tests grün, keine Regression gegenüber FEATURE-001/FEATURE-002.
+- **UI ergänzt (2026-07-19, zweiter Durchlauf):** `public/js/game/kennzahlen.js` auf die Feldnamen der Datenebene angeglichen (vorher abweichende Browser-eigene Namen, siehe Implementierungsnotizen); `public/js/game/rundenEnde.js` schreibt die vollständigen Kennzahlenfelder jetzt im selben Schreibvorgang wie `phase:'beendet'`; neue Dateien `public/js/game/vergleichsansicht.js` (Browser-Zwilling) und `public/js/game/ergebnisseFreigeben.js` (Host-Aktion mit Bestätigungsdialog); `spiel.html` um Sperr-Hinweis vor Freigabe, Host-Vorschau, Freigabe-Button und eine neue Vergleichsansicht-Seite (alle Runden × alle 5 Stationen) erweitert, im bestehenden dunklen/Bauhaus-Stil. Geprüft: `node --check` auf allen neuen/geänderten JS-Dateien grün, `tests/game-evaluation.logic.test.js` (reine Logik, kein Emulator nötig) grün. **Von Stephan lokal bestätigt (2026-07-19):** `npm run test:emulator` nach den UI-Änderungen erneut ausgeführt — weiterhin 7/7 Suiten, 98/98 Tests grün, keine Regression. Noch offen vor Done: echtes manuelles Durchklicken im Browser mit mehreren Personen.
 
 ---
 

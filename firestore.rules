@@ -66,6 +66,40 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data.get('rolle', null) == 'host';
     }
 
+    // FEATURE-003: Auswertung. Zusätzliche Helfer für die Gesamtfreigabe
+    // ("ergebnisseFreigegeben"/"ergebnisseFreigegebenAm" auf spiele/{spielId})
+    // und die davon abhängige Lesesperre auf den Kennzahlenfeldern der
+    // runden-Unterkollektion (Option A, siehe FEATURE-003-Spec).
+
+    // Prüft, ob das laufende Update auf spiele/{spielId} überhaupt eines der
+    // beiden Freigabe-Felder verändert. Genutzt, um die bereits bestehende,
+    // von FEATURE-001/002 benötigte generische Update-Regel (Stations-
+    // zuweisung beim Beitritt, letzteAktivitaet, aktuelleRunde beim Runden-
+    // wechsel, …) unverändert offen zu halten, solange diese Freigabe-Felder
+    // gar nicht Teil des Updates sind.
+    function freigabeFelderBetroffen() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['ergebnisseFreigegeben', 'ergebnisseFreigegebenAm']);
+    }
+
+    // Prüft, dass ein Update, das die Freigabe-Felder betrifft, AUSSCHLIESS-
+    // LICH diese beiden Felder verändert – verhindert, dass die Freigabe-
+    // Aktion "huckepack" noch andere Felder mitändert.
+    function nurFreigabeFelderGeaendert() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['ergebnisseFreigegeben', 'ergebnisseFreigegebenAm']);
+    }
+
+    // Pre-Mortem Risiko 3: Freigabe nur zulassen, wenn die zuletzt gespielte
+    // Runde (spiele/{spielId}.aktuelleRunde, von rundenStart.js bei jedem
+    // Rundenstart/-wechsel gesetzt) bereits vollständig beendet ist
+    // (phase == 'beendet'). aktuelleRunde ist eine Zahl, Pfadsegmente
+    // brauchen aber Strings (siehe Kommentar bei stapelTorSchwelle weiter
+    // unten) – deshalb string(...).
+    function letzteGespielteRundeBeendet(spielId) {
+      return get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(string(resource.data.get('aktuelleRunde', 0)))).data.get('phase', null) == 'beendet';
+    }
+
     // WICHTIG: {runde} ist als Firestore-Pfadsegment (match /runden/{runde})
     // IMMER ein String ("1"/"2"/"3"), nie eine Zahl – deshalb hier bewusst
     // String-Literale statt Zahlen-Literale vergleichen. Ein Vergleich mit
@@ -180,12 +214,44 @@ service cloud.firestore {
         && request.resource.data.erstelltAm is number
         && request.resource.data.letzteAktivitaet is number;
 
-      // Ändern (z. B. letzteAktivitaet, belegteStationen beim Beitritt): nur
-      // wer bereits ein eigenes Teilnehmenden-Dokument in diesem aktiven
-      // Spiel hat. code darf nie nachträglich verändert werden.
+      // Ändern (z. B. letzteAktivitaet, belegteStationen beim Beitritt,
+      // aktuelleRunde beim Rundenwechsel): nur wer bereits ein eigenes
+      // Teilnehmenden-Dokument in diesem aktiven Spiel hat. code darf nie
+      // nachträglich verändert werden.
+      //
+      // FEATURE-003: Die Gesamtfreigabe der Ergebnisse (ergebnisseFreigegeben/
+      // ergebnisseFreigegebenAm) läuft über genau dieses Update, ist aber ein
+      // Sonderfall mit eigenen, engeren Voraussetzungen (Fall B unten) –
+      // diese generische Regel erlaubte vor FEATURE-003 JEDER teilnehmenden
+      // Person das Setzen beliebiger Felder, also auch der Freigabe-Felder
+      // (siehe Kommentar in tests/game-evaluation.security.rules.test.js).
       allow update: if istTeilnehmer(spielId) && istAktiv(resource.data)
         && request.resource.data.code == resource.data.code
-        && !('hostKennung' in request.resource.data.keys());
+        && !('hostKennung' in request.resource.data.keys())
+        && (
+          // Fall A: normale Aktualisierung – Freigabe-Felder bleiben dabei
+          // unangetastet, unverändertes Verhalten aus FEATURE-001/FEATURE-002.
+          !freigabeFelderBetroffen()
+          ||
+          // Fall B: FEATURE-003 Gesamtfreigabe – ausschliesslich der Host,
+          // nur diese beiden Felder, nur wenn die letzte gespielte Runde
+          // bereits vollständig beendet ist (Pre-Mortem Risiko 3), und
+          // ergebnisseFreigegebenAm MUSS ein echter Server-Zeitstempel sein
+          // (analog den *Start/*Ende-Zeitstempeln aus FEATURE-002 – niemals
+          // ein vom Client mitgesendeter Zeitwert). Prüft bewusst nur das
+          // RESULTAT (== true), nicht den Vorzustand: ein zweiter/gleich-
+          // zeitiger Auslöseversuch (Pre-Mortem Risiko 1, z. B. Doppelklick)
+          // landet im selben Zweig und ist ein wirkungsloses No-Op statt
+          // eines Fehlers – gleiches Muster wie die DoR-Idempotenz aus
+          // FEATURE-002.
+          (
+            istHost(spielId)
+            && nurFreigabeFelderGeaendert()
+            && request.resource.data.ergebnisseFreigegeben == true
+            && request.resource.data.ergebnisseFreigegebenAm == request.time
+            && letzteGespielteRundeBeendet(spielId)
+          )
+        );
 
       allow delete: if false;
 
@@ -259,7 +325,21 @@ service cloud.firestore {
       //        bearbeitungszeitStart/-Ende – alle Zeitwerte servergesetzt
       //        (request.time), NIE ein vom Client mitgesendeter Zeitwert.
       match /runden/{runde} {
-        allow read: if istTeilnehmer(spielId) && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data);
+        // FEATURE-003: Solange eine Runde noch läuft (phase != 'beendet'),
+        // bleibt sie wie in FEATURE-002 für alle Teilnehmenden lesbar
+        // (Regressionsschutz Live-Spielfeld). Erst eine BEENDETE Runde
+        // enthält überhaupt Kennzahlenfelder (Option A) – für die gilt: nur
+        // der Host darf jederzeit lesen, alle anderen erst NACH der
+        // Gesamtfreigabe (spiele/{spielId}.ergebnisseFreigegeben == true).
+        // Sicherheitsregeln können kein Feld-Filtering vornehmen (immer das
+        // GANZE Dokument), das ist hier unschädlich, weil die Kennzahlen-
+        // felder ohnehin erst ab phase == 'beendet' befüllt sind.
+        allow read: if istTeilnehmer(spielId) && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+          && (
+            resource.data.get('phase', null) != 'beendet'
+            || get(/databases/$(database)/documents/spiele/$(spielId)).data.get('ergebnisseFreigegeben', false) == true
+            || istHost(spielId)
+          );
 
         // Rundenstart bzw. Rundenwechsel: ausschliesslich der Host löst das
         // aktiv aus (Entscheidung 2026-07-18) – niemals automatisch. Die
