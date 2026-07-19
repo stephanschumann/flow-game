@@ -37,22 +37,46 @@
     }
 
     const spielRef = db.collection('spiele').doc(code);
+    const teilnehmerRef = spielRef.collection('teilnehmende').doc(uid);
 
+    // Bugfix (live gefunden, 2026-07-20, siehe Backlog.md): Vorab-Check darf
+    // nicht greifen, wenn diese uid bereits ein Teilnehmer-Dokument in diesem
+    // Spiel hat (Doppel-Tap/Retry desselben Beitritts) – sonst würde eine
+    // Person mit bereits vorhandener Station fälschlich mit "alle Stationen
+    // belegt" abgewiesen. Siehe src/game/joinGame.js für den ausführlichen
+    // Kommentar (beide Dateien synchron halten).
     if (rolle === 'spielende') {
-      const vorabSnap = await spielRef.get();
-      const spielVorab = pruefeSpielExistiertUndAktiv(vorabSnap, code);
-      const belegtVorab = spielVorab.belegteStationen || {};
-      const freiVorab = STATIONEN.filter((s) => !belegtVorab[s]);
-      if (freiVorab.length === 0) {
-        throw new Error(
-          'Alle Stationen sind bereits belegt. Bitte bewusst eine andere Rolle wählen (z. B. Beobachtende).'
-        );
+      const [vorabSnap, teilnehmerVorabSnap] = await Promise.all([spielRef.get(), teilnehmerRef.get()]);
+      pruefeSpielExistiertUndAktiv(vorabSnap, code);
+      if (!teilnehmerVorabSnap.exists) {
+        const belegtVorab = vorabSnap.data().belegteStationen || {};
+        const freiVorab = STATIONEN.filter((s) => !belegtVorab[s]);
+        if (freiVorab.length === 0) {
+          throw new Error(
+            'Alle Stationen sind bereits belegt. Bitte bewusst eine andere Rolle wählen (z. B. Beobachtende).'
+          );
+        }
       }
     }
 
     return db.runTransaction(async (tx) => {
-      const spielSnap = await tx.get(spielRef);
+      const [spielSnap, teilnehmerSnap] = await Promise.all([tx.get(spielRef), tx.get(teilnehmerRef)]);
       const spiel = pruefeSpielExistiertUndAktiv(spielSnap, code);
+
+      // Bugfix (live gefunden, 2026-07-20, siehe Backlog.md): bereits
+      // vorhandenes Teilnehmer-Dokument dieser uid unverändert zurückgeben,
+      // keine neue Station vergeben, kein Überschreiben. Idempotent für beide
+      // Rollen, auch race-safe bei fast gleichzeitigen Doppelaufrufen (siehe
+      // src/game/joinGame.js für den ausführlichen Kommentar).
+      if (teilnehmerSnap.exists) {
+        const vorhandeneDaten = teilnehmerSnap.data();
+        return {
+          id: uid,
+          rolle: vorhandeneDaten.rolle,
+          anzeigename: vorhandeneDaten.anzeigename,
+          station: vorhandeneDaten.station,
+        };
+      }
 
       const belegt = spiel.belegteStationen || {};
       const frei = STATIONEN.filter((s) => !belegt[s]);
@@ -68,7 +92,6 @@
         }
       }
 
-      const teilnehmerRef = spielRef.collection('teilnehmende').doc(uid);
       const daten = { rolle: effektiveRolle, anzeigename: anzeigename.trim() };
       if (station) {
         daten.station = station;

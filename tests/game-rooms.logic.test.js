@@ -141,6 +141,113 @@ describe('Szenario: Stationszuweisung bei gleichzeitigem Beitritt mehrerer Spiel
   });
 });
 
+describe('Szenario: Doppelter/mehrfacher Beitritt derselben authentifizierten Person (Bugfix, live gefunden 2026-07-20)', () => {
+  test('Gegeben eine Person tritt als Spielende bei, wenn dieselbe uid joinGame ein zweites Mal mit derselben Rolle aufruft (z. B. Doppel-Tap/Retry), dann bekommt sie beide Male dieselbe Station zurück und belegteStationen enthält für sie weiterhin nur einen Eintrag', async () => {
+    const { code } = await createGame({ hostAnzeigename: 'Host A', uid: neueUid('host') }, db);
+    const spielerUid = neueUid();
+
+    const ersterBeitritt = await joinGame(
+      { code, anzeigename: 'Spielerin Doppel', rolle: 'spielende', uid: spielerUid },
+      db
+    );
+    const zweiterBeitritt = await joinGame(
+      { code, anzeigename: 'Spielerin Doppel', rolle: 'spielende', uid: spielerUid },
+      db
+    );
+
+    expect(zweiterBeitritt.station).toBe(ersterBeitritt.station);
+    expect(zweiterBeitritt.rolle).toBe('spielende');
+
+    const spielSnap = await db.doc(`spiele/${code}`).get();
+    const belegteStationen = spielSnap.data().belegteStationen || {};
+    const eintraegeFuerSpieler = Object.entries(belegteStationen).filter(([, uid]) => uid === spielerUid);
+    expect(eintraegeFuerSpieler).toHaveLength(1);
+    expect(Object.keys(belegteStationen)).toHaveLength(1);
+  });
+
+  test('Gegeben eine Person ist bereits als Spielende beigetreten, wenn dieselbe uid joinGame mehrfach hintereinander aufruft (z. B. drei Retries), dann bleiben trotzdem nur eine Station und ein Teilnehmer-Dokument für sie bestehen, statt dass sich vier weitere Stationen fälschlich verwaisen', async () => {
+    const { code } = await createGame({ hostAnzeigename: 'Host A', uid: neueUid('host') }, db);
+    const spielerUid = neueUid();
+
+    let letztesErgebnis;
+    for (let i = 0; i < 4; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      letztesErgebnis = await joinGame(
+        { code, anzeigename: 'Spielerin Mehrfach', rolle: 'spielende', uid: spielerUid },
+        db
+      );
+    }
+
+    const spielSnap = await db.doc(`spiele/${code}`).get();
+    const belegteStationen = spielSnap.data().belegteStationen || {};
+    expect(Object.keys(belegteStationen)).toHaveLength(1);
+    expect(belegteStationen[letztesErgebnis.station]).toBe(spielerUid);
+
+    const teilnehmerSnap = await db.doc(`spiele/${code}/teilnehmende/${spielerUid}`).get();
+    expect(teilnehmerSnap.exists).toBe(true);
+    expect(teilnehmerSnap.data().station).toBe(letztesErgebnis.station);
+  });
+
+  test('Gegeben eine Person ist bereits als Beobachtende beigetreten, wenn dieselbe uid joinGame ein zweites Mal mit der Rolle beobachtende aufruft, dann bleibt es bei einem unveränderten Teilnehmer-Dokument ohne Station', async () => {
+    const { code } = await createGame({ hostAnzeigename: 'Host A', uid: neueUid('host') }, db);
+    const beobachterUid = neueUid();
+
+    const ersterBeitritt = await joinGame(
+      { code, anzeigename: 'Beo Doppel', rolle: 'beobachtende', uid: beobachterUid },
+      db
+    );
+    const zweiterBeitritt = await joinGame(
+      { code, anzeigename: 'Beo Doppel', rolle: 'beobachtende', uid: beobachterUid },
+      db
+    );
+
+    expect(ersterBeitritt.station).toBeUndefined();
+    expect(zweiterBeitritt.station).toBeUndefined();
+    expect(zweiterBeitritt.rolle).toBe('beobachtende');
+
+    const spielSnap = await db.doc(`spiele/${code}`).get();
+    expect(Object.keys(spielSnap.data().belegteStationen || {})).toHaveLength(0);
+  });
+
+  test('Gegeben eine Person hat als fünfte Spielende die letzte freie Station belegt, wenn dieselbe uid danach erneut mit der Rolle spielende beitreten will (alle 5 Stationen inzwischen belegt, auch durch sie selbst), dann wird sie NICHT fälschlich mit "alle Stationen belegt" abgewiesen, sondern bekommt ihre eigene, bereits vorhandene Station zurück', async () => {
+    const { code } = await createGame({ hostAnzeigename: 'Host A', uid: neueUid('host') }, db);
+    const spielerUid = neueUid();
+    for (let i = 0; i < 4; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await joinGame({ code, anzeigename: `Vorab-Spieler ${i}`, rolle: 'spielende', uid: neueUid() }, db);
+    }
+    const ersterBeitritt = await joinGame(
+      { code, anzeigename: 'Fünfte Person', rolle: 'spielende', uid: spielerUid },
+      db
+    );
+    expect(ersterBeitritt.rolle).toBe('spielende');
+
+    const zweiterBeitritt = await joinGame(
+      { code, anzeigename: 'Fünfte Person', rolle: 'spielende', uid: spielerUid },
+      db
+    );
+    expect(zweiterBeitritt.station).toBe(ersterBeitritt.station);
+    expect(zweiterBeitritt.rolle).toBe('spielende');
+  });
+
+  test('Gegeben derselbe Doppel-Beitritt-Bug, wenn zwei VERSCHIEDENE Personen fast gleichzeitig um dieselbe letzte freie Station konkurrieren (bereits aus FEATURE-001 abgesichert), dann bekommt weiterhin nur eine der beiden Personen diese Station – der Idempotenz-Fix für dieselbe uid darf diese Absicherung nicht aufweichen', async () => {
+    const { code } = await createGame({ hostAnzeigename: 'Host A', uid: neueUid('host') }, db);
+    for (let i = 0; i < 4; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await joinGame({ code, anzeigename: `Vorab-Spieler ${i}`, rolle: 'spielende', uid: neueUid() }, db);
+    }
+    const [ergebnisA, ergebnisB] = await Promise.all([
+      joinGame({ code, anzeigename: 'Race A', rolle: 'spielende', uid: neueUid() }, db),
+      joinGame({ code, anzeigename: 'Race B', rolle: 'spielende', uid: neueUid() }, db),
+    ]);
+    const spielendeErgebnisse = [ergebnisA, ergebnisB].filter((e) => e.rolle === 'spielende');
+    expect(spielendeErgebnisse).toHaveLength(1);
+
+    const spielSnap = await db.doc(`spiele/${code}`).get();
+    expect(Object.keys(spielSnap.data().belegteStationen || {})).toHaveLength(5);
+  });
+});
+
 describe('Szenario: Eigene Rollenwahl, wenn bereits alle fünf Stationen belegt sind', () => {
   test('Gegeben alle fünf Stationen sind bereits vergeben, wenn eine sechste Person mit dem Code beitreten will, dann wird ihr das vor dem Beitritt angezeigt und sie kann bewusst z. B. als Beobachtende beitreten', async () => {
     const { code } = await createGame({ hostAnzeigename: 'Host A', uid: neueUid('host') }, db);
