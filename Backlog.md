@@ -19,32 +19,6 @@
 
 ---
 
-### FEATURE-003 Phase 3 – Auswertung
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Feature |
-| **Priorität** | Mittel |
-| **Status** | In Progress |
-| **Erstellt** | 2026-07-17 |
-| **Analyse am** | 2026-07-18 |
-| **Spec freigegeben am** | 2026-07-18 |
-| **In Progress seit** | 2026-07-19 |
-
-**Beschreibung:** Alle Kennzahlen je Runde anzeigen, das Kundenerlebnis (Abstand erste↔letzte Lieferung) ausweisen, Runden-Vergleich nebeneinanderstellen, Ergebnisse erst nach Freigabe durch den Host sichtbar machen.
-
-**User Story:** Als Gruppe, möchte ich nach jeder Runde die Kennzahlen und den Vergleich zu vorherigen Runden sehen, sodass die Lernbotschaft (kleinere Stapel liefern früher und schneller) sichtbar wird.
-
-**Kontext/Verweise:** `Product.md` Abschnitt 7; `Flow-Game-Entscheidungen.md` (Akzeptanzkriterien Auswertung). Vollständige Spec (Brainstorming, Akzeptanzkriterien, Pre-Mortem, Architektur, Implementierungsoptionen) liegt als `FEATURE-003-Spec.md` vor, freigegeben am 2026-07-18.
-
-**Umsetzungsstand (2026-07-19, flow-game-impl):**
-- Datenebene fertig: `src/game/kennzahlen.js` um `durchlaufzeit`/`bearbeitungszeit`/`proStation[].beteiligungsspanne` erweitert; neue Datei `src/game/vergleichsansicht.js` (`erstelleVergleichsansicht`).
-- `firestore.rules` erweitert: Freigabe-Feld (`ergebnisseFreigegeben`/`ergebnisseFreigegebenAm`) nur durch Host, nur wenn letzte gespielte Runde `phase == 'beendet'`, nur mit echtem `request.time`; Leseregel für `runden/{n}` sperrt Kennzahlen für Nicht-Host-Rollen bis zur Freigabe, laufende Runden bleiben unverändert lesbar.
-- **Regressionstest von Stephan lokal bestätigt (2026-07-19):** `npm run test:emulator` (kompletter Lauf über game-rooms.*, game-round.*, game-evaluation.*) — 7 Test-Suiten, 98/98 Tests grün, keine Regression gegenüber FEATURE-001/FEATURE-002.
-- **UI ergänzt (2026-07-19, zweiter Durchlauf):** `public/js/game/kennzahlen.js` auf die Feldnamen der Datenebene angeglichen (vorher abweichende Browser-eigene Namen, siehe Implementierungsnotizen); `public/js/game/rundenEnde.js` schreibt die vollständigen Kennzahlenfelder jetzt im selben Schreibvorgang wie `phase:'beendet'`; neue Dateien `public/js/game/vergleichsansicht.js` (Browser-Zwilling) und `public/js/game/ergebnisseFreigeben.js` (Host-Aktion mit Bestätigungsdialog); `spiel.html` um Sperr-Hinweis vor Freigabe, Host-Vorschau, Freigabe-Button und eine neue Vergleichsansicht-Seite (alle Runden × alle 5 Stationen) erweitert, im bestehenden dunklen/Bauhaus-Stil. Geprüft: `node --check` auf allen neuen/geänderten JS-Dateien grün, `tests/game-evaluation.logic.test.js` (reine Logik, kein Emulator nötig) grün. **Von Stephan lokal bestätigt (2026-07-19):** `npm run test:emulator` nach den UI-Änderungen erneut ausgeführt — weiterhin 7/7 Suiten, 98/98 Tests grün, keine Regression. Noch offen vor Done: echtes manuelles Durchklicken im Browser mit mehreren Personen.
-
----
-
 ### FEATURE-004 Phase 4 – Runde 4 (Kontextwechsel)
 
 | Feld | Wert |
@@ -79,6 +53,27 @@
 
 ## ✅ Done
 
+### FEATURE-003 Phase 3 – Auswertung
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | Done |
+| **Erstellt** | 2026-07-17 |
+| **Analyse am** | 2026-07-18 |
+| **Spec freigegeben am** | 2026-07-18 |
+| **In Progress seit** | 2026-07-19 |
+| **Done seit** | 2026-07-20 |
+
+**Ergebnis:** Nach jeder gespielten Runde stehen serverseitig alle Kennzahlen fest (Durchlaufzeit, Bearbeitungszeit, Zeit bis erster/letzter Lieferung, Abstand dazwischen als Kundenerlebnis, Beteiligungsspanne je Station). Bis zur Freigabe sind sie für niemanden außer dem Host sichtbar — auch Beobachtende nicht. Der Host löst am Ende eine einzige Gesamtfreigabe für alle gespielten Runden aus (kein Zurücknehmen vorgesehen), danach sieht jede Person die Zeiten aller fünf Stationen in einer Vergleichsansicht, die als Liste über die Runden-Unterkollektion aufgebaut ist (erweiterbar für Runde 4/FEATURE-004 ohne Strukturumbau). Architektur: Kennzahlen als Felder auf dem bestehenden Runden-Dokument, ein einziges Freigabe-Flag (`ergebnisseFreigegeben`/`ergebnisseFreigegebenAm`) auf dem Spiel-Dokument, ausschließlich vom Host und nur mit echtem Server-Zeitstempel setzbar.
+
+**Akzeptanzkriterien:** alle in der freigegebenen Spec (`FEATURE-003-Spec.md`) genannten Kriterien automatisiert real geprüft — 103 Tests über 7 Test-Suiten grün (`npm run test:emulator`, von Stephan lokal mehrfach bestätigt, zuletzt nach dem Bugfix unten), inklusive Freigabe-Sperre vor Host-Aktion, Sichtbarkeit aller Stationen nach Freigabe, Host-only-Durchsetzung, Server-Zeitstempel-Pflicht, Idempotenz bei Doppelfreigabe, sowie Regressionstests gegen FEATURE-001/002/TASK-002. **Bewusst nicht abgeschlossen:** ein vollständiger Live-Durchlauf mit fünf realen Personen über alle drei Runden bis zur Freigabe — ein Versuch dazu deckte stattdessen den unten dokumentierten, unabhängigen FEATURE-001-Bug auf; die browserseitige Automatisierung dafür geriet danach technisch in eine Sackgasse (blockierte Browser-Datenbank in der Testumgebung, nicht der App). Stephan hat entschieden, die automatisierten Tests als ausreichende Freigabegrundlage zu akzeptieren; ein manueller Mehrpersonen-Durchlauf steht bei Gelegenheit noch aus.
+
+**Echte Fehler, die während der Verifikation durch echtes Testen gefunden und behoben wurden (nicht nur behauptet):** siehe „Bugfix nach Done, live gefunden am 2026-07-20" unter FEATURE-001 unten — inhaltlich ein FEATURE-001-Bug (Beitrittslogik), aber erst während eines FEATURE-003-Live-Tests entdeckt.
+
+---
+
 ### FEATURE-002 Phase 2 – Spielfeld + Runden 1–3
 
 | Feld | Wert |
@@ -104,7 +99,7 @@
 5. **Stapel-Tor-Zählbug (Kernfehler dieses Tickets):** Sobald die erste Karte durch eine Station weiterzog, schloss sich das Tor fälschlich sofort wieder – live reproduziert (erste Karte kam durch, alle folgenden scheiterten) – behoben.
 6. **Teilnehmenden-Liste unlesbar für Mitspielende:** Eine einzige Abfrage enthielt auch einen für Mitspielende nicht lesbaren Datensatz, wodurch die komplette Liste abgelehnt wurde – für den Host fiel das nie auf, für jede mitspielende Person blieb die eigene Station dauerhaft unbekannt, der Bewegen-Button erschien nie – behoben durch zwei getrennte Abfragen.
 
-**Bugfix nach Done, live gefunden am 2026-07-20 (Testspiel J99WCBTK, https://flow-game-19f01.web.app/spiel.html):** Eine Person ist mit spürbarer Verzögerung beigetreten (vermutlich Doppel-Tap oder Netzwerk-Retry bei langsamer Verbindung, `joinGame` für dieselbe authentifizierte Sitzung mehrfach aufgerufen). Ergebnis: Direktes Auslesen des Firestore-Dokuments bestätigte, dass `belegteStationen` alle fünf Stationen mit identischer uid zeigte – jeder erneute Aufruf hatte eine weitere freie Station berechnet und vergeben, obwohl dieselbe Person schon eine hatte, und ihr Teilnehmer-Dokument (`tx.set(teilnehmerRef, daten)`) wurde dabei jedes Mal überschrieben, sodass sie selbst nur die zuletzt zugewiesene Station sah. Für alle anderen blieben die übrigen vier Stationen fälschlich als belegt markiert, obwohl niemand sie bedienen konnte. **Ursache:** `joinGame` (`src/game/joinGame.js` und `public/js/game/joinGame.js`) prüfte vor der Stationsvergabe nicht, ob unter `spiele/{code}/teilnehmende/{uid}` bereits ein Dokument dieser Person existiert. **Fix:** Sowohl der nicht-transaktionale Vorab-Check als auch die eigentliche Transaktion lesen jetzt zusätzlich `teilnehmerRef`; existiert bereits ein Dokument für diese uid, wird keine neue Station vergeben und nichts überschrieben – die vorhandene Zuweisung (Rolle, Station) wird unverändert zurückgegeben, idempotent für beide Rollen (spielende und beobachtende), auch bei fast gleichzeitigen Doppelaufrufen (Firestore-Transaktions-Retry, da `teilnehmerRef` Teil des Lese-Sets ist). Die bereits aus FEATURE-001 bestehende Absicherung (zwei verschiedene Personen bekommen nie dieselbe Station) bleibt davon unberührt, da die neue Prüfung ausschließlich pro-uid greift. Neuer Regressionstest in `tests/game-rooms.logic.test.js` (Szenario "Doppelter/mehrfacher Beitritt derselben authentifizierten Person"), inklusive eines Tests, der ausdrücklich die unveränderte Race-Condition-Absicherung zwischen verschiedenen Personen mitprüft. **Geprüft (2026-07-20):** `node --check` auf beiden geänderten `joinGame.js`-Dateien und der neuen Testdatei grün; isolierte, netzwerkfreie Mock-Prüfung der echten (nicht kopierten) `src/game/joinGame.js`-Funktion bestätigt Idempotenz bei 2x/4x-Aufruf derselben uid UND weiterhin 5 unterschiedliche Stationen bei 5 verschiedenen uids. **Noch offen:** `npm run test:emulator` konnte in der Sandbox wie bereits bei FEATURE-002 dokumentiert nicht laufen (Emulator-Download durch Netzwerk-Allowlist blockiert) – von Stephan lokal zu bestätigen. Das verstopfte Testspiel J99WCBTK ist mit allen 5 Stationen auf eine Person zugewiesen nicht mehr sinnvoll nutzbar; für weitere Tests ein neues Spiel erstellen.
+**Bugfix nach Done, live gefunden am 2026-07-20 (Testspiel J99WCBTK, https://flow-game-19f01.web.app/spiel.html):** Eine Person ist mit spürbarer Verzögerung beigetreten (vermutlich Doppel-Tap oder Netzwerk-Retry bei langsamer Verbindung, `joinGame` für dieselbe authentifizierte Sitzung mehrfach aufgerufen). Ergebnis: Direktes Auslesen des Firestore-Dokuments bestätigte, dass `belegteStationen` alle fünf Stationen mit identischer uid zeigte – jeder erneute Aufruf hatte eine weitere freie Station berechnet und vergeben, obwohl dieselbe Person schon eine hatte, und ihr Teilnehmer-Dokument (`tx.set(teilnehmerRef, daten)`) wurde dabei jedes Mal überschrieben, sodass sie selbst nur die zuletzt zugewiesene Station sah. Für alle anderen blieben die übrigen vier Stationen fälschlich als belegt markiert, obwohl niemand sie bedienen konnte. **Ursache:** `joinGame` (`src/game/joinGame.js` und `public/js/game/joinGame.js`) prüfte vor der Stationsvergabe nicht, ob unter `spiele/{code}/teilnehmende/{uid}` bereits ein Dokument dieser Person existiert. **Fix:** Sowohl der nicht-transaktionale Vorab-Check als auch die eigentliche Transaktion lesen jetzt zusätzlich `teilnehmerRef`; existiert bereits ein Dokument für diese uid, wird keine neue Station vergeben und nichts überschrieben – die vorhandene Zuweisung (Rolle, Station) wird unverändert zurückgegeben, idempotent für beide Rollen (spielende und beobachtende), auch bei fast gleichzeitigen Doppelaufrufen (Firestore-Transaktions-Retry, da `teilnehmerRef` Teil des Lese-Sets ist). Die bereits aus FEATURE-001 bestehende Absicherung (zwei verschiedene Personen bekommen nie dieselbe Station) bleibt davon unberührt, da die neue Prüfung ausschließlich pro-uid greift. Neuer Regressionstest in `tests/game-rooms.logic.test.js` (Szenario "Doppelter/mehrfacher Beitritt derselben authentifizierten Person"), inklusive eines Tests, der ausdrücklich die unveränderte Race-Condition-Absicherung zwischen verschiedenen Personen mitprüft. **Geprüft (2026-07-20):** `node --check` auf beiden geänderten `joinGame.js`-Dateien und der neuen Testdatei grün; isolierte, netzwerkfreie Mock-Prüfung der echten (nicht kopierten) `src/game/joinGame.js`-Funktion bestätigt Idempotenz bei 2x/4x-Aufruf derselben uid UND weiterhin 5 unterschiedliche Stationen bei 5 verschiedenen uids. **Bestätigt (2026-07-20):** `npm run test:emulator` von Stephan lokal erneut ausgeführt — 103/103 Tests grün, 7/7 Suiten, keine Regression. Fix committed und gepusht (`84a900e`), automatischer Deploy über GitHub Actions erfolgreich (`build_and_deploy`, 38 s). Das verstopfte Testspiel J99WCBTK ist mit allen 5 Stationen auf eine Person zugewiesen weiterhin nicht mehr sinnvoll nutzbar; für weitere Tests ein neues Spiel erstellen.
 
 **Regressionstest gegen FEATURE-001/TASK-001/TASK-002:** Live-URL nach allen Deploys weiterhin erreichbar; die aus FEATURE-001 bereits geprüften Abläufe (Spiel erstellen, Beitritt, Host-Session-Wiederherstellung) wurden durch die Erweiterung nicht sichtbar beeinträchtigt (automatisierter Emulator-Regressionslauf von Stephan noch zu bestätigen, siehe oben).
 
