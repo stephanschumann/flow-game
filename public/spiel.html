@@ -60,6 +60,36 @@
   .tabs button.aktiv{color:var(--text);border-color:var(--blue);background:rgba(76,141,255,.1)}
   .center{text-align:center}
   .muted{color:var(--muted);font-size:14px}
+
+  /* FEATURE-002: Spielbrett + Runden 1-3. Nutzt konsequent [hidden] statt
+     eigener display-Klassenlogik (siehe globale [hidden]-Regel oben). */
+  .runde-kopf{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:18px}
+  .runde-titel{font-size:20px;font-weight:800;display:flex;align-items:center;gap:10px}
+  .zeiten{display:flex;gap:14px;flex-wrap:wrap}
+  .zeit-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 18px;text-align:center;min-width:110px}
+  .zeit-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+  .zeit-wert{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--text)}
+  .badge.phase-aufgabe_vorgestellt{background:rgba(240,165,49,.16);color:var(--amber)}
+  .badge.phase-dor_abgeschlossen{background:rgba(76,141,255,.16);color:var(--blue)}
+  .badge.phase-beendet{background:rgba(63,185,80,.16);color:var(--green)}
+  .dor-bereich{text-align:center;padding:18px 0}
+  .brett{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:10px;margin-top:10px;overflow-x:auto;padding-bottom:6px}
+  .spalte{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:170px;display:flex;flex-direction:column;gap:8px}
+  .spalte-titel{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:center;line-height:1.3}
+  .spalte-tor{font-size:11px;color:var(--dim);text-align:center}
+  .spalte-tor.offen{color:var(--green);font-weight:700}
+  .karten-liste{display:flex;flex-direction:column;gap:6px}
+  .karte-chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--text)}
+  .karte-chip.stapel-A{border-left:3px solid var(--blue)}
+  .karte-chip.stapel-B{border-left:3px solid var(--purple)}
+  .karte-chip button{appearance:none;background:var(--blue);border:0;color:#fff;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+  .eigene-hinweis{margin-top:16px;text-align:center}
+  .kennzahlen-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+  .kennzahl-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center}
+  .kennzahl-box .wert{font-size:22px;font-weight:900}
+  .kennzahl-box .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+  .beteiligung-liste{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .beteiligung-liste li{display:flex;justify-content:space-between;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px}
 </style>
 </head>
 <body>
@@ -115,6 +145,48 @@
       <div class="code-display" id="lobby-code"></div>
       <div class="muted" id="lobby-eigene-station"></div>
       <ul class="teilnehmer-liste" id="teilnehmer-liste"></ul>
+      <div class="row" id="host-rundenstart-bereich" hidden>
+        <button type="button" class="btn primary" id="btn-runde-starten">Aufgabe vorstellen (Runde 1 starten)</button>
+      </div>
+    </div>
+
+    <!-- FEATURE-002: Spielbrett. Ersetzt lobby-panel, sobald spiele/{code}.aktuelleRunde
+         gesetzt ist (siehe ueberwacheSpielUndRunden() im Skript unten). -->
+    <div class="panel" id="runde-panel" hidden>
+      <div class="runde-kopf">
+        <div class="runde-titel">Runde <span id="runde-nummer">–</span>
+          <span class="badge" id="runde-phase-badge"></span>
+        </div>
+        <div class="zeiten">
+          <div class="zeit-box">
+            <div class="zeit-label">Durchlaufzeit</div>
+            <div class="zeit-wert" id="zeit-durchlauf">00:00</div>
+          </div>
+          <div class="zeit-box" id="zeit-bearbeitung-box" hidden>
+            <div class="zeit-label">Bearbeitungszeit</div>
+            <div class="zeit-wert" id="zeit-bearbeitung">00:00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dor-bereich" id="dor-bereich" hidden>
+        <p class="muted">Bevor Karten bewegt werden können, muss die Gruppe die Aufgabe verstanden haben.</p>
+        <button type="button" class="btn primary" id="btn-dor">Definition of Ready abschließen</button>
+      </div>
+
+      <div class="brett" id="brett" hidden></div>
+
+      <div class="eigene-hinweis muted" id="eigene-hinweis" hidden></div>
+
+      <div class="panel" id="kennzahlen-panel" hidden>
+        <h2 style="margin-top:0">Runde beendet – Kennzahlen</h2>
+        <div class="kennzahlen-grid" id="kennzahlen-grid"></div>
+        <div id="kennzahlen-beteiligung"></div>
+        <div class="row" id="host-naechste-runde-bereich" hidden>
+          <button type="button" class="btn primary" id="btn-naechste-runde">Nächste Runde starten</button>
+        </div>
+        <div class="hinweis info" id="spiel-fertig-hinweis" hidden>Alle drei Runden sind gespielt – vergleicht eure Kennzahlen!</div>
+      </div>
     </div>
   </div>
 </div>
@@ -133,6 +205,16 @@
 <script src="js/game/createGame.js"></script>
 <script src="js/game/joinGame.js"></script>
 <script src="js/game/hostSession.js"></script>
+<!-- FEATURE-002: Spielfeld + Runden 1-3. Reihenfolge wichtig - kartenBewegung.js
+     liest window.FlowGame.STATIONEN (aus createGame.js) und
+     rundenwechsel.js ruft window.FlowGame.starteRunde() (aus rundenStart.js)
+     jeweils beim eigenen IIFE-Aufruf, nicht erst zur Klickzeit. -->
+<script src="js/game/stapelTor.js"></script>
+<script src="js/game/rundenStart.js"></script>
+<script src="js/game/kartenBewegung.js"></script>
+<script src="js/game/rundenEnde.js"></script>
+<script src="js/game/rundenwechsel.js"></script>
+<script src="js/game/kennzahlen.js"></script>
 <script>
 (function () {
   'use strict';
@@ -151,6 +233,41 @@
   const lobbyRolleHinweis = document.getElementById('lobby-rolle-hinweis');
   const lobbyEigeneStation = document.getElementById('lobby-eigene-station');
   const teilnehmerListe = document.getElementById('teilnehmer-liste');
+  const hostRundenstartBereich = document.getElementById('host-rundenstart-bereich');
+  const btnRundeStarten = document.getElementById('btn-runde-starten');
+
+  // FEATURE-002: Spielbrett + Runden 1-3.
+  const rundePanel = document.getElementById('runde-panel');
+  const rundeNummerEl = document.getElementById('runde-nummer');
+  const rundePhaseBadge = document.getElementById('runde-phase-badge');
+  const zeitDurchlaufEl = document.getElementById('zeit-durchlauf');
+  const zeitBearbeitungBox = document.getElementById('zeit-bearbeitung-box');
+  const zeitBearbeitungEl = document.getElementById('zeit-bearbeitung');
+  const dorBereich = document.getElementById('dor-bereich');
+  const btnDor = document.getElementById('btn-dor');
+  const brett = document.getElementById('brett');
+  const eigeneHinweis = document.getElementById('eigene-hinweis');
+  const kennzahlenPanel = document.getElementById('kennzahlen-panel');
+  const kennzahlenGrid = document.getElementById('kennzahlen-grid');
+  const kennzahlenBeteiligung = document.getElementById('kennzahlen-beteiligung');
+  const hostNaechsteRundeBereich = document.getElementById('host-naechste-runde-bereich');
+  const btnNaechsteRunde = document.getElementById('btn-naechste-runde');
+  const spielFertigHinweis = document.getElementById('spiel-fertig-hinweis');
+
+  let eigeneUid = null;
+  let eigeneRolle = null;
+  let eigeneStationsNummer = null; // 1-5, oder null für Host/Beobachtende
+  const teilnehmendeNamenMap = {}; // uid -> anzeigename, für Kennzahlen-Anzeige
+  let aktuellerSpielCode = null;
+  let aktuelleDbInstanz = null;
+  let aktuelleRundenNummer = null;
+  let aktuelleRundenDaten = null;
+  let aktuelleKartenListe = [];
+  let bewegungsLog = []; // siehe kennzahlen.js: live beobachtet, nicht serverseitige Historie
+  let unsubRundenDoc = null;
+  let unsubKartenCol = null;
+  let timerIntervalId = null;
+  let rundenEndeSchreibversuchLaeuft = false;
 
   function zeigeFehler(nachricht) {
     fehlerBox.textContent = nachricht;
@@ -186,20 +303,41 @@
 
   const ROLLEN_LABEL = { host: 'Host', spielende: 'Spielende', beobachtende: 'Beobachtende' };
 
-  function zeigeLobby(db, code, eigeneRolleText) {
+  function zeigeLobby(db, code, eigeneRolleText, rolle) {
     auswahlPanel.hidden = true;
     lobbyPanel.hidden = false;
+    rundePanel.hidden = true;
     lobbyCode.textContent = code;
     lobbyRolleHinweis.textContent = eigeneRolleText;
+
+    eigeneRolle = rolle;
+    aktuellerSpielCode = code;
+    aktuelleDbInstanz = db;
 
     db.collection('spiele').doc(code).collection('teilnehmende')
       .onSnapshot(function (snapshot) {
         teilnehmerListe.innerHTML = '';
         snapshot.forEach(function (docSnap) {
           const daten = docSnap.data();
+          teilnehmendeNamenMap[docSnap.id] = daten.anzeigename;
+
+          // FEATURE-002: die eigene Stationsnummer (numerisch, Voraussetzung
+          // für Kartenbewegung) sicherstellen - siehe Kopfkommentar in
+          // kartenBewegung.js zum String->Zahl-Migrationsgrund.
+          if (docSnap.id === eigeneUid && daten.station != null) {
+            eigeneStationsNummer = window.FlowGame.stationsNummerVon(daten.station);
+            if (typeof daten.station === 'string') {
+              window.FlowGame.stelleEigeneStationsnummerSicher(
+                { code, uid: eigeneUid, teilnehmerDaten: daten }, db
+              ).catch(function () { /* nicht kritisch - naechster Snapshot versucht es erneut */ });
+            }
+          }
+
           const li = document.createElement('li');
           const name = document.createElement('span');
-          name.textContent = daten.anzeigename + (daten.station ? ' – ' + daten.station : '');
+          const stationsAnzeige = daten.stationName
+            || (typeof daten.station === 'string' ? daten.station : null);
+          name.textContent = daten.anzeigename + (stationsAnzeige ? ' – ' + stationsAnzeige : '');
           const badge = document.createElement('span');
           badge.className = 'badge ' + (daten.rolle === 'host' ? 'host' : daten.rolle === 'spielende' ? 'spielende' : 'beobachtende');
           badge.textContent = ROLLEN_LABEL[daten.rolle] || daten.rolle;
@@ -210,7 +348,366 @@
       }, function (err) {
         zeigeFehler('Teilnehmendenliste konnte nicht geladen werden: ' + err.message);
       });
+
+    ueberwacheSpielUndRunden(db, code);
   }
+
+  // ---- FEATURE-002: Spielbrett + Runden 1-3 -------------------------------
+
+  function ueberwacheSpielUndRunden(db, code) {
+    db.collection('spiele').doc(code).onSnapshot(function (snap) {
+      if (!snap.exists) return;
+      const daten = snap.data();
+      const aktuelle = daten.aktuelleRunde || null;
+
+      // Host-Button "Aufgabe vorstellen" nur zeigen, solange Host UND noch
+      // keine Runde existiert.
+      hostRundenstartBereich.hidden = !(eigeneRolle === 'host' && !aktuelle);
+
+      if (aktuelle && aktuelle !== aktuelleRundenNummer) {
+        wechsleZuRunde(db, code, aktuelle);
+      }
+    }, function (err) {
+      zeigeFehler('Spielstatus konnte nicht geladen werden: ' + err.message);
+    });
+  }
+
+  function alsMillisLokal(zeitwert) {
+    if (!zeitwert) return null;
+    if (typeof zeitwert.toMillis === 'function') return zeitwert.toMillis();
+    return zeitwert;
+  }
+
+  function formatiereZeit(ms) {
+    if (ms == null || ms < 0) return '00:00';
+    const gesamtSekunden = Math.floor(ms / 1000);
+    const minuten = Math.floor(gesamtSekunden / 60);
+    const sekunden = gesamtSekunden % 60;
+    return String(minuten).padStart(2, '0') + ':' + String(sekunden).padStart(2, '0');
+  }
+
+  function stationsLabel(name) {
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  const POSITION_LABELS = ['Auftragseingang']
+    .concat(window.FlowGame.STATIONEN.map(function (name, i) {
+      return (i + 1) + '. ' + stationsLabel(name);
+    }))
+    .concat(['Ziel']);
+
+  const PHASE_LABEL = {
+    aufgabe_vorgestellt: 'Aufgabe vorgestellt',
+    dor_abgeschlossen: 'Bereit – Karten können bewegt werden',
+    beendet: 'Runde beendet',
+  };
+
+  function wechsleZuRunde(db, code, rundenNummer) {
+    if (unsubRundenDoc) unsubRundenDoc();
+    if (unsubKartenCol) unsubKartenCol();
+
+    aktuelleRundenNummer = rundenNummer;
+    aktuelleRundenDaten = null;
+    aktuelleKartenListe = [];
+    bewegungsLog = [];
+    rundenEndeSchreibversuchLaeuft = false;
+    btnDor.disabled = false;
+    btnNaechsteRunde.disabled = false;
+
+    lobbyPanel.hidden = true;
+    rundePanel.hidden = false;
+    kennzahlenPanel.hidden = true;
+    brett.hidden = true;
+    eigeneHinweis.hidden = true;
+    rundeNummerEl.textContent = String(rundenNummer);
+
+    const rundenRef = db.collection('spiele').doc(code).collection('runden').doc(String(rundenNummer));
+
+    unsubRundenDoc = rundenRef.onSnapshot(function (snap) {
+      if (!snap.exists) return;
+      aktuelleRundenDaten = snap.data();
+      renderRundenStatus(db, code);
+      renderBrett(db, code);
+      versucheRundenEnde(db, code);
+    }, function (err) {
+      zeigeFehler('Rundendaten konnten nicht geladen werden: ' + err.message);
+    });
+
+    unsubKartenCol = rundenRef.collection('karten').onSnapshot(function (snapshot) {
+      // Nur ECHTE Bewegungen mitschneiden (type 'modified') - der initiale
+      // Ladevorgang (type 'added', auch bei einem spaeten Beitritt/Reload
+      // mitten in der Runde) ist keine Bewegung, siehe kennzahlen.js.
+      snapshot.docChanges().forEach(function (change) {
+        if (change.type === 'modified') {
+          const daten = change.doc.data();
+          if (daten.letzteBewegungVon) {
+            bewegungsLog.push({
+              uid: daten.letzteBewegungVon,
+              kartenId: change.doc.id,
+              wann: daten.letzteBewegungAm,
+            });
+          }
+        }
+      });
+      aktuelleKartenListe = snapshot.docs.map(function (docSnap) {
+        return Object.assign({ id: docSnap.id }, docSnap.data());
+      });
+      renderBrett(db, code);
+      versucheRundenEnde(db, code);
+    }, function (err) {
+      zeigeFehler('Kartendaten konnten nicht geladen werden: ' + err.message);
+    });
+  }
+
+  function renderRundenStatus() {
+    if (!aktuelleRundenDaten) return;
+    const runde = aktuelleRundenDaten;
+
+    rundePhaseBadge.className = 'badge phase-' + (runde.phase || '');
+    rundePhaseBadge.textContent = PHASE_LABEL[runde.phase] || runde.phase || '';
+
+    dorBereich.hidden = Boolean(runde.dorAbgeschlossen);
+    brett.hidden = !runde.dorAbgeschlossen;
+
+    const bearbeitungGesetzt = Boolean(runde.bearbeitungszeitStart);
+    zeitBearbeitungBox.hidden = !bearbeitungGesetzt;
+
+    if (timerIntervalId) {
+      clearInterval(timerIntervalId);
+      timerIntervalId = null;
+    }
+
+    function aktualisiereZeitanzeigen() {
+      const startMs = alsMillisLokal(runde.durchlaufzeitStart);
+      const endeMs = alsMillisLokal(runde.durchlaufzeitEnde);
+      if (startMs != null) {
+        zeitDurchlaufEl.textContent = formatiereZeit((endeMs != null ? endeMs : Date.now()) - startMs);
+      }
+      if (bearbeitungGesetzt) {
+        const bStartMs = alsMillisLokal(runde.bearbeitungszeitStart);
+        const bEndeMs = alsMillisLokal(runde.bearbeitungszeitEnde);
+        zeitBearbeitungEl.textContent = formatiereZeit((bEndeMs != null ? bEndeMs : Date.now()) - bStartMs);
+      }
+    }
+    aktualisiereZeitanzeigen();
+    if (runde.phase !== 'beendet') {
+      timerIntervalId = setInterval(aktualisiereZeitanzeigen, 1000);
+    }
+
+    if (runde.phase === 'beendet') {
+      zeigeKennzahlen(runde);
+    } else {
+      kennzahlenPanel.hidden = true;
+    }
+  }
+
+  function darfIchDieseKarteBewegen(rundenNummer, vonPosition, karte) {
+    if (!aktuelleRundenDaten || !aktuelleRundenDaten.dorAbgeschlossen) return false;
+    if (eigeneStationsNummer === null) return false; // Host/Beobachtende
+    const nachPosition = vonPosition + 1;
+    const istZustaendig = eigeneStationsNummer === vonPosition || eigeneStationsNummer === nachPosition;
+    if (!istZustaendig) return false;
+    return window.FlowGame.stapelTorOffen({
+      rundenNummer, vonPosition, stapel: karte.stapel || null, karten: aktuelleKartenListe,
+    });
+  }
+
+  function renderBrett(db, code) {
+    if (!aktuelleRundenDaten) return;
+    const rundenNummer = aktuelleRundenNummer;
+    brett.innerHTML = '';
+
+    for (let position = 0; position <= 6; position += 1) {
+      const spalte = document.createElement('div');
+      spalte.className = 'spalte';
+
+      const titel = document.createElement('div');
+      titel.className = 'spalte-titel';
+      titel.textContent = POSITION_LABELS[position];
+      spalte.appendChild(titel);
+
+      // Stapel-Tor-Status: nur für Stationen relevant, die weitergeben
+      // (Position 1-5) - Auftragseingang/Ziel haben kein eigenes Tor.
+      if (position >= 1 && position <= 5) {
+        const torInfo = document.createElement('div');
+        torInfo.className = 'spalte-tor';
+        if (rundenNummer === 2) {
+          ['A', 'B'].forEach(function (stapel) {
+            const offen = window.FlowGame.stapelTorOffen({
+              rundenNummer, vonPosition: position, stapel, karten: aktuelleKartenListe,
+            });
+            const anzahl = window.FlowGame.zaehleAngekommeneKartenAusListe({
+              karten: aktuelleKartenListe, position, stapel,
+            });
+            const zeile = document.createElement('div');
+            zeile.className = offen ? 'offen' : '';
+            zeile.textContent = stapel + ': ' + anzahl + '/3' + (offen ? ' offen' : '');
+            torInfo.appendChild(zeile);
+          });
+        } else {
+          const schwelle = window.FlowGame.stapelTorSchwelle(rundenNummer);
+          const anzahl = window.FlowGame.zaehleAngekommeneKartenAusListe({
+            karten: aktuelleKartenListe, position, stapel: null,
+          });
+          const offen = window.FlowGame.stapelTorOffen({
+            rundenNummer, vonPosition: position, stapel: null, karten: aktuelleKartenListe,
+          });
+          torInfo.className = 'spalte-tor' + (offen ? ' offen' : '');
+          torInfo.textContent = 'Tor: ' + anzahl + '/' + schwelle + (offen ? ' offen' : ' geschlossen');
+        }
+        spalte.appendChild(torInfo);
+      }
+
+      const liste = document.createElement('div');
+      liste.className = 'karten-liste';
+
+      aktuelleKartenListe
+        .filter(function (k) { return k.position === position; })
+        .forEach(function (karte) {
+          const chip = document.createElement('div');
+          chip.className = 'karte-chip' + (karte.stapel ? ' stapel-' + karte.stapel : '');
+          const label = document.createElement('span');
+          label.textContent = karte.id.replace('karte-', 'Karte ') + (karte.stapel ? ' (' + karte.stapel + ')' : '');
+          chip.appendChild(label);
+
+          if (position <= 5 && darfIchDieseKarteBewegen(rundenNummer, position, karte)) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = '→';
+            btn.addEventListener('click', async function () {
+              btn.disabled = true;
+              try {
+                await window.FlowGame.bewegeKarte({
+                  code, rundenNummer, kartenId: karte.id, vonPosition: position, uid: eigeneUid,
+                }, db);
+                if (!aktuelleRundenDaten.bearbeitungszeitStart) {
+                  window.FlowGame.starteBearbeitungszeitFallsNoetig({
+                    code, rundenNummer, bearbeitungszeitBereitsGesetzt: false,
+                  }, db).catch(function () { /* siehe Kommentar in rundenStart.js */ });
+                }
+              } catch (err) {
+                zeigeFehler('Karte konnte nicht bewegt werden: ' + err.message);
+                btn.disabled = false;
+              }
+            });
+            chip.appendChild(btn);
+          }
+          liste.appendChild(chip);
+        });
+
+      spalte.appendChild(liste);
+      brett.appendChild(spalte);
+    }
+
+    eigeneHinweis.hidden = eigeneStationsNummer !== null;
+    if (eigeneStationsNummer === null) {
+      eigeneHinweis.textContent = eigeneRolle === 'host'
+        ? 'Du bist Host und beobachtest das Spielfeld - eigene Kartenzüge macht das Team.'
+        : 'Du bist Beobachtende/r - du siehst dem Team beim Spielen zu.';
+    }
+  }
+
+  async function versucheRundenEnde(db, code) {
+    if (!aktuelleRundenDaten || rundenEndeSchreibversuchLaeuft) return;
+    if (aktuelleRundenDaten.phase === 'beendet') return;
+    if (aktuelleKartenListe.length !== 6) return;
+    rundenEndeSchreibversuchLaeuft = true;
+    try {
+      await window.FlowGame.pruefeUndSetzeRundenEnde({
+        code, rundenNummer: aktuelleRundenNummer, karten: aktuelleKartenListe, rundenPhase: aktuelleRundenDaten.phase,
+      }, db);
+    } finally {
+      rundenEndeSchreibversuchLaeuft = false;
+    }
+  }
+
+  function zeigeKennzahlen(runde) {
+    kennzahlenPanel.hidden = false;
+    const kennzahlen = window.FlowGame.berechneKennzahlen({
+      runde, karten: aktuelleKartenListe, bewegungsLog, teilnehmendeNamen: teilnehmendeNamenMap,
+    });
+
+    kennzahlenGrid.innerHTML = '';
+    [
+      ['Durchlaufzeit', kennzahlen.durchlaufzeitMs],
+      ['Bearbeitungszeit', kennzahlen.bearbeitungszeitMs],
+      ['Bis 1. Lieferung', kennzahlen.ersteLieferungMs],
+      ['Bis letzte Lieferung', kennzahlen.letzteLieferungMs],
+    ].forEach(function (eintrag) {
+      const box = document.createElement('div');
+      box.className = 'kennzahl-box';
+      const wert = document.createElement('div');
+      wert.className = 'wert';
+      wert.textContent = formatiereZeit(eintrag[1]);
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = eintrag[0];
+      box.appendChild(wert);
+      box.appendChild(label);
+      kennzahlenGrid.appendChild(box);
+    });
+
+    kennzahlenBeteiligung.innerHTML = '';
+    if (kennzahlen.proPerson.length > 0) {
+      const titel = document.createElement('div');
+      titel.className = 'muted';
+      titel.style.marginTop = '10px';
+      titel.textContent = 'Beteiligung je Person (live während dieser Sitzung beobachtet):';
+      const liste = document.createElement('ul');
+      liste.className = 'beteiligung-liste';
+      kennzahlen.proPerson.forEach(function (eintrag) {
+        const li = document.createElement('li');
+        const naam = document.createElement('span');
+        naam.textContent = eintrag.anzeigename;
+        const anzahl = document.createElement('span');
+        anzahl.textContent = eintrag.anzahlBewegungen + ' Bewegungen';
+        li.appendChild(naam);
+        li.appendChild(anzahl);
+        liste.appendChild(li);
+      });
+      kennzahlenBeteiligung.appendChild(titel);
+      kennzahlenBeteiligung.appendChild(liste);
+    }
+
+    hostNaechsteRundeBereich.hidden = !(eigeneRolle === 'host' && aktuelleRundenNummer < 3);
+    spielFertigHinweis.hidden = !(aktuelleRundenNummer >= 3);
+  }
+
+  btnRundeStarten.addEventListener('click', async function () {
+    btnRundeStarten.disabled = true;
+    try {
+      await window.FlowGame.starteRunde({ code: aktuellerSpielCode, rundenNummer: 1 }, aktuelleDbInstanz);
+    } catch (err) {
+      zeigeFehler('Runde konnte nicht gestartet werden: ' + err.message);
+      btnRundeStarten.disabled = false;
+    }
+  });
+
+  btnDor.addEventListener('click', async function () {
+    btnDor.disabled = true;
+    try {
+      await window.FlowGame.loeseDefinitionOfReadyAus(
+        { code: aktuellerSpielCode, rundenNummer: aktuelleRundenNummer }, aktuelleDbInstanz
+      );
+    } catch (err) {
+      zeigeFehler('Definition of Ready konnte nicht abgeschlossen werden: ' + err.message);
+      btnDor.disabled = false;
+    }
+  });
+
+  btnNaechsteRunde.addEventListener('click', async function () {
+    btnNaechsteRunde.disabled = true;
+    try {
+      await window.FlowGame.wechsleZurNaechstenRunde(
+        { code: aktuellerSpielCode, vonRunde: aktuelleRundenNummer }, aktuelleDbInstanz
+      );
+    } catch (err) {
+      zeigeFehler('Nächste Runde konnte nicht gestartet werden: ' + err.message);
+      btnNaechsteRunde.disabled = false;
+    }
+  });
+
+  // ---------------------------------------------------------------------
 
   async function init() {
     const auth = firebase.auth();
@@ -227,6 +724,10 @@
         });
       });
     }
+    // BUGFIX: ohne diese Zeile blieb eigeneUid für die gesamte Sitzung null,
+    // wodurch die eigene Station in zeigeLobby() nie erkannt wurde und somit
+    // NIEMAND je einen Bewegen-Button auf dem Spielbrett sehen konnte.
+    eigeneUid = user.uid;
 
     untertitel.textContent = 'Erstelle ein Spiel oder tritt mit einem Beitritts-Code bei.';
 
@@ -239,7 +740,7 @@
             { code: letztesSpiel, hostSessionKennung, uid: user.uid },
             db
           );
-          zeigeLobby(db, ergebnis.spielCode, 'Du bist Host dieses Spiels.');
+          zeigeLobby(db, ergebnis.spielCode, 'Du bist Host dieses Spiels.', 'host');
           return;
         } catch (err) {
           // Kennung nicht mehr gültig – normal weiter zur Start-Auswahl.
@@ -256,7 +757,7 @@
       try {
         const ergebnis = await window.FlowGame.createGame({ hostAnzeigename, uid: user.uid }, db);
         speichereHostSession(ergebnis.code, ergebnis.hostSessionKennung);
-        zeigeLobby(db, ergebnis.code, 'Du bist Host dieses Spiels. Teile den Code mit deiner Gruppe.');
+        zeigeLobby(db, ergebnis.code, 'Du bist Host dieses Spiels. Teile den Code mit deiner Gruppe.', 'host');
       } catch (err) {
         zeigeFehler(err.message);
       }
@@ -320,7 +821,7 @@
         lobbyEigeneStation.textContent = ergebnis.station
           ? 'Deine Station: ' + ergebnis.station
           : 'Du bist als Beobachtende dabei.';
-        zeigeLobby(db, code, 'Du bist ' + ROLLEN_LABEL[ergebnis.rolle] + ' in diesem Spiel.');
+        zeigeLobby(db, code, 'Du bist ' + ROLLEN_LABEL[ergebnis.rolle] + ' in diesem Spiel.', ergebnis.rolle);
       } catch (err) {
         if (/belegt/i.test(err.message)) {
           rollenFeld.hidden = false;
