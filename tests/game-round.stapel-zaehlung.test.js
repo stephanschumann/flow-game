@@ -146,12 +146,33 @@ describe('FEATURE-002: Echte Stapel-Zählung gegen echte Firestore-Dokumente', (
 });
 
 describe('FEATURE-002: Reine Zähl-Funktion (Liste statt Firestore-Lesevorgang)', () => {
-  test('zaehleAngekommeneKartenAusListe zählt nur exakte Positionstreffer, keine >= -Näherung', async () => {
+  // BUGFIX (2026-07-18, siehe Kommentar in src/game/stapelTor.js): Dieser
+  // Test verlangte ursprünglich ausdrücklich "keine >= -Näherung" (nur
+  // exakte Positionstreffer zählen) - das war die Ursache eines echten,
+  // live in Production gefundenen Bugs: Sobald die erste Karte durch ein
+  // offenes Stapel-Tor weiterzieht, sinkt die Zahl der Karten GENAU an
+  // dieser Position unter die Schwelle, wodurch das Tor sich fälschlich
+  // wieder schließt und jede weitere Karte abgelehnt wird. Korrektes
+  // Verhalten: eine Karte, die die Position bereits verlassen hat (an einer
+  // höheren Position steht), hat sie durchlaufen und zählt weiterhin.
+  test('zaehleAngekommeneKartenAusListe zählt Karten AN der Position UND Karten, die sie bereits verlassen haben (>= Position)', async () => {
     const karten = [
-      { kartenId: 'karte-1', position: 2 },
+      { kartenId: 'karte-1', position: 2 }, // bereits weitergezogen, zählt trotzdem
       { kartenId: 'karte-2', position: 1 },
       { kartenId: 'karte-3', position: 1 },
+      { kartenId: 'karte-4', position: 0 }, // noch nicht angekommen, zählt nicht
     ];
-    expect(zaehleAngekommeneKartenAusListe({ karten, position: 1 })).toBe(2);
+    expect(zaehleAngekommeneKartenAusListe({ karten, position: 1 })).toBe(3);
+  });
+
+  test('zaehleAngekommeneKartenAusListe berücksichtigt weiterhin die Stapel-Filterung bei >= Position', async () => {
+    const karten = [
+      { kartenId: 'karte-1', position: 2, stapel: 'A' }, // bereits weitergezogen, zählt für Stapel A
+      { kartenId: 'karte-2', position: 1, stapel: 'A' },
+      { kartenId: 'karte-3', position: 1, stapel: 'B' },
+      { kartenId: 'karte-4', position: 0, stapel: 'B' },
+    ];
+    expect(zaehleAngekommeneKartenAusListe({ karten, position: 1, stapel: 'A' })).toBe(2);
+    expect(zaehleAngekommeneKartenAusListe({ karten, position: 1, stapel: 'B' })).toBe(1);
   });
 });

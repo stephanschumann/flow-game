@@ -51,16 +51,30 @@ async function pruefeStapelTor({ runde, station, angekommeneKarten, stapel, istE
  * Echte Zähl-Funktion: nimmt eine Liste tatsächlicher Karten-Dokumente
  * (z. B. `[{ kartenId: 'karte-1', position: 1, stapel: 'A' }, ...]`, wie sie
  * aus einer echten Firestore-Abfrage der Unter-Sammlung
- * `spiele/{code}/runden/{n}/karten` kämen) und zählt, wie viele davon an
- * `position` (optional zusätzlich nach `stapel` gefiltert) angekommen sind –
- * KEIN vorgegebener Zählwert.
+ * `spiele/{code}/runden/{n}/karten` kämen) und zählt, wie viele davon
+ * `position` bereits ERREICHT ODER VERLASSEN haben (optional zusätzlich nach
+ * `stapel` gefiltert) – KEIN vorgegebener Zählwert.
+ *
+ * BUGFIX (2026-07-18, live in Production gefunden beim Bau der Spielbrett-
+ * Oberfläche, siehe Abschlussbericht an Stephan): Zählte ursprünglich nur
+ * Karten GENAU AN `position` (`karte.position !== position` als
+ * Ausschlusskriterium). Das öffnet das Tor korrekt beim Erreichen der
+ * Schwelle, schließt es aber sofort wieder, sobald die erste Karte
+ * weiterzieht (dann stehen weniger Karten GENAU an `position`) – jede Karte
+ * außer der ersten wurde dadurch fälschlich abgelehnt, real reproduziert im
+ * Zusammenspiel mit der identischen Zählung in firestore.rules (Karte 1 von
+ * Station 1 zu Station 2 gelang, Karten 2-6 scheiterten alle). Fix: Karten
+ * mit `position < position` ausschließen (statt `!== position`) – eine
+ * Karte, die die Position bereits verlassen hat, hat sie denknotwendig
+ * durchlaufen und zählt weiterhin für die Tor-Schwelle dieser Position.
+ * Einmal offen, bleibt das Tor damit für den Rest der Runde offen.
  */
 function zaehleAngekommeneKartenAusListe({ karten, position, stapel }) {
   if (!Array.isArray(karten)) {
     throw new Error('karten muss eine Liste von Karten-Dokumenten sein.');
   }
   return karten.filter((karte) => {
-    if (karte.position !== position) return false;
+    if (karte.position < position) return false;
     if (stapel && karte.stapel !== stapel) return false;
     return true;
   }).length;

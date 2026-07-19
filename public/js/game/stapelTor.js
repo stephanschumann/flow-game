@@ -24,12 +24,15 @@
     return schwelle;
   }
 
+  // BUGFIX (2026-07-18, siehe identischer Kommentar in src/game/stapelTor.js
+  // und firestore.rules): >= statt ==, sonst schließt das Tor nach der ersten
+  // durchgelassenen Karte sofort wieder.
   function zaehleAngekommeneKartenAusListe({ karten, position, stapel }) {
     if (!Array.isArray(karten)) {
       throw new Error('karten muss eine Liste von Karten-Dokumenten sein.');
     }
     return karten.filter((karte) => {
-      if (karte.position !== position) return false;
+      if (karte.position < position) return false;
       if (stapel && karte.stapel !== stapel) return false;
       return true;
     }).length;

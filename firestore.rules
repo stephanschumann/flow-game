@@ -76,10 +76,26 @@ service cloud.firestore {
       return runde == '1' ? 6 : (runde == '2' ? 3 : 1);
     }
 
-    // Zählt, wie viele der (bis zu) sechs Karten der Runde aktuell an
-    // `position` stehen, optional zusätzlich nach `stapel` gefiltert (Runde
-    // 2: die zwei Dreierstapel werden GETRENNT gezählt, Entscheidung
-    // 2026-07-18 – kein einmaliges Freischalten über die Gesamtsumme).
+    // Zählt, wie viele der (bis zu) sechs Karten der Runde die `position`
+    // BEREITS ERREICHT ODER VERLASSEN haben (position >= die geprüfte
+    // Position), optional zusätzlich nach `stapel` gefiltert (Runde 2: die
+    // zwei Dreierstapel werden GETRENNT gezählt, Entscheidung 2026-07-18 –
+    // kein einmaliges Freischalten über die Gesamtsumme).
+    //
+    // BUGFIX (2026-07-18, live in Production gefunden beim Bau der
+    // Spielbrett-Oberfläche, siehe Abschlussbericht an Stephan): Ursprünglich
+    // zählte diese Funktion nur Karten GENAU AN `position` (daten.position ==
+    // position). Das öffnet das Tor zwar korrekt beim SECHSTEN Ankommen,
+    // schließt es aber sofort wieder, sobald die ERSTE Karte durch das
+    // offene Tor weiterzieht (dann stehen nur noch fünf Karten GENAU an
+    // `position`, 5 < Schwelle 6) – jede Karte AUSSER der ersten wurde
+    // dadurch faelschlich abgelehnt ("Missing or insufficient permissions"),
+    // real reproduziert: Karte 1 von Station 1 zu Station 2 gelang, Karten
+    // 2-6 scheiterten alle. Fix: `>=` statt `==` – eine Karte, die die
+    // Position bereits verlassen hat (an einer höheren Position steht), hat
+    // denknotwendig auch `position` durchlaufen und zählt weiterhin für die
+    // Tor-Schwelle dieser Position. Einmal offen, bleibt das Tor damit für
+    // den Rest der Runde offen, wie in den Akzeptanzkriterien beschrieben.
     //
     // Sicherheitsregeln können keine Sammlungs-Query ausführen (Pre-Mortem-
     // Risiko 3). Da pro Runde immer genau sechs, namentlich bekannte
@@ -103,7 +119,7 @@ service cloud.firestore {
       // weit ueber dem Limit. Mit nur einem get() je Karte bleibt die
       // gesamte Regelauswertung fuer eine Kartenbewegung bei maximal 9.
       let daten = get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)/karten/$(kartenId)).data;
-      return daten.position == position
+      return daten.position >= position
         && (stapel == null || daten.get('stapel', null) == stapel)
         ? 1 : 0;
     }
