@@ -101,6 +101,19 @@
   .vergleichs-tabelle tbody tr:nth-child(even) td{background:rgba(255,255,255,.02)}
   .host-vorschau{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
   .host-vorschau h3{font-size:14px;margin:0 0 4px;color:var(--amber);text-transform:uppercase;letter-spacing:.06em}
+
+  /* FEATURE-005: Sichtbarer Tastaturfokus auch fuer alle <button>-Elemente,
+     nicht nur fuer Formularfelder (AK11) - insbesondere fuer die dynamisch
+     erzeugten Bewegen-Buttons im Spielbrett, die keine eigene Klasse tragen. */
+  button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+  /* FEATURE-005 (AK14, geklärte Frage 3): "Ruhiger Modus" ausschliesslich
+     automatisch ueber die Betriebssystem-Einstellung "Bewegung reduzieren" -
+     kein manueller Schalter im Spiel. Reduziert/deaktiviert die einzige
+     vorhandene Animation (.stage rise beim Seitenwechsel). */
+  @media (prefers-reduced-motion: reduce){
+    .stage{animation:none}
+  }
 </style>
 </head>
 <body>
@@ -108,6 +121,13 @@
   <div class="brand">FLOW <b>GAME</b></div>
   <a href="index.html" class="btn ghost" style="padding:8px 14px;font-size:13px;margin-left:auto">Zur Startseite</a>
 </div></div>
+<!-- FEATURE-005 (AK4/AK5): ruhiger, genereller Verbindungsstatus-Hinweis -
+     sichtbar unabhaengig davon, welches Panel gerade aktiv ist. -->
+<div class="hinweis info" id="verbindungs-hinweis" hidden role="status" style="max-width:1080px;margin:10px auto 0;text-align:center"></div>
+<!-- FEATURE-005 (AK16, geklärte Frage 2): markiert diesen Tab als nicht mehr
+     aktiv, sobald ein neuerer Tab/Fenster derselben Person uebernommen hat -
+     keine aktive Blockade, nur sichtbare Markierung. -->
+<div class="hinweis fehler" id="tab-inaktiv-hinweis" hidden role="status" style="max-width:1080px;margin:10px auto 0;text-align:center">Dieses Fenster ist nicht mehr aktiv – du hast das Spiel in einem neueren Fenster/Tab geöffnet. Bitte dort weiterspielen.</div>
 <div class="wrap">
   <div class="stage">
     <div class="hero">
@@ -251,6 +271,12 @@
 <script src="js/game/createGame.js"></script>
 <script src="js/game/joinGame.js"></script>
 <script src="js/game/hostSession.js"></script>
+<!-- FEATURE-005: Wiederbetreten fuer Spielende/Beobachtende + Zwei-Tabs-
+     Erkennung (teilnehmerSession.js) sowie Verbindungsstatus-Anzeige
+     (verbindungsStatus.js). Reihenfolge: teilnehmerSession.js braucht
+     window.FlowGame.joinGame, muss also nach joinGame.js stehen. -->
+<script src="js/game/teilnehmerSession.js"></script>
+<script src="js/game/verbindungsStatus.js"></script>
 <!-- FEATURE-002: Spielfeld + Runden 1-3. Reihenfolge wichtig - kartenBewegung.js
      liest window.FlowGame.STATIONEN (aus createGame.js) und
      rundenwechsel.js ruft window.FlowGame.starteRunde() (aus rundenStart.js)
@@ -286,6 +312,16 @@
   const teilnehmerListe = document.getElementById('teilnehmer-liste');
   const hostRundenstartBereich = document.getElementById('host-rundenstart-bereich');
   const btnRundeStarten = document.getElementById('btn-runde-starten');
+
+  // FEATURE-005: Verbindungsstatus-Anzeige (AK4/AK5) + Zwei-Tabs-Erkennung (AK16).
+  const verbindungsHinweis = document.getElementById('verbindungs-hinweis');
+  const tabInaktivHinweis = document.getElementById('tab-inaktiv-hinweis');
+  // Ein je Seitenaufruf (Tab/Fenster) eindeutiger Wert - "neuester Tab
+  // gewinnt" (geklärte Frage 2): jeder registriereAktivenTab()-Aufruf mit
+  // dieser eigenen tabId ueberschreibt einen zuvor registrierten Tab.
+  const eigeneTabId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : 'tab-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 
   // FEATURE-002: Spielbrett + Runden 1-3.
   const rundePanel = document.getElementById('runde-panel');
@@ -354,6 +390,38 @@
     return localStorage.getItem('flowGameHost:' + code);
   }
 
+  // FEATURE-005 (AK1-3, Pre-Mortem-Risiko 2): eigene, vom Host-Mechanismus
+  // getrennte localStorage-Schlüssel für Spielende/Beobachtende - so bleiben
+  // beide Zustände unabhängig korrekt bestehen, auch wenn dieselbe Person
+  // Host in Spiel A und Spielende/Beobachtende in Spiel B ist (AK8).
+  function speichereTeilnehmerSession(code, rolle, anzeigename) {
+    localStorage.setItem('flowGameTeilnehmer:' + code, JSON.stringify({ rolle, anzeigename }));
+    localStorage.setItem('flowGameLetzterTeilnehmerCode', code);
+  }
+  function geladeneTeilnehmerSession(code) {
+    const roh = localStorage.getItem('flowGameTeilnehmer:' + code);
+    if (!roh) return null;
+    try {
+      return JSON.parse(roh);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // FEATURE-005 (AK4/AK5): reine Anzeigelogik - wertet nur die vom Firestore-
+  // SDK ohnehin mitgelieferten Snapshot-Metadaten aus (kein neuer Server-
+  // Baustein, siehe src/game/verbindungsStatus.js).
+  function aktualisiereVerbindungsHinweis(metadata) {
+    if (!metadata) return;
+    const status = window.FlowGame.ermittleVerbindungsStatus({
+      fromCache: metadata.fromCache,
+      hasPendingWrites: metadata.hasPendingWrites,
+    });
+    const text = window.FlowGame.verbindungsStatusText(status);
+    verbindungsHinweis.textContent = text;
+    verbindungsHinweis.hidden = !text;
+  }
+
   tabErstellen.addEventListener('click', function () {
     tabErstellen.classList.add('aktiv');
     tabBeitreten.classList.remove('aktiv');
@@ -381,6 +449,12 @@
     eigeneRolle = rolle;
     aktuellerSpielCode = code;
     aktuelleDbInstanz = db;
+
+    // FEATURE-005 (AK16): dieser Tab meldet sich als der aktuell aktive Tab
+    // fuer diese Person in diesem Spiel - ein zuvor aktiver, aelterer Tab
+    // erkennt das ueber seinen eigenen teilnehmende/{uid}-Listener unten.
+    window.FlowGame.registriereAktivenTab({ code, uid: eigeneUid, tabId: eigeneTabId }, db)
+      .catch(function () { /* nicht kritisch - naechster Snapshot/Reload versucht es erneut */ });
 
     // BUGFIX (2026-07-19, live beim Runden-1-3-Test mit Chrome-Automatisierung
     // gefunden): Vorher wurde die GESAMTE teilnehmende-Sammlung mit einer
@@ -446,8 +520,14 @@
     db.collection('spiele').doc(code).collection('teilnehmende').doc(eigeneUid)
       .onSnapshot(function (docSnap) {
         if (docSnap.exists) {
-          verarbeiteTeilnehmerDoc(docSnap.id, docSnap.data());
+          const eigeneDaten = docSnap.data();
+          verarbeiteTeilnehmerDoc(docSnap.id, eigeneDaten);
           renderTeilnehmerListe();
+          // FEATURE-005 (AK16): neuester Tab gewinnt - hat ein anderer
+          // (neuerer) Tab dieselbe uid inzwischen als aktiv registriert,
+          // markiert sich dieser Tab selbst als getrennt/inaktiv. Keine
+          // aktive Blockade (geklärte Frage 2) - nur sichtbarer Hinweis.
+          tabInaktivHinweis.hidden = !(eigeneDaten.aktiverTab && eigeneDaten.aktiverTab !== eigeneTabId);
         }
       }, function (err) {
         zeigeFehler('Eigene Teilnahme konnte nicht geladen werden: ' + err.message);
@@ -470,7 +550,13 @@
   // ---- FEATURE-002: Spielbrett + Runden 1-3 -------------------------------
 
   function ueberwacheSpielUndRunden(db, code) {
-    db.collection('spiele').doc(code).onSnapshot(function (snap) {
+    // FEATURE-005 (AK4/AK5): includeMetadataChanges sorgt dafuer, dass dieser
+    // Listener auch dann erneut feuert, wenn sich NUR die Verbindungs-
+    // Metadaten aendern (z. B. Rueckkehr aus dem lokalen Zwischenspeicher),
+    // nicht nur bei tatsaechlichen Datenaenderungen - sonst wuerde die
+    // Anzeige bei einem reinen Reconnect ohne Datenaenderung nicht aktualisiert.
+    db.collection('spiele').doc(code).onSnapshot({ includeMetadataChanges: true }, function (snap) {
+      aktualisiereVerbindungsHinweis(snap.metadata);
       if (!snap.exists) return;
       const daten = snap.data();
       const aktuelle = daten.aktuelleRunde || null;
@@ -721,6 +807,14 @@
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = '→';
+            // FEATURE-005 (AK15): sprechende Bezeichnung fuer Screenreader
+            // statt nur des Pfeil-Symbols - benennt Karte, Herkunfts- und
+            // Zielposition explizit.
+            btn.setAttribute(
+              'aria-label',
+              karte.id.replace('karte-', 'Karte ') + ' weiterbewegen von '
+                + POSITION_LABELS[position] + ' zu ' + POSITION_LABELS[position + 1]
+            );
             btn.addEventListener('click', async function () {
               btn.disabled = true;
               try {
@@ -1086,6 +1180,42 @@
       }
     }
 
+    // FEATURE-005 (AK1-3, AK6-8): automatischer Rejoin für Spielende/
+    // Beobachtende, analog zum Host-Pfad oben, aber über einen eigenen,
+    // getrennten localStorage-Schlüssel (Pre-Mortem-Risiko 2) - beide Pfade
+    // beeinflussen sich dadurch nicht gegenseitig (AK8).
+    const letzterTeilnehmerCode = localStorage.getItem('flowGameLetzterTeilnehmerCode');
+    if (letzterTeilnehmerCode) {
+      const gespeicherteTeilnahme = geladeneTeilnehmerSession(letzterTeilnehmerCode);
+      if (gespeicherteTeilnahme) {
+        try {
+          const ergebnis = await window.FlowGame.restoreTeilnehmerSession(
+            {
+              code: letzterTeilnehmerCode,
+              rolle: gespeicherteTeilnahme.rolle,
+              anzeigename: gespeicherteTeilnahme.anzeigename,
+              uid: user.uid,
+            },
+            db
+          );
+          if (ergebnis.rolle !== 'stationenVoll') {
+            lobbyEigeneStation.textContent = ergebnis.station
+              ? 'Deine Station: ' + ergebnis.station
+              : 'Du bist als Beobachtende dabei.';
+            zeigeLobby(
+              db,
+              letzterTeilnehmerCode,
+              'Du bist ' + ROLLEN_LABEL[ergebnis.rolle] + ' in diesem Spiel.',
+              ergebnis.rolle
+            );
+            return;
+          }
+        } catch (err) {
+          // Code nicht mehr gültig/Spiel inaktiv – normal weiter zur Start-Auswahl.
+        }
+      }
+    }
+
     auswahlPanel.hidden = false;
 
     formErstellen.addEventListener('submit', async function (ev) {
@@ -1156,6 +1286,10 @@
           zeigeFehler('Alle Stationen wurden gerade in diesem Moment vergeben. Bitte Rolle wählen und erneut beitreten.');
           return;
         }
+        // FEATURE-005 (AK1-3): analog zu speichereHostSession() beim Host -
+        // ermöglicht den automatischen Rejoin beim nächsten Laden, ohne dass
+        // Code/Name/Rolle erneut eingegeben werden müssen.
+        speichereTeilnehmerSession(code, ergebnis.rolle, anzeigename);
         lobbyEigeneStation.textContent = ergebnis.station
           ? 'Deine Station: ' + ergebnis.station
           : 'Du bist als Beobachtende dabei.';
