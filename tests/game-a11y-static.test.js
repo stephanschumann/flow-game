@@ -85,3 +85,44 @@ describe('Szenario: "Ruhiger Modus" ausschliesslich automatisch über prefers-re
     expect(hatManuellenSchalter).toBe(false);
   });
 });
+
+describe('Szenario: Primärer Button erreicht WCAG-AA-Textkontrast (AK13) – Nachtrag nach echter Browser-Messung am 2026-07-20', () => {
+  // Ergänzt NACH der ursprünglichen BDD-Testplanung: Eine echte Kontrast-
+  // Messung im Live-Browser (getComputedStyle, keine Mustersuche) hat am
+  // 2026-07-20 ergeben, dass der Verlauf des primären Buttons (.btn.primary)
+  // mit weißem Text nur ca. 2,9–3,8:1 erreichte statt der geforderten 4,5:1
+  // (AK13). Das war ein vorbestehender Fehler (nicht durch dieses Ticket neu
+  // eingeführt), lag aber in dessen Scope ("gesamte Oberfläche"). Gefixt und
+  // ab jetzt hier automatisiert gegen Regression geschützt, weil eine reine
+  // Mustersuche (wie in den drei Szenarien oben) eine Kontrast-Verletzung
+  // nicht erkennen kann, ein Rechenwert schon.
+  function relLum(hex) {
+    const n = parseInt(hex.replace('#', ''), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  function contrastVsWhite(hex) {
+    const lighter = 1.0; // relative Luminanz von #fff
+    const darker = relLum(hex);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  test.each([
+    ['public/spiel.html', SPIEL_HTML_PFAD],
+    ['public/index.html', path.join(__dirname, '..', 'public', 'index.html')],
+  ])(
+    'Gegeben der primäre Button-Verlauf in %s, wenn beide Verlaufsfarben gegen weißen Text (#fff) berechnet werden, dann erreicht jede mindestens 4.5:1',
+    (_label, dateiPfad) => {
+      const inhalt = fs.readFileSync(dateiPfad, 'utf8');
+      const match = inhalt.match(/\.btn\.primary\{background:linear-gradient\(180deg,(#[0-9a-fA-F]{6}),(#[0-9a-fA-F]{6})\)/);
+      expect(match).not.toBeNull(); // Verlauf muss weiterhin in diesem Format existieren
+
+      const [, farbeOben, farbeUnten] = match;
+      expect(contrastVsWhite(farbeOben)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastVsWhite(farbeUnten)).toBeGreaterThanOrEqual(4.5);
+    }
+  );
+});

@@ -419,7 +419,19 @@ Kein Syntax-/Setup-Fehler beteiligt – jeder Fehlschlag ist entweder ein fehlen
 
 **Echte Fehler, die während der Umsetzung gefunden wurden:** keine – die Implementierung baute wie in der Spec vorgesehen rein additiv auf bestehendem, unverändertem Code auf; kein bestehendes Modul musste zur Fehlerbehebung angepasst werden.
 
-**Nicht automatisiert geprüft (siehe `tests/game-feature-005-manual-checks.test.js`, bewusst Platzhalter):** vollständiger Tastatur-Durchlauf ohne Maus (AK9/AK10), Farbkontrast-Messung mit Tool (AK13), Bedeutung nie nur über Farbe in Runde 4 (AK12, wartet auf FEATURE-004 „Done"), Rejoin mitten in laufender Runde 4 (AK6, Cross-Ticket mit FEATURE-004, ausdrücklich blockiert bis dort „Done"), echter Live-Reconnect-Test bei WLAN-Abbruch (AK4, kein steuerbarer Netzwerk-Toggle in der Sandbox) – alle wie in der Spec vorgesehen an Stephan bzw. an FEATURE-004 „Done" übergeben.
+**Nicht automatisiert geprüft (siehe `tests/game-feature-005-manual-checks.test.js`, bewusst Platzhalter):** vollständiger Tastatur-Durchlauf ohne Maus (AK9/AK10), Bedeutung nie nur über Farbe in Runde 4 (AK12, wartet auf FEATURE-004 „Done"), Rejoin mitten in laufender Runde 4 (AK6, Cross-Ticket mit FEATURE-004, ausdrücklich blockiert bis dort „Done"), echter Live-Reconnect-Test bei WLAN-Abbruch (AK4, kein steuerbarer Netzwerk-Toggle) – noch an Stephan bzw. an FEATURE-004 „Done" übergeben.
+
+---
+
+#### Live-Browser-Verifikation (Chrome-Automatisierung, 2026-07-20, nach Push `937eb35`)
+
+**Deploy bestätigt:** `https://flow-game-19f01.web.app/js/game/teilnehmerSession.js` live erreichbar, Inhalt stimmt mit dem gepushten Commit überein — Deploy-Pipeline lief erfolgreich durch.
+
+**Fokus-Stil (AK11) echt bestätigt:** Tab-Taste im Live-Browser gedrückt, sichtbarer blauer Fokus-Ring erscheint zuverlässig auf dem Primär-Button — kein reiner Quelltext-Check, echtes Rendering geprüft.
+
+**Echter Fund — Kontrast-Fehler (AK13), nicht durch Mustersuche erkennbar:** Per `getComputedStyle` im Live-Browser gemessen (nicht nur Code gelesen): Der primäre Button-Verlauf (`#5a97ff`→`#3f7ff0`, weißer Text) erreichte nur ca. **2,9–3,8:1** statt der geforderten 4,5:1 — ein vorbestehender Fehler (nicht durch dieses Ticket verursacht), aber im Scope von AK13 ("gesamte Oberfläche"). Mit Stephans Freigabe direkt behoben: Verlauf auf `#2b6fd8`→`#1a56c4` gedunkelt (4,81:1 bzw. 6,62:1 gegen Weiß, gleiche Blau-Familie), in `public/spiel.html` UND `public/index.html` (gleicher Button dort). Neuer automatisierter Regressionstest ergänzt in `tests/game-a11y-static.test.js` ("Primärer Button erreicht WCAG-AA-Textkontrast"), berechnet den Kontrast direkt aus den CSS-Verlaufsfarben nach WCAG-Formel — verhindert diese konkrete Regression künftig, ohne Emulator oder Browser. `npm run test:static:feature-005`-Äquivalent lokal in der Sandbox erneut ausgeführt: **6/6 Tests grün** (inkl. der 2 neuen Kontrast-Tests).
+
+**Status:** Contrast-Fix noch nicht committed/gepusht/deployed — steht als nächster Schritt aus. Stephan hat sich bewusst dagegen entschieden, das Ticket auf Basis des aktuellen Stands schon auf "Done" zu setzen; die verbliebenen manuellen Prüfungen (vollständiger Tastatur-Durchlauf mit echten Mitspielenden, echter WLAN-Reconnect) stehen noch aus.
 
 ## ✅ Done
 
