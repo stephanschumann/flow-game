@@ -2,11 +2,23 @@
  * FEATURE-001 – Browser-Version von src/game/joinGame.js. Siehe Hinweis in
  * public/js/game/createGame.js zur manuellen Synchronhaltung mit dem
  * Node-Modul (kein Bundler im Projekt).
+ *
+ * BUGFIX-001 (2026-07-21): Der Vorab-Check-Lesevorgang (Promise.all mit
+ * spielRef.get()/teilnehmerRef.get()) sowie die Transaktions-Lesevorgänge
+ * (tx.get(...)) laufen auf einem frischen Gerät unmittelbar nach
+ * signInAnonymously(), ohne bestehende Serververbindung – dort kann Firestore
+ * mit "Failed to get document because the client is offline." fehlschlagen
+ * (siehe Backlog.md "### BUGFIX-001"). Beide Stellen sind deshalb jetzt mit
+ * mitVerbindungsRetry() (aus verbindungsRetry.js, muss vorher als <script>
+ * eingebunden sein) abgesichert; alle anderen Fehler (ungültiger Code,
+ * Rolle, Stationen belegt, Spiel inaktiv) werden davon unverändert und ohne
+ * Verzögerung durchgereicht.
  */
 (function (global) {
   'use strict';
 
   const STATIONEN = global.FlowGame.STATIONEN;
+  const { mitVerbindungsRetry } = global.FlowGame;
   const INAKTIV_GRENZE_MS = 24 * 60 * 60 * 1000;
 
   function pruefeSpielExistiertUndAktiv(snap, code) {
@@ -22,7 +34,7 @@
     return spiel;
   }
 
-  async function joinGame({ code, anzeigename, rolle, uid }, db) {
+  async function joinGame({ code, anzeigename, rolle, uid }, db, retryOptionen = {}) {
     if (!anzeigename || !anzeigename.trim()) {
       throw new Error('Anzeigename ist erforderlich.');
     }
@@ -46,7 +58,13 @@
     // belegt" abgewiesen. Siehe src/game/joinGame.js für den ausführlichen
     // Kommentar (beide Dateien synchron halten).
     if (rolle === 'spielende') {
-      const [vorabSnap, teilnehmerVorabSnap] = await Promise.all([spielRef.get(), teilnehmerRef.get()]);
+      // BUGFIX-001: Retry NUR bei genau diesem transienten Verbindungsfehler
+      // (client is offline) – ein regulärer fachlicher Fehler wird von
+      // mitVerbindungsRetry() sofort und ohne Verzögerung durchgereicht.
+      const [vorabSnap, teilnehmerVorabSnap] = await mitVerbindungsRetry(
+        () => Promise.all([spielRef.get(), teilnehmerRef.get()]),
+        retryOptionen
+      );
       pruefeSpielExistiertUndAktiv(vorabSnap, code);
       if (!teilnehmerVorabSnap.exists) {
         const belegtVorab = vorabSnap.data().belegteStationen || {};
@@ -59,7 +77,13 @@
       }
     }
 
-    return db.runTransaction(async (tx) => {
+    // BUGFIX-001: Die gesamte Transaktion (nicht nur der Lesevorgang) wird bei
+    // genau diesem transienten Verbindungsfehler erneut versucht – unbedenklich,
+    // da Firestore-Transaktionen erst ganz am Ende, atomar committen. Schlägt
+    // tx.get() fehl, wurde noch NICHTS geschrieben. Ein wiederholter
+    // Transaktionsversuch bleibt zusätzlich durch die bestehende Idempotenz
+    // unten (teilnehmerSnap.exists, Bugfix vom 2026-07-20) abgesichert.
+    return mitVerbindungsRetry(() => db.runTransaction(async (tx) => {
       const [spielSnap, teilnehmerSnap] = await Promise.all([tx.get(spielRef), tx.get(teilnehmerRef)]);
       const spiel = pruefeSpielExistiertUndAktiv(spielSnap, code);
 
@@ -105,7 +129,7 @@
       tx.update(spielRef, aktualisierung);
 
       return { id: uid, rolle: effektiveRolle, anzeigename: anzeigename.trim(), station };
-    });
+    }), retryOptionen);
   }
 
   global.FlowGame.joinGame = joinGame;

@@ -9,7 +9,18 @@
  *  - spiele/{code}/teilnehmende/{uid}    ein Dokument pro Teilnehmendem
  *
  * uid kommt von firebase.auth().currentUser.uid nach anonymer Anmeldung.
+ *
+ * BUGFIX-001 (2026-07-21): Der Transaktions-Lesevorgang (tx.get(spielRef))
+ * unten läuft auf einem frischen Gerät unmittelbar nach signInAnonymously()
+ * und trägt strukturell dasselbe "client is offline"-Risiko wie in
+ * joinGame.js beschrieben (siehe Backlog.md "### BUGFIX-001") – deshalb
+ * ebenfalls mit mitVerbindungsRetry() abgesichert. Die CODE_KOLLISION-Retry-
+ * Schleife bleibt davon unberührt: mitVerbindungsRetry() erkennt
+ * CODE_KOLLISION nicht als transienten Verbindungsfehler und wirft ihn sofort
+ * unverändert weiter, sodass der äußere try/catch wie bisher greift.
  */
+
+const { mitVerbindungsRetry } = require('./verbindungsRetry');
 
 const STATIONEN = [
   'wareneingang',
@@ -42,7 +53,7 @@ function zufallsGeheimnis() {
   return ergebnis;
 }
 
-async function createGame({ hostAnzeigename, uid }, db) {
+async function createGame({ hostAnzeigename, uid }, db, retryOptionen = {}) {
   if (!hostAnzeigename || !hostAnzeigename.trim()) {
     throw new Error('Anzeigename ist erforderlich.');
   }
@@ -59,7 +70,7 @@ async function createGame({ hostAnzeigename, uid }, db) {
 
     try {
       // eslint-disable-next-line no-await-in-loop
-      await db.runTransaction(async (tx) => {
+      await mitVerbindungsRetry(() => db.runTransaction(async (tx) => {
         const bestehend = await tx.get(spielRef);
         if (bestehend.exists) {
           throw new Error('CODE_KOLLISION');
@@ -77,7 +88,7 @@ async function createGame({ hostAnzeigename, uid }, db) {
           anzeigename: hostAnzeigename.trim(),
           hostKennung,
         });
-      });
+      }), retryOptionen);
       return { code, hostSessionKennung: hostKennung };
     } catch (err) {
       if (err.message === 'CODE_KOLLISION') {

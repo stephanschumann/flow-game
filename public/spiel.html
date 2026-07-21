@@ -302,6 +302,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="/__/firebase/init.js"></script>
+<!-- BUGFIX-001: verbindungsRetry.js muss VOR createGame.js/joinGame.js stehen
+     (beide nutzen window.FlowGame.mitVerbindungsRetry direkt beim eigenen
+     IIFE-Aufruf) und ist gleichzeitig das erste Skript, das window.FlowGame
+     anlegt. -->
+<script src="js/game/verbindungsRetry.js"></script>
 <script src="js/game/createGame.js"></script>
 <script src="js/game/joinGame.js"></script>
 <script src="js/game/hostSession.js"></script>
@@ -479,6 +484,21 @@
     const text = window.FlowGame.verbindungsStatusText(status);
     verbindungsHinweis.textContent = text;
     verbindungsHinweis.hidden = !text;
+  }
+
+  // BUGFIX-001 (AK3, Pre-Mortem-Risiko 3): sichtbare Zwischenmeldung während
+  // eines automatischen Wiederholungsversuchs bei "client is offline" - am
+  // bestehenden Verbindungshinweis-Muster aus FEATURE-005 orientiert (nutzt
+  // dasselbe verbindungsHinweis-Element wie aktualisiereVerbindungsHinweis()
+  // oben), damit das Formular während der kurzen Wartezeit nicht wie
+  // eingefroren wirkt, statt einfach nichts sichtbar zu tun.
+  function zeigeVerbindungsRetryHinweis() {
+    verbindungsHinweis.textContent = 'Verbindung wird aufgebaut – bitte einen Moment warten …';
+    verbindungsHinweis.hidden = false;
+  }
+  function versteckeVerbindungsRetryHinweis() {
+    verbindungsHinweis.hidden = true;
+    verbindungsHinweis.textContent = '';
   }
 
   tabErstellen.addEventListener('click', function () {
@@ -1631,8 +1651,10 @@
               anzeigename: gespeicherteTeilnahme.anzeigename,
               uid: user.uid,
             },
-            db
+            db,
+            { onRetry: zeigeVerbindungsRetryHinweis }
           );
+          versteckeVerbindungsRetryHinweis();
           if (ergebnis.rolle !== 'stationenVoll') {
             lobbyEigeneStation.textContent = ergebnis.station
               ? 'Deine Station: ' + ergebnis.station
@@ -1646,6 +1668,7 @@
             return;
           }
         } catch (err) {
+          versteckeVerbindungsRetryHinweis();
           // Code nicht mehr gültig/Spiel inaktiv – normal weiter zur Start-Auswahl.
         }
       }
@@ -1658,10 +1681,19 @@
       versteckeFehler();
       const hostAnzeigename = document.getElementById('host-name').value;
       try {
-        const ergebnis = await window.FlowGame.createGame({ hostAnzeigename, uid: user.uid }, db);
+        // BUGFIX-001 (AK7): auch der Host-Erstellungspfad ist auf einem
+        // frischen Gerät demselben "client is offline"-Zeitfenster
+        // ausgesetzt wie der Beitritt.
+        const ergebnis = await window.FlowGame.createGame(
+          { hostAnzeigename, uid: user.uid },
+          db,
+          { onRetry: zeigeVerbindungsRetryHinweis }
+        );
+        versteckeVerbindungsRetryHinweis();
         speichereHostSession(ergebnis.code, ergebnis.hostSessionKennung);
         zeigeLobby(db, ergebnis.code, 'Du bist Host dieses Spiels. Teile den Code mit deiner Gruppe.', 'host');
       } catch (err) {
+        versteckeVerbindungsRetryHinweis();
         zeigeFehler(err.message);
       }
     });
@@ -1682,7 +1714,17 @@
         return;
       }
       try {
-        const snap = await db.collection('spiele').doc(code).get();
+        // BUGFIX-001: Auf einem frischen Gerät kann dieser Lesevorgang mit
+        // dem bekannten, transienten Verbindungsfehler ("client is offline")
+        // fehlschlagen, bevor die Firestore-Verbindung überhaupt steht -
+        // deshalb jetzt mit demselben Retry-Mechanismus wie beim
+        // eigentlichen Beitritt abgesichert, statt jeden Lesefehler
+        // unterschiedslos still aufzufangen (geklärte Frage 2).
+        const snap = await window.FlowGame.mitVerbindungsRetry(
+          function () { return db.collection('spiele').doc(code).get(); },
+          { onRetry: zeigeVerbindungsRetryHinweis }
+        );
+        versteckeVerbindungsRetryHinweis();
         if (!snap.exists) {
           rollenFeld.hidden = true;
           return;
@@ -1693,9 +1735,11 @@
         });
         rollenFeld.hidden = !alleBelegt;
       } catch (err) {
-        // Stiller Fallback bei Lesefehlern (z. B. unbekannter/inaktiver
-        // Code): die eigentliche, verständliche Fehlermeldung kommt beim
-        // tatsächlichen Beitrittsversuch weiter unten.
+        versteckeVerbindungsRetryHinweis();
+        // Stiller Fallback bei verbleibenden Lesefehlern (z. B. unbekannter/
+        // inaktiver Code, oder nach Ausschöpfen aller automatischen
+        // Verbindungs-Wiederholungsversuche): die eigentliche, verständliche
+        // Fehlermeldung kommt beim tatsächlichen Beitrittsversuch weiter unten.
         rollenFeld.hidden = true;
       }
     }
@@ -1715,7 +1759,16 @@
       const anzeigename = document.getElementById('beitritt-name').value;
       const rolleWahl = rollenFeld.hidden ? 'spielende' : document.getElementById('beitritt-rolle').value;
       try {
-        const ergebnis = await window.FlowGame.joinGame({ code, anzeigename, rolle: rolleWahl, uid: user.uid }, db);
+        // BUGFIX-001 (AK1/AK3/AK6): Beitritt auf einem frischen Gerät mit
+        // automatischem Wiederholungsversuch bei "client is offline" statt
+        // sofortigem Scheitern; alle anderen Fehlerfälle (unten im catch)
+        // bleiben unverändert und unverzögert.
+        const ergebnis = await window.FlowGame.joinGame(
+          { code, anzeigename, rolle: rolleWahl, uid: user.uid },
+          db,
+          { onRetry: zeigeVerbindungsRetryHinweis }
+        );
+        versteckeVerbindungsRetryHinweis();
         if (ergebnis.rolle === 'stationenVoll') {
           rollenFeld.hidden = false;
           zeigeFehler('Alle Stationen wurden gerade in diesem Moment vergeben. Bitte Rolle wählen und erneut beitreten.');
@@ -1730,6 +1783,7 @@
           : 'Du bist als Beobachtende dabei.';
         zeigeLobby(db, code, 'Du bist ' + ROLLEN_LABEL[ergebnis.rolle] + ' in diesem Spiel.', ergebnis.rolle);
       } catch (err) {
+        versteckeVerbindungsRetryHinweis();
         if (/belegt/i.test(err.message)) {
           rollenFeld.hidden = false;
         }

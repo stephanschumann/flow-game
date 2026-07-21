@@ -29,11 +29,19 @@
  * WICHTIG: Diese Datei muss inhaltlich synchron gehalten werden mit der
  * Browser-Kopie public/js/game/teilnehmerSession.js (Projekt-Konvention,
  * kein Bundler – siehe joinGame.js/hostSession.js).
+ *
+ * BUGFIX-001 (2026-07-21): Der eigene Vorab-Lesevorgang (teilnehmerRef.get())
+ * unten läuft auf einem frischen Gerät ebenfalls unmittelbar nach
+ * signInAnonymously() (automatischer Rejoin beim Laden, siehe
+ * public/spiel.html) und trägt dasselbe Zeitfenster-Risiko wie in
+ * joinGame.js beschrieben – deshalb ebenfalls mit mitVerbindungsRetry()
+ * abgesichert.
  */
 
 const { joinGame } = require('./joinGame');
+const { mitVerbindungsRetry } = require('./verbindungsRetry');
 
-async function restoreTeilnehmerSession({ code, rolle, anzeigename, uid }, db) {
+async function restoreTeilnehmerSession({ code, rolle, anzeigename, uid }, db, retryOptionen = {}) {
   if (!code || typeof code !== 'string') {
     throw new Error('Ungültiger oder unbekannter Code.');
   }
@@ -49,10 +57,12 @@ async function restoreTeilnehmerSession({ code, rolle, anzeigename, uid }, db) {
   // gleichzeitigen Personen ist das unkritisch, weil jede Person ihre eigene
   // uid/ihr eigenes Dokument prüft (siehe Testfall "Gleichzeitiges
   // Wiederbetreten zweier unterschiedlicher Personen").
-  const vorherSnap = await teilnehmerRef.get();
+  // BUGFIX-001: client is offline auf frischem Gerät möglich – daher mit
+  // Retry abgesichert, nicht nur der anschließende joinGame()-Aufruf.
+  const vorherSnap = await mitVerbindungsRetry(() => teilnehmerRef.get(), retryOptionen);
   const warRejoin = vorherSnap.exists;
 
-  const ergebnis = await joinGame({ code, anzeigename, rolle, uid }, db);
+  const ergebnis = await joinGame({ code, anzeigename, rolle, uid }, db, retryOptionen);
 
   return Object.assign({}, ergebnis, { warRejoin });
 }

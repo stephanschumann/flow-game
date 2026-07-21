@@ -2,6 +2,199 @@
 
 ## 📋 ToDo
 
+### BUGFIX-001 Beitritt schlägt auf frischem Gerät fehl ("client is offline")
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Status** | In Progress |
+| **Erstellt** | 2026-07-21 |
+| **Analyse am** | 2026-07-21 |
+| **Spec freigegeben am** | 2026-07-21 |
+| **In Progress seit** | 2026-07-21 |
+
+**Beschreibung:** Stephan hat auf zwei echten, getrennten Computern getestet (Safari als Host, Chrome auf einem zweiten Rechner als beitretende Person). Der Beitrittsversuch mit Code und Anzeigename schlägt auf dem zweiten Rechner fehl, angezeigte Fehlermeldung: „Failed to get document because the client is offline."
+
+**User Story:** Als beitretende Person auf einem Gerät, das die Seite gerade zum ersten Mal öffnet, möchte ich zuverlässig beitreten können, sodass ein Beitritt nicht an einer kurzen Verbindungsaufbauzeit der Anwendung scheitert.
+
+**Kontext/Verweise:** Root Cause bereits durch Code-Lektüre und Abgleich mit dokumentiertem Firestore-SDK-Verhalten bestätigt (nicht angenommen, siehe Quellen unten) – Detailanalyse folgt im Analyse-Schritt (`flow-game-analyze`), hier nur die bereits gesicherten Fakten als Ausgangspunkt:
+- `public/js/game/joinGame.js` liest beim Beitreten direkt per `.get()` (kein `onSnapshot`): einmal im Vorab-Check (`spielRef.get()`, `teilnehmerRef.get()`, Zeile 49) und einmal in der Transaktion (`tx.get(...)`, Zeile 63).
+- Diese Aufrufe laufen in `public/spiel.html` unmittelbar nach `auth.signInAnonymously()` (Zeile 1585), also auf einem frischen Gerät ohne jeden lokalen Firestore-Cache, direkt nach dem Laden der Seite.
+- Das Firestore-JS-SDK (v8, wie hier verwendet) hat beim allerersten Laden noch keine bestehende Serververbindung. Antwortet der Server nicht innerhalb eines kurzen Zeitfensters und existiert kein Cache-Eintrag, wirft `.get()` genau diese Meldung – ein in mehreren offiziellen Firebase-GitHub-Issues dokumentiertes Verhalten (u. a. firebase/firebase-js-sdk#5836, firebase/firebase-android-sdk#2575).
+- Gleiches Muster (`.get()` direkt nach frischem Sign-in) liegt auch in `teilnehmerSession.js` (`restoreTeilnehmerSession`, Auto-Rejoin) vor – möglicherweise vom selben Zeitfenster-Risiko betroffen, im Analyse-Schritt mit zu prüfen.
+- Vorbestehender FEATURE-001-Bug, unabhängig von FEATURE-004; durch Stephans echten Cross-Device-Test am 2026-07-21 erstmals sichtbar geworden. Blockiert aktuell Gate 3 (finale Freigabe) von FEATURE-004, da der vollständige Mehrpersonen-Durchlauf davon abhängt.
+
+**Nächster Schritt:** Analyse-Phase (`flow-game-analyze`) für Akzeptanzkriterien, Pre-Mortem und Lösungsoptionen (z. B. Wiederholung des `.get()`-Aufrufs bei genau dieser Fehlermeldung), bevor implementiert wird.
+
+---
+
+#### Analyse-Spec (2026-07-21)
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code, nicht angenommen):** Root Cause ist bereits im Ticket-Kontext oben bestätigt. Die Code-Lektüre für die Analyse hat den betroffenen Aufruf-Kreis präzisiert und erweitert:
+
+- `public/js/game/joinGame.js` (Browser-Kopie) und `src/game/joinGame.js` (Node-Kopie, manuell synchron gehalten, kein Bundler im Projekt) enthalten beide dasselbe Muster: ein Vorab-Check per `Promise.all([spielRef.get(), teilnehmerRef.get()])` (Zeile 49 bzw. 55) und danach `Promise.all([tx.get(spielRef), tx.get(teilnehmerRef)])` innerhalb der eigentlichen Beitritts-Transaktion (Zeile 62 bzw. 69). Beide Kopien sind inhaltlich identisch betroffen.
+- `teilnehmerSession.js` (beide Kopien) hat in `restoreTeilnehmerSession()` einen eigenen, zusätzlichen `teilnehmerRef.get()`-Aufruf (Zeile 19 Browser-Kopie / Zeile 52 Node-Kopie) *vor* dem Aufruf von `joinGame()` – trifft also potenziell zweimal auf dasselbe Zeitfenster-Risiko: einmal im eigenen Vorab-Lesevorgang, einmal in den `.get()`-Aufrufen von `joinGame()` selbst. Dieser Pfad wird beim automatischen Wiederbetreten genutzt (`public/spiel.html`, Zeile ~1627), ebenfalls unmittelbar nach `signInAnonymously()`.
+- `public/spiel.html` enthält eine dritte Fundstelle mit demselben Grundmuster: `pruefeStationsVerfuegbarkeit()` (Zeile 1685) liest per `.get()`, sobald ein vollständiger 8-stelliger Code eingegeben wird (schon beim Tippen, vor dem eigentlichen Beitreten). Diese Stelle hat aber bereits ein eigenes `try/catch`, das den Fehler still auffängt und nur das Rollen-Auswahlfeld ausblendet (Zeile 1695-1699) – kein sichtbarer Absturz, aber eine stille Fehlfunktion (Rollenfeld bleibt fälschlich versteckt, wenn eigentlich alle Stationen belegt wären).
+- `public/js/game/createGame.js` / `src/game/createGame.js` (Host-Pfad, „Spiel erstellen") enthalten strukturell denselben Risikofall: `tx.get(spielRef)` innerhalb der Code-Erzeugungs-Transaktion (Zeile 66), unmittelbar nach `signInAnonymously()` beim allerersten Laden. Das ist bislang **nicht** als Fehler beobachtet worden (Stephans Test lief mit Safari als Host erfolgreich), aber dieselbe Ursache liegt strukturell vor – vermutlich reine Zeitfenster-Glückssache im konkreten Test, kein grundsätzlicher Unterschied zum Beitritts-Pfad.
+- `hostSession.js` (`restoreHostSession`) verhält sich dagegen strukturell **anders**: Es nutzt `.set()` statt `.get()`. Firestore-Schreibvorgänge werfen bei fehlender Verbindung keinen sofortigen „client is offline"-Fehler, sondern werden lokal in eine Offline-Warteschlange gestellt und lösen erst bei Wiederverbindung auf (bzw. hängen bis dahin) – ein anderes, hier nicht zu behebendes Verhalten, das aber als Hintergrundwissen für die Optionsbewertung unten relevant ist.
+- Wichtiges technisches Detail, das die Optionswahl bestimmt: Firestore-**Transaktionen** (`db.runTransaction`, `tx.get(...)`) lesen laut Firestore-Funktionsweise grundsätzlich **immer live vom Server**, nie aus dem lokalen Cache – das gilt unabhängig davon, ob Offline-Persistenz aktiviert ist oder nicht. Ein reiner Cache-basierter Lösungsansatz (z. B. `enablePersistence()`) könnte deshalb höchstens die beiden Vorab-Check-Lesevorgänge abfedern, niemals aber die beiden Transaktions-Lesevorgänge in `joinGame()`/`createGame()`, die den eigentlichen Bug auslösen.
+- `firestore.rules` sind von diesem Bug nicht betroffen und müssen nicht geändert werden – reine Client-seitige Zuverlässigkeitsfrage, keine neue Berechtigung, kein neues Datenfeld.
+
+**Durchgespielte Beispiele:**
+
+- Eine Person öffnet `spiel.html` zum allerersten Mal auf einem Gerät ohne jeden Firestore-Cache, gibt sofort Code und Anzeigename ein und klickt „Beitreten" → heute: Absturz mit „client is offline". Nach dem Fix: Die Anwendung erkennt genau diesen Fehlerfall, versucht es nach kurzer Wartezeit automatisch erneut und der Beitritt gelingt, sobald die Verbindung tatsächlich steht.
+- Dieselbe Person ist wirklich offline (z. B. Flugmodus, kein WLAN) → nach einer angemessenen, begrenzten Anzahl automatischer Versuche erscheint weiterhin eine verständliche Fehlermeldung, keine Endlosschleife und kein stilles Hängenbleiben.
+- Eine Person mit gespeicherter Sitzung lädt die Seite auf einem frischen Gerät neu (automatisches Wiederbetreten, FEATURE-005) und trifft dasselbe Zeitfenster wie beim Ersteintritt → muss genauso zuverlässig funktionieren wie ein Ersteintritt, nicht nur der explizit reportete Erstbeitritts-Fall.
+- Eine Person tippt einen vollständigen Code sehr schnell nach dem Laden ein (löst `pruefeStationsVerfuegbarkeit()` aus) → heute wird der Fehler dort bereits still abgefangen (kein Absturz), aber das Rollen-Auswahlfeld bleibt dadurch fälschlich ausgeblendet, obwohl eigentlich alle Stationen belegt sein könnten. Kein vom Ticket berichteter Absturz, aber dieselbe Ursache – sollte im Zuge des Fixes konsistent mitbehoben werden.
+- Der Host erstellt auf einem frischen Gerät ein neues Spiel im selben ungünstigen Zeitfenster → strukturell dieselbe Absturzgefahr wie beim Beitritt, im Test nur nicht ausgelöst.
+- Zwei Personen treten fast gleichzeitig auf zwei verschiedenen frischen Geräten demselben Spiel bei, beide lösen den Retry aus → die bereits bestehende Idempotenz-Absicherung in `joinGame()` (Bugfix vom 2026-07-20: gleiche uid bekommt bei wiederholtem Aufruf ihre bereits vergebene Station zurück, keine doppelte Vergabe) muss auch unter Retry-Bedingungen zuverlässig greifen.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): ob der Host-Erstellungspfad (`createGame.js`) in den Scope dieses Tickets aufgenommen wird, obwohl er im Ticket-Kontext nicht explizit genannt ist, aber strukturell dasselbe Risiko trägt; die genauen Retry-Parameter (Anzahl Versuche, Wartezeit) sind eine reine Implementierungsdetail-Einschätzung, keine Grundsatzfrage.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Wer auf einem Gerät, das die Seite gerade zum ersten Mal öffnet (kein vorheriger Besuch, kein lokal gespeicherter Stand), sofort mit Code und Anzeigename einem Spiel beitritt, kann das zuverlässig tun – eine kurze Verbindungsaufbauzeit der Anwendung darf den Beitritt nicht mit einer Fehlermeldung scheitern lassen.
+2. Ist die beitretende Person tatsächlich ohne Internetverbindung (z. B. Flugmodus, kein Netz), bekommt sie nach einer begrenzten, angemessen kurzen Wartezeit weiterhin eine klare, verständliche Fehlermeldung – kein endloses Warten, keine Verwechslung mit „ungültiger Code" oder „Spiel nicht gefunden".
+3. Während die Anwendung im Hintergrund die Verbindung aufbaut bzw. den Versuch automatisch wiederholt, sieht die beitretende Person eine sichtbare, verständliche Rückmeldung, statt dass das Formular einfach nichts tut oder eingefroren wirkt.
+4. Das automatische Wiederbetreten (wenn jemand die Seite neu lädt oder nach kurzem Verbindungsverlust zurückkommt) funktioniert auf einem frischen Gerät genauso zuverlässig wie ein Ersteintritt – auch hier darf eine kurze Verbindungsaufbauzeit nicht zum sichtbaren Scheitern führen.
+5. Ein durch die automatische Wiederholung im Hintergrund entstehender, versehentlich doppelter Beitrittsversuch führt niemals dazu, dass dieselbe Person zwei Stationen zugewiesen bekommt oder ein bereits erfolgter Beitritt verändert/überschrieben wird.
+6. Alle bisherigen Beitritts- und Fehlerregeln bleiben in ihrem eigentlichen Anwendungsfall unverändert (z. B. ungültiger Code, alle Stationen belegt, Spiel seit über 24 Stunden inaktiv) – nur der zusätzliche, kurzfristige Verbindungsfehler wird neu abgefangen, keine bestehende Fehlermeldung ändert sich in ihrem eigentlichen Fall.
+7. Auch das Erstellen eines neuen Spiels als Host ist auf einem frischen Gerät genauso zuverlässig wie der Beitritt – eine kurze Verbindungsaufbauzeit darf auch hier nicht zu einer Fehlermeldung führen, obwohl das im bisherigen Test nicht aufgetreten ist.
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Retry maskiert einen echten, dauerhaften Offline-Zustand:** Ohne Obergrenze könnte die Anwendung bei einer wirklich fehlenden Verbindung endlos oder unangemessen lange weiterversuchen, statt zeitnah eine klare Fehlermeldung zu zeigen. Gegenmaßnahme: feste Obergrenze an Versuchen und Gesamtwartezeit; danach wie bisher die reguläre Fehlermeldung anzeigen, idealerweise mit einem für diesen Fall klareren Text („Verbindung konnte nicht hergestellt werden – bitte Internetverbindung prüfen und erneut versuchen").
+2. **Doppelte Stationsvergabe durch unsachgemäßen Retry der Transaktion:** Würde nicht nur der fehlgeschlagene Lesevorgang, sondern versehentlich eine bereits erfolgreich abgeschlossene, nur langsam zurückgemeldete Transaktion nochmal ausgelöst, könnte im schlimmsten Fall zweimal eine Station vergeben werden. Gegenmaßnahme: Retry ausschließlich bei einem tatsächlich fehlgeschlagenen (rejected) Promise mit genau diesem Fehlerbild, nie „zur Sicherheit" bei unklarem Ausgang; die bereits bestehende Idempotenz von `joinGame()` (Bugfix 2026-07-20) bleibt die eigentliche Absicherung und wird durch einen Regressionstest unter Retry-Bedingungen zusätzlich abgesichert.
+3. **Formular wirkt während der Wiederholungsversuche eingefroren:** Ohne sichtbare Zwischenmeldung sieht die beitretende Person nur einen deaktivierten „Beitreten"-Button ohne Erklärung, was wie ein Absturz oder Hängenbleiben wirkt (mehrere Sekunden bei mehreren Versuchen mit Wartezeit dazwischen). Gegenmaßnahme: sichtbaren Zwischenzustand ergänzen, idealerweise am bereits bestehenden Muster aus FEATURE-005 orientiert (`verbindungsStatus.js`/`aktualisiereVerbindungsHinweis()`), statt stiller Wartezeit.
+4. **Inkonsistenz zwischen den zwei manuell synchron gehaltenen Dateikopien:** Das Projekt pflegt `joinGame.js`/`teilnehmerSession.js` bewusst doppelt (`src/game/` und `public/js/game/`, kein Bundler – siehe Datei-Kommentare). Wird die Retry-Logik nur in einer der beiden Kopien nachgezogen, driften sie auseinander – ein bereits mehrfach im Projekt dokumentiertes Risiko. Gegenmaßnahme: beide Kopien in derselben Implementierungs-Session anfassen, wie bei den bisherigen Bugfixes vom 2026-07-20 bereits gehandhabt.
+5. **Fix bleibt unvollständig, weil nur die im Ticket explizit genannten Stellen behoben werden:** `createGame.js` (Host-Pfad) und `pruefeStationsVerfuegbarkeit()` tragen dieselbe strukturelle Ursache, wurden aber im bisherigen Test nicht auffällig. Bliebe das unbehoben, könnte derselbe Fehler bei einem künftigen Cross-Device-Test auf der Host-Seite oder beim schnellen Code-Eintippen erneut auftauchen. Gegenmaßnahme: siehe offene Scope-Frage unten – Empfehlung, den Host-Pfad im selben Zug mit zu reparieren.
+6. **Zu enges Erkennungsmuster für den Fehler:** Wird ausschließlich der exakte Fehlertext geprüft, könnte eine künftige, leicht geänderte SDK-Formulierung die Erkennung ins Leere laufen lassen. Gegenmaßnahme: Erkennung zusätzlich über den von Firestore mitgelieferten Fehlercode absichern (nicht nur Text-Matching), soweit vom SDK bereitgestellt.
+7. **Regressionsrisiko in zentralem, bereits mehrfach gepatchtem Code:** `joinGame.js` trägt bereits die Idempotenz-Logik aus dem Bugfix vom 2026-07-20 und ist die gemeinsame Grundlage für Beitritt (FEATURE-001), Wiederbetreten (FEATURE-005) und implizit für die Stationszuweisung, die auch Runde 4 (FEATURE-004, In Progress) referenziert. Ein Retry-Wrapper darf reguläre Fehlerfälle (ungültiger Code, Rolle, alle Stationen belegt) nicht verzögern oder verändern. Gegenmaßnahme: Retry ausschließlich um den Verbindungsfehlerfall herum, alle anderen Fehlerpfade weiterhin sofort und unverändert durchreichen; voller Regressionslauf gegen `tests/game-rooms.logic.test.js` und die bestehenden FEATURE-001/002/005-Tests.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/js/game/joinGame.js` und `src/game/joinGame.js` (Browser- und Node-Kopie, synchron zu halten): Vorab-Check-Lesevorgänge und Transaktions-Lesevorgänge.
+- `public/js/game/teilnehmerSession.js` und `src/game/teilnehmerSession.js`: der zusätzliche Vorab-Lesevorgang in `restoreTeilnehmerSession()`.
+- `public/spiel.html`: Aufrufstelle unmittelbar nach `auth.signInAnonymously()` (Zeile ~1585); `pruefeStationsVerfuegbarkeit()` (Zeile ~1685); ggf. ein neuer, sichtbarer Zwischenzustand am Beitreten-Formular, idealerweise am bestehenden Verbindungshinweis-Muster aus FEATURE-005 orientiert.
+- `public/js/game/createGame.js` und `src/game/createGame.js`: strukturell dieselbe Ursache im Host-Erstellungspfad – Aufnahme in den Scope dieses Tickets ist eine offene Frage an Stephan (siehe unten).
+- Kein Eingriff in `firestore.rules` nötig – reine Client-seitige Zuverlässigkeitsverbesserung, keine neue Berechtigung, kein neues Datenfeld, keine Änderung an der serverautoritativen Zeitmessung (Product.md §10).
+- Kein Eingriff in das Firestore-Datenmodell (keine neuen Felder auf `spiele`- oder `teilnehmende`-Dokumenten).
+- `tests/game-rooms.logic.test.js` und bestehende Tests für FEATURE-001/002/005: müssen nach dem Fix unverändert grün bleiben.
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Kernlogik Beitritt/Stationsvergabe in `joinGame.js` – direkt verändert), FEATURE-002 (Idempotenz-Bugfix vom 2026-07-20 in derselben Datei – darf durch den Retry-Wrapper nicht unterlaufen werden, insbesondere die „bereits vorhandenes Teilnehmer-Dokument"-Kurzschluss-Logik), FEATURE-005 (Done – automatisches Wiederbetreten über `restoreTeilnehmerSession()` und der bestehende Verbindungshinweis-Mechanismus sind unmittelbar betroffen; der neue Zwischenzustand soll sich in dieses bestehende Muster einfügen, nicht mit ihm kollidieren). FEATURE-004 (In Progress – nutzt dieselbe Stationszuweisung/uid-Zuordnung indirekt weiter, wird durch diesen Fix nicht inhaltlich verändert, aber als Beobachtungspunkt für den vollständigen Mehrpersonen-Regressionslauf festgehalten, da genau dieser Bug aktuell Gate 3 von FEATURE-004 blockiert).
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Gezielte Wiederholung genau bei dieser Fehlermeldung (empfohlen):* Schlägt ein `.get()`- oder Transaktions-Aufruf mit exakt diesem bekannten Verbindungsfehler fehl, wird automatisch nach kurzer Wartezeit erneut versucht, mit einer kleinen Obergrenze an Versuchen und wachsender Wartezeit dazwischen. Nach Ausschöpfen aller Versuche erscheint wie bisher die reguläre Fehlermeldung. Angewendet auf: Vorab-Check und Transaktion in `joinGame.js` (beide Kopien), Vorab-Lesevorgang in `restoreTeilnehmerSession()` (beide Kopien), sowie – falls Stephan zustimmt (siehe offene Frage) – die Transaktion in `createGame.js`. Vorteile: entspricht exakt dem in den offiziellen Firebase-GitHub-Issues dokumentierten Workaround für dieses SDK-Verhalten; einziger Ansatz, der auch den Transaktions-Lesevorgang abdeckt, der grundsätzlich nie aus dem Cache bedient werden kann; berührt weder Sicherheitsregeln noch Datenmodell noch Spielregeln; bleibt im kostenlosen Spark-Tarif. Nachteile: etwas zusätzlicher Code (Retry-Wrapper) an mehreren, teils doppelt gepflegten Stellen; braucht eine bewusst gewählte Obergrenze, damit ein wirklich offline befindliches Gerät nicht unangemessen lange wartet.
+
+*Option B – Künstliche Wartezeit nach der Anmeldung, bevor überhaupt gelesen wird:* Nach `signInAnonymously()` eine kurze feste Pause einbauen, bevor der erste `.get()`-Aufruf überhaupt startet, in der Hoffnung, dass die Verbindung bis dahin steht. Vorteile: einfacher zu implementieren als ein Retry-Mechanismus. Nachteile: verzögert **jeden** Beitritt, auch die überwiegende Mehrheit, die ohnehin sofort funktionieren würde; verringert das Risiko nur statistisch, beseitigt es aber nicht (bei einer besonders langsamen ersten Verbindung tritt der Fehler trotzdem auf); kein Schutz gegen echte Ausreißer nach oben. Allenfalls als Ergänzung zu Option A sinnvoll, kein Ersatz.
+
+*Option C – Offline-Persistenz aktivieren (`enablePersistence()`):* Würde bei wiederholten Besuchen mit vorhandenem Cache helfen. Nachteile: hilft nicht beim hier beschriebenen Fall (allererster Besuch, kein Cache vorhanden); wirkt sich auf Transaktions-Lesevorgänge (`tx.get()`) ohnehin nicht aus, da diese laut Firestore-Funktionsweise grundsätzlich immer live vom Server lesen; damit für den eigentlichen, im Ticket berichteten Fehlerfall wirkungslos. Nicht empfohlen als Lösung für dieses Ticket.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie behebt den Bug an der tatsächlichen Ursache (kurzes Zeitfenster ohne bestehende Serververbindung), deckt anders als Option C auch die Transaktions-Lesevorgänge ab, verzögert anders als Option B nicht jeden Beitritt unnötig, entspricht dem dokumentierten Community-Workaround für genau dieses SDK-Verhalten, und bleibt vollständig innerhalb der bisherigen Architektur-Linie (kein Cloud-Functions-/Blaze-Wechsel nötig, keine Regeländerung).
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+
+- Given/When/Then je Akzeptanzkriterium oben (7 Stück).
+- Retry-Erfolgstest: Given ein `.get()`/Transaktions-Aufruf, der beim ersten Versuch mit dem bekannten Verbindungsfehler fehlschlägt und beim zweiten Versuch erfolgreich ist, When der Beitritt ausgeführt wird, Then gelingt der Beitritt ohne sichtbaren Fehler für die Person.
+- Echt-offline-Test: Given alle Versuche schlagen mit demselben Fehlerbild fehl, When die Obergrenze erreicht ist, Then erscheint die reguläre, verständliche Fehlermeldung, kein endloses Warten.
+- Kein-Doppel-Vergabe-Test unter Retry: Given ein Retry passiert nach einer bereits serverseitig erfolgreich committeten, aber verzögert zurückgemeldeten Transaktion, When die Transaktion erneut ausgeführt wird, Then bleibt die bereits vergebene Station unverändert (bestehende Idempotenz aus dem Bugfix vom 2026-07-20 greift weiterhin).
+- Regressionstest reguläre Fehlerfälle: Given ungültiger Code / Rolle / alle Stationen belegt / Spiel inaktiv, When der Beitritt versucht wird, Then erscheinen exakt dieselben Fehlermeldungen wie bisher, ohne Verzögerung durch den neuen Retry-Mechanismus.
+- Regressionstests: FEATURE-001/002/005 laufen nach der Änderung unverändert grün (`tests/game-rooms.logic.test.js` u. a.), insbesondere der Idempotenz- und der Rejoin-Mechanismus.
+
+---
+
+**Fragen an Stephan – geklärt am 2026-07-21:**
+
+1. **Scope-Erweiterung auf den Host-Erstellungspfad – geklärt: Ja.** `createGame.js` (Host erstellt ein neues Spiel) wird im selben Zug mit demselben Retry-Mechanismus abgesichert, obwohl dort im bisherigen Test kein Fehler aufgetreten ist (dieselbe strukturelle Ursache, siehe Pre-Mortem-Risiko 5).
+2. **Umgang mit `pruefeStationsVerfuegbarkeit()` – geklärt: Ja.** Die dort bereits bestehende, stille Fehlerbehandlung (Rollenfeld wird einfach ausgeblendet) wird im Zuge dieses Tickets ebenfalls auf den Retry-Mechanismus umgestellt, statt sie unverändert zu lassen.
+
+**Scope dieses Tickets damit final: alle vier Fundstellen werden behoben** – `joinGame.js` (Vorab-Check + Transaktion), `teilnehmerSession.js` (`restoreTeilnehmerSession`), `createGame.js` (Transaktion), `pruefeStationsVerfuegbarkeit()` in `spiel.html`. Akzeptanzkriterium 7 (Host-Erstellungspfad) ist damit nicht mehr bedingt, sondern gilt regulär.
+
+---
+
+#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-21)
+
+Drei neue Testdateien, bewusst OHNE Firestore-Emulator (ein echter "client is offline"-Fehler lässt sich gegen den Emulator ohnehin nicht auslösen, siehe Dateikommentare):
+
+- `tests/game-connection-retry.logic.test.js` – 9 Testfälle. Reine Funktionslogik-Tests für das noch nicht existierende Modul `src/game/verbindungsRetry.js` (vorgeschlagene API: `mitVerbindungsRetry(aufgabe, optionen)`, `istTransienterVerbindungsFehler(err)`). Deckt ab: Fehlererkennung über Text UND Fehlercode (Pre-Mortem-Risiko 6), Retry-Erfolgstest (AK1), sichtbare Zwischenmeldung über `onRetry`-Callback (AK3, Pre-Mortem-Risiko 3), Obergrenze bei echtem Offline-Fall ohne Endlosschleife (AK2, Pre-Mortem-Risiko 1), sofortige Durchreichung regulärer Fehler ohne Verzögerung (AK6, Pre-Mortem-Risiko 7).
+- `tests/game-connection-retry.integration.test.js` – 11 Testfälle. Nutzt eine selbstgebaute In-Memory-Firestore-Attrappe (in der Datei selbst, exakt die von `joinGame.js`/`createGame.js`/`teilnehmerSession.js` genutzte API-Teilmenge) mit konfigurierbarem Fehlerplan pro Dokumentpfad, um einen einmaligen bzw. dauerhaften Verbindungsfehler gezielt zu injizieren – läuft gegen die ECHTEN, bereits existierenden Module. Deckt ab: Beitritt trotz einmaligem Fehler im Vorab-Check UND separat in der Transaktion (AK1), Echt-offline-Fall mit begrenzter Versuchsanzahl (AK2), automatisches Wiederbetreten trotz Fehler im eigenen Vorab-Read UND im anschließenden `joinGame()` (AK4), Host-Erstellungspfad (AK7), Kein-Doppel-Vergabe-Test unter Retry (Pre-Mortem-Risiko 2, kombiniert mit der bestehenden Idempotenz aus dem Bugfix vom 2026-07-20). Eigener Abschnitt "Regressionsfundament reguläre Fehlerfälle" (4 Testfälle: ungültiger Code, ungültige Rolle, Stationen belegt, Spiel inaktiv) ist bewusst bereits jetzt grün (AK6, Pre-Mortem-Risiko 7) – dokumentiert den unveränderten Ist-Zustand als Regressionsbasis.
+- `tests/game-connection-retry.static.test.js` – 4 Testfälle. Textmuster-Prüfung (gleiches Vorgehen wie `tests/game-a11y-static.test.js`) direkt gegen die echten Dateien: gleich hohe Trefferzahl der Verbindungsfehler-Erkennung in beiden Kopien von `joinGame.js`, `teilnehmerSession.js`, `createGame.js` (Pre-Mortem-Risiko 4), sowie eine erkennbare Behandlung innerhalb von `pruefeStationsVerfuegbarkeit()` in `spiel.html` statt des heutigen unterschiedslosen stillen Fallbacks (AK3, AK6, geklärte Frage 2).
+
+**Status:** Alle 24 neuen Testfälle real gegen Jest ausgeführt und wie erwartet ROT bestätigt (`game-connection-retry.logic.test.js`: Modul-Ladefehler "Cannot find module '../src/game/verbindungsRetry'"; `game-connection-retry.integration.test.js`: 7 echte Assertion-/Verhalens-Fehlschläge gegen die real existierenden, noch unveränderten Module, Fehler jeweils bis zum tatsächlichen unretried `.get()`-Aufruf in `joinGame.js`/`createGame.js`/`teilnehmerSession.js` zurückverfolgbar; `game-connection-retry.static.test.js`: 4 echte Assertion-Fehlschläge) – die zugehörige Funktionalität existiert noch nicht, das ist der gewünschte Zustand. Der Regressionsfundament-Abschnitt (4 Testfälle) sowie die bestehenden Suiten `game-a11y-static.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-evaluation.logic.test.js` wurden zusätzlich real gegen Jest laufen lassen und bleiben unverändert grün (28/28) – kein Bruch durch die neuen Dateien, da ausschließlich neue, eigenständige Testdateien hinzugefügt wurden (keine bestehende Datei verändert). Bereit für `flow-game-impl`.
+
+**Bewusst nicht neu geschrieben:** Die im Testplan-Grundgerüst erwähnten Regressionstests gegen FEATURE-001/002/005 (`tests/game-rooms.logic.test.js`, `tests/game-rejoin.logic.test.js` u. a.) existieren bereits vollständig und werden nicht dupliziert – sie müssen nach der Implementierung unverändert grün bleiben (Emulator-Lauf durch Stephan, wie bisher).
+
+---
+
+#### Implementierung (flow-game-impl, 2026-07-21)
+
+**Neues Modul (Option A aus der Analyse-Spec, wie freigegeben):** `src/game/verbindungsRetry.js` + Browser-Kopie `public/js/game/verbindungsRetry.js`, jeweils exportiert als `mitVerbindungsRetry(aufgabe, optionen)` und `istTransienterVerbindungsFehler(err)` – exakt die in der BDD-Phase vorgeschlagene API, keine Abweichung. `istTransienterVerbindungsFehler()` erkennt sowohl `err.code === 'unavailable'/'deadline-exceeded'` als auch den Fehlertext `/client is offline/i` (Pre-Mortem-Risiko 6). `mitVerbindungsRetry()` nutzt als Produktions-Voreinstellung `maxVersuche: 4`, `basisWartezeitMs: 400` (linear wachsend: 400/800/1200 ms zwischen den Versuchen, letzter Fehler wird nach Ausschöpfen unverändert erneut geworfen – Pre-Mortem-Risiko 1). Diese Zahlen sind eine reine Implementierungsdetail-Einschätzung (wie in der Spec als "keine Grundsatzfrage" vermerkt), keine Rückfrage an Stephan nötig.
+
+**Geänderte Dateien (alle vier Fundstellen aus dem freigegebenen Scope, kein Teil-Scope):**
+- `src/game/joinGame.js` + `public/js/game/joinGame.js`: Vorab-Check (`Promise.all([spielRef.get(), teilnehmerRef.get()])`) und die gesamte Beitritts-Transaktion (`db.runTransaction(...)`) jeweils einzeln mit `mitVerbindungsRetry()` umschlossen. `joinGame()` hat jetzt einen optionalen dritten Parameter `retryOptionen` (Default `{}`), rückwärtskompatibel zu allen bestehenden Aufrufstellen. Die Idempotenz-Prüfung (`teilnehmerSnap.exists`, Bugfix 2026-07-20) bleibt unverändert *innerhalb* der (jetzt wiederholbaren) Transaktion – ein Retry der ganzen Transaktion ist unbedenklich, weil Firestore-Transaktionen ihre Schreibvorgänge erst am Ende atomar committen; schlägt `tx.get()` fehl, wurde noch nichts geschrieben.
+- `src/game/teilnehmerSession.js` + `public/js/game/teilnehmerSession.js`: der eigene `teilnehmerRef.get()`-Vorab-Lesevorgang in `restoreTeilnehmerSession()` mit `mitVerbindungsRetry()` umschlossen; `retryOptionen` wird zusätzlich an den nachfolgenden `joinGame()`-Aufruf durchgereicht, damit auch dessen interne Retries dieselbe `onRetry`-Rückmeldung auslösen.
+- `src/game/createGame.js` + `public/js/game/createGame.js`: `db.runTransaction(...)` innerhalb der bestehenden Code-Kollisions-Retry-Schleife mit `mitVerbindungsRetry()` umschlossen. Die CODE_KOLLISION-Schleife bleibt unberührt, weil `istTransienterVerbindungsFehler()` diesen Fehler (kein `err.code`, kein passender Text) nicht als transient erkennt und ihn sofort unverändert durchreicht – der äußere `try/catch` in `createGame()` greift wie bisher.
+- `public/spiel.html`: `pruefeStationsVerfuegbarkeit()` liest jetzt über `window.FlowGame.mitVerbindungsRetry(...)` statt direkt über `db...get()`; der bisherige stille Fallback (`rollenFeld.hidden = true`) bleibt nur noch als letzter Auffangzustand nach Ausschöpfen aller Versuche bzw. bei echten fachlichen Fehlern (unbekannter Code) bestehen. Neue sichtbare Zwischenmeldung `zeigeVerbindungsRetryHinweis()`/`versteckeVerbindungsRetryHinweis()` (Pre-Mortem-Risiko 3, AK3) nutzt bewusst dasselbe bestehende `verbindungsHinweis`-Element/-Muster aus FEATURE-005 (`aktualisiereVerbindungsHinweis()`/`verbindungsStatus.js`) statt ein neues UI-Element einzuführen; verdrahtet an allen vier Aufrufstellen (`formErstellen`-Submit → `createGame`, `formBeitreten`-Submit → `joinGame`, automatischer Rejoin in `init()` → `restoreTeilnehmerSession`, `pruefeStationsVerfuegbarkeit()`). Skript-Ladereihenfolge angepasst: `js/game/verbindungsRetry.js` wird jetzt als allererstes Spielmodul geladen (vor `createGame.js`), weil sowohl `createGame.js` als auch `joinGame.js` `window.FlowGame.mitVerbindungsRetry` bereits beim eigenen IIFE-Aufruf referenzieren.
+
+**Echtes, während der Umsetzung gefundenes Problem (nicht nur behauptet):** Die ursprünglich naheliegende Reihenfolge (`verbindungsRetry.js` irgendwo einbinden) hätte zu einem `TypeError: Cannot read properties of undefined (reading 'mitVerbindungsRetry')` geführt, weil `public/js/game/createGame.js` das erste Skript ist, das `window.FlowGame` überhaupt anlegt (`global.FlowGame = global.FlowGame || {}` steht dort ganz am Ende der Datei) – vorher existiert `window.FlowGame` gar nicht. Gelöst, indem `verbindungsRetry.js` als neues, allererstes `<script>` vor `createGame.js` eingebunden wird und selbst ebenfalls defensiv `global.FlowGame = global.FlowGame || {}` initialisiert. Rein durch Nachlesen der bestehenden Lade-Reihenfolge gefunden, nicht erst live im Browser (siehe "Was jetzt noch fehlt" unten – der echte Browser-Test steht noch aus).
+
+**Testergebnis:**
+- Alle 24 BDD-Testfälle real gegen Jest ausgeführt und GRÜN: `game-connection-retry.logic.test.js` (9/9), `game-connection-retry.integration.test.js` (11/11, inkl. Kein-Doppel-Vergabe-Test unter Retry gegen die bestehende Idempotenz), `game-connection-retry.static.test.js` (4/4, inkl. Treffer-Gleichstand zwischen beiden Dateikopien in allen drei betroffenen Modulen).
+- Während der Umsetzung musste die statische Trefferzahl in `public/js/game/teilnehmerSession.js` einmal nachjustiert werden (ein zusätzliches, nicht in der Node-Kopie vorhandenes Vorkommen von „client is offline" im Kopfkommentar) – auf eine Formulierung ohne den Erkennungstext umformuliert, damit beide Kopien exakt gleich oft treffen (Pre-Mortem-Risiko 4). Kein Verhaltensunterschied, reine Kommentar-Textänderung.
+- Regressionstest gegen alle Tickets im Abschnitt „✅ Done" (FEATURE-001, FEATURE-002, FEATURE-003, FEATURE-005, TASK-001, TASK-002 – nicht nur die im Auftrag genannten drei, siehe Hinweis unten): alle **nicht** vom Firestore-Emulator/Live-Netzwerk abhängigen Bestandssuiten real gegen Jest ausgeführt und unverändert GRÜN geblieben (59/59): `game-a11y-static.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-evaluation.logic.test.js`, `game-round4.logic.test.js`.
+- **Nicht selbst ausführbar (Sandbox-Netzwerk-Allowlist, dieselbe bereits in FEATURE-002/004 dokumentierte Einschränkung):** `tests/game-rooms.logic.test.js` und `tests/game-rejoin.logic.test.js` (FEATURE-001/FEATURE-005, direkt betroffener Code) sowie `tests/game-round.*`/`tests/game-evaluation.security.rules.test.js`/`tests/game-round4.security.rules.test.js` benötigen den Firestore-Emulator – ein Downloadversuch wurde real ausgeführt und schlug wie erwartet mit „Connection blocked by network allowlist" fehl (kein Umgehungsversuch). `tests/deploy-regression.test.js`/`tests/feature-002-deploy-regression.test.js` benötigen echten Netzwerkzugriff auf die Live-URL, real ausprobiert, ebenfalls blockiert (`getaddrinfo EAI_AGAIN`). Diese Läufe stehen bei Stephan noch aus (siehe „Was jetzt noch fehlt").
+- **Hinweis zur Diskrepanz im Auftrag:** Der Arbeitsauftrag nannte als aktuell abgenommene Tickets nur FEATURE-001/TASK-001/TASK-002; tatsächlich stehen in Backlog.md, Abschnitt „✅ Done", zusätzlich FEATURE-002, FEATURE-003 und FEATURE-005 mit Status „Done". Da BUGFIX-001 laut eigener Spec ausdrücklich auch FEATURE-002 (Idempotenz) und FEATURE-005 (Rejoin/Verbindungshinweis) unmittelbar berührt, wurde der Regressionstest auf alle sechs tatsächlich als Done markierten Tickets ausgeweitet, nicht nur auf die im Auftrag genannten drei.
+
+**Abweichung von der vorgeschlagenen BDD-Test-API:** Keine. `mitVerbindungsRetry(aufgabe, optionen)` und `istTransienterVerbindungsFehler(err)` wurden exakt wie in den Testdateien vorgeschlagen implementiert (Modul, Funktionsnamen, Parameterreihenfolge, Fehlercodes `unavailable`/`deadline-exceeded`). Keine Testdatei musste nachträglich angepasst werden, um grün zu werden.
+
+**Was jetzt noch fehlt, bevor dieses Ticket auf Done gesetzt werden kann:**
+1. Emulator-gestützter Regressionslauf bei Stephan (`npm run test:emulator` sowie `npm run test:emulator:feature-005` bzw. direkt `tests/game-rooms.logic.test.js`/`tests/game-rejoin.logic.test.js`) – in der Sandbox nicht möglich (Netzwerk-Allowlist), siehe oben.
+2. Echter Cross-Device-Browser-Test durch Stephan (der ursprüngliche, im Ticket berichtete Fall: zwei getrennte Computer, Host + Beitritt auf frischem Gerät) – kein automatisierter Test kann den echten "client is offline"-Zeitfenster-Fehler eines realen frischen Firestore-SDK-Zustands auslösen, das war von Anfang an bewusst so vorgesehen (siehe Dateikommentare der drei Testdateien).
+3. Danach: Deploy auf die Live-URL (Push auf `main`, wie bei allen bisherigen Tickets über GitHub Actions).
+
+---
+
+### TASK-003 Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Task |
+| **Priorität** | Hoch |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Stephan hat keine fünf weiteren Personen/Geräte zur Verfügung, um einen vollständigen Mehrpersonen-Durchlauf (Host + 5 Stationen + Beobachtende) real zu testen. Er braucht eine Möglichkeit, als Entwickler auf einem einzigen Rechner mehrere unabhängige Spielidentitäten gleichzeitig zu simulieren (z. B. mehrere Browser-Tabs = mehrere Stationen).
+
+**User Story:** Als Entwickler ohne weitere Testgeräte/-personen, möchte ich auf einem Rechner mehrere unabhängige Spielrollen gleichzeitig simulieren können, sodass ich einen vollständigen Mehrpersonen-Durchlauf selbst testen kann, ohne echte Mitspielende zu brauchen.
+
+**Kontext/Verweise:** Direkt ausgelöst durch BUGFIX-001 (Stephan braucht dies, um den vollständigen Mehrpersonen-Durchlauf für FEATURE-004 Gate 3 überhaupt testen zu können) – technisch aber ein eigenständiges Thema, kein Teil des BUGFIX-001-Fixes selbst.
+
+**Bereits bekanntes technisches Hintergrundwissen (noch nicht vollständig analysiert, als Ausgangspunkt für `flow-game-analyze`):**
+- Mehrere Browser-Tabs derselben Origin teilen sich in Chrome immer denselben `localStorage`/`IndexedDB`-Zustand, inklusive Firebase-Anonymous-Auth-Sitzung – mehrere Tabs liefern deshalb heute **keine** unabhängigen Identitäten, egal wie sie geöffnet werden (siehe `chrome-multi-identity-testing-conventions`).
+- Ein möglicher Lösungsansatz (noch nicht verifiziert): Firebase-Auth-Persistenz von der Standardeinstellung (`LOCAL`, IndexedDB-basiert, geteilt) auf `SESSION` (sessionStorage-basiert) umstellen – `sessionStorage` ist pro Tab isoliert, wodurch jeder Tab eine eigene anonyme Auth-Identität bekäme.
+- **Regressionsrisiko, das im Analyse-Schritt zwingend zu prüfen ist:** FEATURE-001 (Done) verlässt sich darauf, dass der Host nach eigenem Neuladen seine Moderationsrechte über eine clientseitig gespeicherte Host-Session-Kennung zurückbekommt (`hostSession.js`). Ob und wie diese Kennung an die Firebase-Auth-Persistenz gekoppelt ist, ist noch nicht geprüft – eine Umstellung auf `SESSION`-Persistenz könnte dieses bereits abgenommene Verhalten brechen (z. B. wenn ein Host-Tab geschlossen und neu geöffnet statt nur neu geladen wird). Muss vor jeder Implementierung real geprüft werden, nicht angenommen.
+- Alternative, rein methodische Lösung ohne Code-Änderung (aus `chrome-multi-identity-testing-conventions`): separate Browser-Profile oder unterschiedliche Browser auf demselben Rechner nutzen. Löst das Problem, ist aber unbequemer als ein Tab-pro-Rolle-Workflow und bei fünf Stationen + Host + Beobachtende schwer parallel zu bedienen.
+
+**Nächster Schritt:** Analyse-Phase (`flow-game-analyze`), sequenziert nach BUGFIX-001 (beide berühren denselben Auth-/Session-Code, um Konflikte zu vermeiden).
+
+---
+
 ### FEATURE-006 Mehrsprachigkeit (Deutsch/Englisch)
 
 | Feld | Wert |
@@ -329,6 +522,8 @@ Zwei neue Testdateien, gleiches Muster wie FEATURE-002/003 (Firestore-Emulator +
 Ticket bleibt „In Progress" – die eigentliche Spieler-Oberfläche für Runde 4 (Punkt 3 oben) ist noch nicht gebaut (Backend/Logik-Ebene fertig, UI folgt separat); Wechsel auf „Done" erfolgt erst nach Stephans expliziter Gate-3-Bestätigung.
 
 **Nicht angetastet (Scope-Disziplin):** `src/game/kennzahlen.js`, `src/game/vergleichsansicht.js`, alle Runde-1–3-Regeln/-Module, `package.json` (nur das bereits von `flow-game-bdd` angelegte `test:emulator:feature-004`-Skript wird genutzt, keine bestehenden Sammelskripte verändert).
+
+**Deploy bestätigt (2026-07-20):** Commit `9735800` (Backend, Sicherheitsregeln, Spieler-Oberfläche) gepusht und live — Hosting-Deploy über GitHub Actions erfolgreich (32s), Firestore-Regeln zusätzlich von Stephan separat veröffentlicht (`npx firebase deploy --only firestore:rules`, erfolgreich, eine harmlose Compiler-Warnung zu einer ungenutzten Variable `kartenId` in Zeile 183 — keine Fehlfunktion, sollte bei Gelegenheit aufgeräumt werden). Live-URL: https://flow-game-19f01.web.app/spiel.html. Ausstehend: manueller Mehrpersonen-Durchlauf durch Runde 4 durch Stephan.
 
 ---
 

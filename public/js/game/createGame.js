@@ -12,9 +12,17 @@
  *
  * WICHTIG: Bei Änderungen an src/game/createGame.js muss diese Datei
  * inhaltlich synchron gehalten werden (kein Build-Schritt im Projekt).
+ *
+ * BUGFIX-001 (2026-07-21): Der Transaktions-Lesevorgang (tx.get(spielRef))
+ * unten trägt auf einem frischen Gerät dasselbe "client is offline"-Risiko
+ * wie in joinGame.js beschrieben – deshalb ebenfalls mit
+ * mitVerbindungsRetry() (aus verbindungsRetry.js) abgesichert. Die
+ * CODE_KOLLISION-Retry-Schleife bleibt davon unberührt.
  */
 (function (global) {
   'use strict';
+
+  const { mitVerbindungsRetry } = global.FlowGame;
 
   const STATIONEN = [
     'wareneingang',
