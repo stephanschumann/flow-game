@@ -102,6 +102,25 @@
   .host-vorschau{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
   .host-vorschau h3{font-size:14px;margin:0 0 4px;color:var(--amber);text-transform:uppercase;letter-spacing:.06em}
 
+  /* FEATURE-004: Runde 4 (Kontextwechsel) - "Fokus + Warteschlange"-Ansicht
+     (Variante C aus dem Klick-Prototyp, von Stephan freigegeben 2026-07-20).
+     Nutzt dieselben Farb-/Abstands-Variablen wie der Rest der Seite (kein
+     neues Vokabular), analog zu FEATURE-002/003 oben. */
+  .rv-fokus-bereich{display:flex;justify-content:center;margin-top:10px}
+  .rv-fokus-card{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:26px;text-align:center;max-width:440px;width:100%}
+  .rv-fokus-typ{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800}
+  .rv-wuerfel-anzeige{font-size:68px;font-weight:900;font-variant-numeric:tabular-nums;margin:16px 0;color:var(--amber)}
+  .rv-land{font-size:22px;font-weight:800;margin:8px 0 14px;color:var(--blue)}
+  .rv-staedte-liste{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:6px;text-align:left}
+  .rv-staedte-liste li{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:14px}
+  .rv-stadt-form{display:flex;gap:8px}
+  .rv-stadt-form input{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:11px 13px;font-size:15px;font-family:inherit}
+  .rv-stadt-form input:focus{outline:2px solid var(--blue);outline-offset:1px}
+  .rv-warteschlange{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:24px}
+  .rv-chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 14px 6px 14px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;max-width:100%}
+  .rv-chip .rv-chip-typ{font-weight:800;color:var(--text);white-space:nowrap}
+  .rv-chip .rv-chip-grund{white-space:normal}
+
   /* FEATURE-005: Sichtbarer Tastaturfokus auch fuer alle <button>-Elemente,
      nicht nur fuer Formularfelder (AK11) - insbesondere fuer die dynamisch
      erzeugten Bewegen-Buttons im Spielbrett, die keine eigene Klasse tragen. */
@@ -207,7 +226,22 @@
 
       <div class="brett" id="brett" hidden></div>
 
+      <!-- FEATURE-004: Runde 4 (Kontextwechsel) - ersetzt "brett" oben,
+           sobald Runde 4 aktiv ist (siehe wechsleZuRunde()/renderRundenStatus()
+           im Skript unten). "Fokus + Warteschlange": nur das laut Wechselregel
+           aktuell erlaubte Element wird gross dargestellt, alle anderen bei
+           dieser Person wartenden Elemente erscheinen darunter als kleine,
+           nicht bedienbare Chips samt Warte-Grund. -->
+      <div id="rv-brett" hidden>
+        <div class="rv-fokus-bereich" id="rv-fokus-bereich" hidden>
+          <div class="rv-fokus-card" id="rv-fokus-card"></div>
+        </div>
+        <div class="hinweis info" id="rv-leer-hinweis" hidden>Du wartest gerade auf das nächste Element - es ist noch bei einer anderen Person unterwegs.</div>
+        <div class="rv-warteschlange" id="rv-warteschlange"></div>
+      </div>
+
       <div class="eigene-hinweis muted" id="eigene-hinweis" hidden></div>
+      <div class="eigene-hinweis muted" id="rv-eigene-hinweis" hidden></div>
 
       <div class="panel" id="kennzahlen-panel" hidden>
         <h2 style="margin-top:0">Runde beendet – Kennzahlen</h2>
@@ -286,6 +320,11 @@
 <script src="js/game/kartenBewegung.js"></script>
 <script src="js/game/kennzahlen.js"></script>
 <script src="js/game/rundenEnde.js"></script>
+<!-- FEATURE-004: Runde 4 (Kontextwechsel). Muss NACH kartenBewegung.js
+     (nutzt window.FlowGame.stationsNummerVon) und kennzahlen.js (nutzt
+     window.FlowGame.berechneKennzahlen) stehen, und VOR rundenwechsel.js
+     (ruft window.FlowGame.starteRundeVier zur Klickzeit auf). -->
+<script src="js/game/rundeVier.js"></script>
 <script src="js/game/rundenwechsel.js"></script>
 <!-- FEATURE-003: Auswertung. vergleichsansicht.js/ergebnisseFreigeben.js
      müssen vor dem Hauptskript unten stehen, das window.FlowGame.* daraus
@@ -351,14 +390,24 @@
   const auswertungHinweis = document.getElementById('auswertung-hinweis');
   const auswertungTabelle = document.getElementById('auswertung-tabelle');
 
-  // Bewusst wie in rundenwechsel.js ("Runde 3 ist die letzte Runde - kein
-  // weiterer Wechsel möglich") - erst mit FEATURE-004 wird das auf 4
-  // erweitert. Zentral hier benannt statt an mehreren Stellen "3" zu wiederholen.
-  const LETZTE_RUNDE = 3;
+  // FEATURE-004: Runde 4 ist jetzt die letzte Runde (bewusst wie in
+  // rundenwechsel.js "Runde 4 ist die letzte Runde - kein weiterer Wechsel
+  // möglich"). Zentral hier benannt statt an mehreren Stellen "4" zu wiederholen.
+  const LETZTE_RUNDE = 4;
+
+  // FEATURE-004: Runde 4 (Kontextwechsel) - eigene DOM-Referenzen für die
+  // "Fokus + Warteschlange"-Ansicht, siehe CSS/HTML oben.
+  const rvBrett = document.getElementById('rv-brett');
+  const rvFokusBereich = document.getElementById('rv-fokus-bereich');
+  const rvFokusCard = document.getElementById('rv-fokus-card');
+  const rvLeerHinweis = document.getElementById('rv-leer-hinweis');
+  const rvWarteschlange = document.getElementById('rv-warteschlange');
+  const rvEigeneHinweis = document.getElementById('rv-eigene-hinweis');
 
   let eigeneUid = null;
   let eigeneRolle = null;
   let eigeneStationsNummer = null; // 1-5, oder null für Host/Beobachtende
+  let eigeneRundeVierPosition = null; // 1-5, dieselbe Nummer wie eigeneStationsNummer
   const teilnehmendeNamenMap = {}; // uid -> anzeigename, für Kennzahlen-Anzeige
   let aktuellerSpielCode = null;
   let aktuelleDbInstanz = null;
@@ -366,10 +415,20 @@
   let aktuelleRundenDaten = null;
   let aktuelleKartenListe = [];
   let bewegungsLog = []; // siehe kennzahlen.js: live beobachtet, nicht serverseitige Historie
+  let aktuelleElementeListe = []; // FEATURE-004: Runde 4, analog zu aktuelleKartenListe
+  let bewegungsLogRundeVier = []; // FEATURE-004: analog zu bewegungsLog
+  let eigenerFortschrittTyp = null; // FEATURE-004: fortschritt/{eigeneUid}.letzterAbgeschlossenerTyp
+  let wuerfelAnimationLaeuft = false; // FEATURE-004: verhindert Doppel-Klicks während der Wurf-Animation
   let unsubRundenDoc = null;
   let unsubKartenCol = null;
+  let unsubElementeCol = null; // FEATURE-004
+  let unsubFortschrittDoc = null; // FEATURE-004
   let timerIntervalId = null;
   let rundenEndeSchreibversuchLaeuft = false;
+  // FEATURE-004: eigenes Flag statt rundenEndeSchreibversuchLaeuft
+  // mitzubenutzen - andere Sammlung ("elemente" statt "karten"), eigener
+  // pruefeUndSetzeRundenEndeRundeVier()-Aufruf, siehe versucheRundenEndeRundeVier().
+  let rundenEndeSchreibversuchLaeuftRundeVier = false;
   let ergebnisseFreigegeben = false; // FEATURE-003: aus spiele/{code}.ergebnisseFreigegeben
   let auswertungBereitsAngezeigt = false; // FEATURE-003: verhindert doppeltes Laden
 
@@ -494,6 +553,22 @@
             { code, uid: eigeneUid, teilnehmerDaten: daten }, db
           ).catch(function () { /* nicht kritisch - naechster Snapshot versucht es erneut */ });
         }
+
+        // FEATURE-004: dieselbe 1-5-Nummer wie eigeneStationsNummer wird auch
+        // als Zuständigkeits-Nummer für Runde 4 gebraucht (eigenes Feld
+        // "rundeVierPosition", siehe rundeVier.js-Kopfkommentar Punkt 1).
+        // Lokal sofort übernehmen (kein Warten auf den Schreib-Roundtrip
+        // nötig, da beide Zahlen laut Konstruktion identisch sind) - der
+        // Schreibvorgang selbst stellt nur sicher, dass firestore.rules beim
+        // tatsächlichen Runde-4-Zug das serverseitig erwartete Feld vorfindet.
+        if (eigeneStationsNummer != null) {
+          eigeneRundeVierPosition = eigeneStationsNummer;
+          if (daten.rundeVierPosition == null) {
+            window.FlowGame.stelleEigeneRundeVierPositionSicher(
+              { code, uid: eigeneUid, teilnehmerDaten: daten }, db
+            ).catch(function () { /* nicht kritisch - naechster Snapshot versucht es erneut */ });
+          }
+        }
       }
 
       teilnehmendeCache[uid] = daten;
@@ -615,12 +690,19 @@
   function wechsleZuRunde(db, code, rundenNummer) {
     if (unsubRundenDoc) unsubRundenDoc();
     if (unsubKartenCol) unsubKartenCol();
+    if (unsubElementeCol) unsubElementeCol(); // FEATURE-004
+    if (unsubFortschrittDoc) unsubFortschrittDoc(); // FEATURE-004
 
     aktuelleRundenNummer = rundenNummer;
     aktuelleRundenDaten = null;
     aktuelleKartenListe = [];
     bewegungsLog = [];
+    aktuelleElementeListe = []; // FEATURE-004
+    bewegungsLogRundeVier = []; // FEATURE-004
+    eigenerFortschrittTyp = null; // FEATURE-004
+    wuerfelAnimationLaeuft = false; // FEATURE-004
     rundenEndeSchreibversuchLaeuft = false;
+    rundenEndeSchreibversuchLaeuftRundeVier = false; // FEATURE-004
     btnDor.disabled = false;
     btnNaechsteRunde.disabled = false;
 
@@ -634,6 +716,16 @@
     btnErgebnisseFreigeben.disabled = false;
     brett.hidden = true;
     eigeneHinweis.hidden = true;
+    // FEATURE-004: rv-Ansicht ebenfalls zuruecksetzen, unabhaengig davon, ob
+    // die neue Runde ueberhaupt Runde 4 ist (verhindert, dass beim Wechsel
+    // WEG von Runde 4 - theoretisch nicht erreichbar, da Runde 4 die letzte
+    // Runde ist, aber defensiv analog zu brett/eigeneHinweis oben) alte
+    // Inhalte sichtbar blieben).
+    rvBrett.hidden = true;
+    rvFokusBereich.hidden = true;
+    rvLeerHinweis.hidden = true;
+    rvWarteschlange.innerHTML = '';
+    rvEigeneHinweis.hidden = true;
     rundeNummerEl.textContent = String(rundenNummer);
 
     const rundenRef = db.collection('spiele').doc(code).collection('runden').doc(String(rundenNummer));
@@ -642,8 +734,12 @@
       if (!snap.exists) return;
       aktuelleRundenDaten = snap.data();
       renderRundenStatus(db, code);
-      renderBrett(db, code);
-      versucheRundenEnde(db, code);
+      if (rundenNummer === 4) {
+        versucheRundenEndeRundeVier(db, code);
+      } else {
+        renderBrett(db, code);
+        versucheRundenEnde(db, code);
+      }
     }, function (err) {
       // FEATURE-003: Sobald diese Runde beendet ist (phase=='beendet'),
       // sperrt firestore.rules das Lesen des Runden-Dokuments für jede
@@ -658,41 +754,90 @@
       zeigeFehler('Rundendaten konnten nicht geladen werden: ' + err.message);
     });
 
-    unsubKartenCol = rundenRef.collection('karten').onSnapshot(function (snapshot) {
-      // Nur ECHTE Bewegungen mitschneiden (type 'modified') - der initiale
-      // Ladevorgang (type 'added', auch bei einem spaeten Beitritt/Reload
-      // mitten in der Runde) ist keine Bewegung, siehe kennzahlen.js.
-      snapshot.docChanges().forEach(function (change) {
-        if (change.type === 'modified') {
-          const daten = change.doc.data();
-          if (daten.letzteBewegungVon) {
-            // FEATURE-003: Station der Bewegung aus der NEUEN Position
-            // ableiten (daten.position ist bereits nachPosition, siehe
-            // kartenBewegung.js: position wird immer auf vonPosition+1
-            // gesetzt) - "die abgebende Station löst aus" (Ausnahme:
-            // Auftragseingang->Station 1, dort holt Station 1 aktiv ab,
-            // gleiche Zuordnungsregel wie in firestore.rules'
-            // bewegungErlaubt()). max(position-1, 1) bildet beide Fälle ab.
-            bewegungsLog.push({
-              uid: daten.letzteBewegungVon,
-              kartenId: change.doc.id,
-              wann: daten.letzteBewegungAm,
-              station: Math.max(daten.position - 1, 1),
-            });
+    if (rundenNummer === 4) {
+      // FEATURE-004: elemente/{elementId} ist LESBAR fuer istTeilnehmer(spielId)
+      // && istAktiv(...) UNGEACHTET des Dokumentinhalts (siehe firestore.rules,
+      // kein feld-basiertes Read-Gate wie bei teilnehmende/{uid}.rolle=='host')
+      // - geprueft VOR diesem Listener (Skill flow-game-impl, Abschnitt 5c):
+      // eine ungefilterte collection().onSnapshot() deckt sich hier exakt mit
+      // der Regel, es gibt kein unlesbares Dokument, das die Abfrage zum
+      // Scheitern bringen koennte. Deshalb bewusst OHNE .where().
+      unsubElementeCol = rundenRef.collection('elemente').onSnapshot(function (snapshot) {
+        // Nur ECHTE Kettenfortschritte mitschneiden (type 'modified') -
+        // analog zum karten-Listener oben, gleiche Begruendung (kennzahlen.js).
+        snapshot.docChanges().forEach(function (change) {
+          if (change.type === 'modified') {
+            const daten = change.doc.data();
+            if (daten.letzteBewegungVon) {
+              bewegungsLogRundeVier.push({
+                uid: daten.letzteBewegungVon,
+                elementId: change.doc.id,
+                wann: daten.letzteBewegungAm,
+                station: Math.max(daten.position - 1, 1),
+              });
+            }
           }
-        }
+        });
+        aktuelleElementeListe = snapshot.docs.map(function (docSnap) {
+          return Object.assign({ id: docSnap.id }, docSnap.data());
+        });
+        renderRundeVier(db, code);
+        versucheRundenEndeRundeVier(db, code);
+      }, function (err) {
+        zeigeFehler('Elemente konnten nicht geladen werden: ' + err.message);
       });
-      aktuelleKartenListe = snapshot.docs.map(function (docSnap) {
-        return Object.assign({ id: docSnap.id }, docSnap.data());
+
+      // FEATURE-004: ausschliesslich das EIGENE fortschritt-Dokument (per
+      // eigener uid) - siehe Skill flow-game-impl Abschnitt 5c ("fuer das
+      // eigene Dokument ggf. eine zweite, gezielte doc(eigeneUid)-Abfrage
+      // separat halten"). Waere theoretisch auch als ungefilterte
+      // Collection-Query moeglich (gleiche uniforme Leseregel wie bei
+      // elemente/{elementId}), hier aber bewusst als Einzeldokument, weil nur
+      // der eigene letzterAbgeschlossenerTyp gebraucht wird.
+      unsubFortschrittDoc = rundenRef.collection('fortschritt').doc(eigeneUid)
+        .onSnapshot(function (docSnap) {
+          eigenerFortschrittTyp = docSnap.exists ? (docSnap.data().letzterAbgeschlossenerTyp || null) : null;
+          renderRundeVier(db, code);
+        }, function (err) {
+          zeigeFehler('Fortschritt konnte nicht geladen werden: ' + err.message);
+        });
+    } else {
+      unsubKartenCol = rundenRef.collection('karten').onSnapshot(function (snapshot) {
+        // Nur ECHTE Bewegungen mitschneiden (type 'modified') - der initiale
+        // Ladevorgang (type 'added', auch bei einem spaeten Beitritt/Reload
+        // mitten in der Runde) ist keine Bewegung, siehe kennzahlen.js.
+        snapshot.docChanges().forEach(function (change) {
+          if (change.type === 'modified') {
+            const daten = change.doc.data();
+            if (daten.letzteBewegungVon) {
+              // FEATURE-003: Station der Bewegung aus der NEUEN Position
+              // ableiten (daten.position ist bereits nachPosition, siehe
+              // kartenBewegung.js: position wird immer auf vonPosition+1
+              // gesetzt) - "die abgebende Station löst aus" (Ausnahme:
+              // Auftragseingang->Station 1, dort holt Station 1 aktiv ab,
+              // gleiche Zuordnungsregel wie in firestore.rules'
+              // bewegungErlaubt()). max(position-1, 1) bildet beide Fälle ab.
+              bewegungsLog.push({
+                uid: daten.letzteBewegungVon,
+                kartenId: change.doc.id,
+                wann: daten.letzteBewegungAm,
+                station: Math.max(daten.position - 1, 1),
+              });
+            }
+          }
+        });
+        aktuelleKartenListe = snapshot.docs.map(function (docSnap) {
+          return Object.assign({ id: docSnap.id }, docSnap.data());
+        });
+        renderBrett(db, code);
+        versucheRundenEnde(db, code);
+      }, function (err) {
+        zeigeFehler('Kartendaten konnten nicht geladen werden: ' + err.message);
       });
-      renderBrett(db, code);
-      versucheRundenEnde(db, code);
-    }, function (err) {
-      zeigeFehler('Kartendaten konnten nicht geladen werden: ' + err.message);
-    });
+    }
   }
 
-  function renderRundenStatus() {
+  function renderRundenStatus(db, code) {
     if (!aktuelleRundenDaten) return;
     const runde = aktuelleRundenDaten;
 
@@ -700,7 +845,17 @@
     rundePhaseBadge.textContent = PHASE_LABEL[runde.phase] || runde.phase || '';
 
     dorBereich.hidden = Boolean(runde.dorAbgeschlossen);
-    brett.hidden = !runde.dorAbgeschlossen;
+
+    // FEATURE-004: Runde 4 nutzt die "Fokus + Warteschlange"-Ansicht
+    // (rv-brett) anstelle des Spielbretts aus Runde 1-3 (brett) - Spiegelbild
+    // der brett.hidden-Logik direkt darunter.
+    if (aktuelleRundenNummer === 4) {
+      brett.hidden = true;
+      rvBrett.hidden = !runde.dorAbgeschlossen;
+    } else {
+      brett.hidden = !runde.dorAbgeschlossen;
+      rvBrett.hidden = true;
+    }
 
     const bearbeitungGesetzt = Boolean(runde.bearbeitungszeitStart);
     zeitBearbeitungBox.hidden = !bearbeitungGesetzt;
@@ -731,6 +886,14 @@
       zeigeKennzahlen(runde);
     } else {
       kennzahlenPanel.hidden = true;
+    }
+
+    // FEATURE-004: eigener Render-Zweig fuer die "Fokus + Warteschlange"-
+    // Ansicht - siehe renderRundeVier() weiter unten (analog zu renderBrett()
+    // fuer Runde 1-3, das aus wechsleZuRunde()/dem karten-Listener aufgerufen
+    // wird statt von hier aus).
+    if (aktuelleRundenNummer === 4) {
+      renderRundeVier(db, code);
     }
   }
 
@@ -868,6 +1031,243 @@
     }
   }
 
+  // ---- FEATURE-004: Runde 4 (Kontextwechsel) - "Fokus + Warteschlange" ----
+
+  const RV_TYP_LABEL = { wuerfel: 'Würfel', laenderkarte: 'Länderkarte' };
+
+  // Ermittelt, welches Element (falls vorhanden) für die eigene Person gerade
+  // bedienbar ist: an der eigenen Position, laut Wechselzwang erlaubt (Typ
+  // ungleich zuletzt abgeschlossenem Typ) UND laut FIFO an der Reihe (unter
+  // den Elementen DESSELBEN Typs an dieser Position das am frühesten
+  // angekommene) - exakte Client-Nachbildung von
+  // rundeVierWechselzwangErlaubt()/rundeVierAnzahlFrueherWartend() in
+  // firestore.rules, rein für die Anzeige (die Regel selbst bleibt die
+  // alleinige Durchsetzung). Können nach dieser Client-Logik ausnahmsweise
+  // zwei Elemente (je eines pro Typ) gleichzeitig laut Regel erlaubt sein
+  // (z. B. direkt nach Rundenstart, wenn noch kein Typ abgeschlossen wurde),
+  // wird bewusst nur EINES als "Fokus" gezeigt (das insgesamt älteste) - reine
+  // UI-Priorisierung, das andere erscheint stattdessen in der Warteschlange
+  // und bleibt dort jederzeit genauso bedienbar, sobald es zum Fokus wird.
+  function bestimmeRundeVierFokus() {
+    if (eigeneRundeVierPosition == null) return null;
+    const kandidaten = aktuelleElementeListe.filter(function (e) {
+      return e.position === eigeneRundeVierPosition && e.typ !== eigenerFortschrittTyp;
+    });
+    if (kandidaten.length === 0) return null;
+
+    const fruehesteProTyp = {};
+    kandidaten.forEach(function (e) {
+      const am = alsMillisLokal(e.angekommenAm);
+      if (!fruehesteProTyp[e.typ] || (am != null && am < fruehesteProTyp[e.typ].am)) {
+        fruehesteProTyp[e.typ] = { element: e, am: am };
+      }
+    });
+
+    const liste = Object.keys(fruehesteProTyp).map(function (typ) { return fruehesteProTyp[typ]; });
+    liste.sort(function (a, b) { return (a.am || 0) - (b.am || 0); });
+    return liste[0].element;
+  }
+
+  // Würfel-Zwischenschritt: Wurf >3 gibt das Element weiter (Kettenfortschritt),
+  // Wurf <=3 bleibt bei derselben Person stehen und wird als Zwischenwurf
+  // festgehalten (window.FlowGame.schreibeWuerfelZwischenwurf() existiert laut
+  // rundeVier.js-Kommentar genau für diesen Fall).
+  async function schliesseRundeVierWurfAb(db, code, element, wert, btn) {
+    try {
+      if (window.FlowGame.istWurfErfolgreich(wert)) {
+        await window.FlowGame.gibElementWeiter({
+          code,
+          rundenNummer: aktuelleRundenNummer,
+          elementId: element.id,
+          typ: element.typ,
+          vonPosition: element.position,
+          ausgefuehrtVon: eigeneUid,
+        }, db);
+      } else {
+        await window.FlowGame.schreibeWuerfelZwischenwurf({
+          code,
+          rundenNummer: aktuelleRundenNummer,
+          elementId: element.id,
+          wurfAnzahl: (element.wurfAnzahl || 0) + 1,
+          letzterWurf: wert,
+        }, db);
+      }
+    } catch (err) {
+      zeigeFehler('Würfeln fehlgeschlagen: ' + err.message);
+    } finally {
+      wuerfelAnimationLaeuft = false;
+      btn.disabled = false;
+    }
+  }
+
+  function renderRundeVierFokusCard(db, code, element) {
+    rvFokusCard.innerHTML = '';
+
+    const typLabel = document.createElement('div');
+    typLabel.className = 'rv-fokus-typ';
+    typLabel.textContent = element.typ === 'wuerfel' ? 'Würfel-Aufgabe' : 'Länderkarte';
+    rvFokusCard.appendChild(typLabel);
+
+    if (element.typ === 'wuerfel') {
+      const anzeige = document.createElement('div');
+      anzeige.className = 'rv-wuerfel-anzeige';
+      anzeige.textContent = '?';
+      rvFokusCard.appendChild(anzeige);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn primary';
+      btn.textContent = 'Würfeln';
+      btn.addEventListener('click', function () {
+        if (wuerfelAnimationLaeuft) return;
+        wuerfelAnimationLaeuft = true;
+        btn.disabled = true;
+        let durchlaeufe = 0;
+        let letzterWert = 1;
+        const intervallId = setInterval(function () {
+          letzterWert = 1 + Math.floor(Math.random() * 6);
+          anzeige.textContent = String(letzterWert);
+          durchlaeufe += 1;
+          if (durchlaeufe >= 7) {
+            clearInterval(intervallId);
+            schliesseRundeVierWurfAb(db, code, element, letzterWert, btn);
+          }
+        }, 55);
+      });
+      rvFokusCard.appendChild(btn);
+    } else {
+      const landAnzeige = document.createElement('div');
+      landAnzeige.className = 'rv-land';
+      landAnzeige.textContent = element.land;
+      rvFokusCard.appendChild(landAnzeige);
+
+      const staedteListe = document.createElement('ul');
+      staedteListe.className = 'rv-staedte-liste';
+      window.FlowGame.staedteMapZuArray(element.staedte).forEach(function (eintrag) {
+        const li = document.createElement('li');
+        li.textContent = eintrag.stadt;
+        staedteListe.appendChild(li);
+      });
+      rvFokusCard.appendChild(staedteListe);
+
+      const form = document.createElement('form');
+      form.className = 'rv-stadt-form';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 60;
+      input.placeholder = 'Stadt eintragen';
+      input.setAttribute('aria-label', 'Stadt eintragen');
+      input.required = true;
+      input.autocomplete = 'off';
+      const absendenBtn = document.createElement('button');
+      absendenBtn.type = 'submit';
+      absendenBtn.className = 'btn primary';
+      absendenBtn.textContent = 'Absenden';
+      form.appendChild(input);
+      form.appendChild(absendenBtn);
+
+      // Bewusst KEINE Client-Validierung der Eingabe (weder ob die Stadt zum
+      // Land passt, noch ob sie bereits vorhanden ist) - laut Spec wird jede
+      // Eingabe angenommen, die Qualitätsauswertung (berechneQualitaetRundeVier)
+      // erfolgt ausschliesslich nachträglich am Rundenende.
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        absendenBtn.disabled = true;
+        input.disabled = true;
+        window.FlowGame.gibElementWeiter({
+          code,
+          rundenNummer: aktuelleRundenNummer,
+          elementId: element.id,
+          typ: element.typ,
+          vonPosition: element.position,
+          ausgefuehrtVon: eigeneUid,
+          staedteAlt: element.staedte,
+          neueStadt: input.value,
+        }, db).catch(function (err) {
+          zeigeFehler('Stadt konnte nicht eingetragen werden: ' + err.message);
+          absendenBtn.disabled = false;
+          input.disabled = false;
+        });
+      });
+      rvFokusCard.appendChild(form);
+    }
+  }
+
+  // Warteschlangen-Chips: ALLE anderen Elemente (nicht das aktuelle Fokus-
+  // Element) - Warte-Grund unterscheidet, ob das Element bereits an der
+  // eigenen Position liegt (dort aber wegen Wechselzwang/FIFO gerade nicht
+  // dran ist) oder noch an einer anderen Position unterwegs ist.
+  function renderRundeVierWarteschlange(fokusElement) {
+    rvWarteschlange.innerHTML = '';
+    aktuelleElementeListe
+      .filter(function (e) { return !fokusElement || e.id !== fokusElement.id; })
+      .forEach(function (e) {
+        const chip = document.createElement('div');
+        chip.className = 'rv-chip';
+        const typSpan = document.createElement('span');
+        typSpan.className = 'rv-chip-typ';
+        typSpan.textContent = RV_TYP_LABEL[e.typ] || e.typ;
+        const grundSpan = document.createElement('span');
+        grundSpan.className = 'rv-chip-grund';
+        grundSpan.textContent = e.position === eigeneRundeVierPosition
+          ? 'wartet, bis du mit der aktuellen Aufgabe fertig bist'
+          : 'wartet, bis es bei dir ankommt';
+        chip.appendChild(typSpan);
+        chip.appendChild(grundSpan);
+        rvWarteschlange.appendChild(chip);
+      });
+  }
+
+  function renderRundeVier(db, code) {
+    if (!aktuelleRundenDaten) return;
+
+    // Host/Beobachtende haben keine eigene Zuständigkeit in Runde 4 (analog
+    // zu eigeneHinweis in renderBrett() für Runde 1-3).
+    rvEigeneHinweis.hidden = eigeneRundeVierPosition !== null;
+    if (eigeneRundeVierPosition === null) {
+      rvEigeneHinweis.textContent = eigeneRolle === 'host'
+        ? 'Du bist Host und beobachtest das Spielfeld - eigene Züge macht das Team.'
+        : 'Du bist Beobachtende/r - du siehst dem Team beim Spielen zu.';
+      rvFokusBereich.hidden = true;
+      rvLeerHinweis.hidden = true;
+      rvWarteschlange.innerHTML = '';
+      return;
+    }
+
+    if (!aktuelleRundenDaten.dorAbgeschlossen) return; // rv-brett bleibt ohnehin hidden, siehe renderRundenStatus().
+
+    const fokusElement = bestimmeRundeVierFokus();
+    if (!fokusElement) {
+      rvFokusBereich.hidden = true;
+      rvLeerHinweis.hidden = false;
+    } else {
+      rvLeerHinweis.hidden = true;
+      rvFokusBereich.hidden = false;
+      renderRundeVierFokusCard(db, code, fokusElement);
+    }
+    renderRundeVierWarteschlange(fokusElement);
+  }
+
+  async function versucheRundenEndeRundeVier(db, code) {
+    if (!aktuelleRundenDaten || rundenEndeSchreibversuchLaeuftRundeVier) return;
+    if (aktuelleRundenDaten.phase === 'beendet') return;
+    if (aktuelleElementeListe.length !== 12) return;
+    rundenEndeSchreibversuchLaeuftRundeVier = true;
+    try {
+      await window.FlowGame.pruefeUndSetzeRundenEndeRundeVier({
+        code,
+        rundenNummer: aktuelleRundenNummer,
+        elemente: aktuelleElementeListe,
+        rundenPhase: aktuelleRundenDaten.phase,
+        durchlaufzeitStart: aktuelleRundenDaten.durchlaufzeitStart,
+        bearbeitungszeitStart: aktuelleRundenDaten.bearbeitungszeitStart,
+        bewegungsLog: bewegungsLogRundeVier,
+      }, db);
+    } finally {
+      rundenEndeSchreibversuchLaeuftRundeVier = false;
+    }
+  }
+
   // FEATURE-003: Sperr-Zustand für Nicht-Host-Rollen, sobald die Runde
   // beendet, aber noch nicht freigegeben ist (siehe permission-denied-
   // Behandlung im runden-Listener oben). Ersetzt die zuletzt bekannte
@@ -976,6 +1376,22 @@
       zeile('Fehlerzahl', function (r) { return r.fehlerzahl != null ? String(r.fehlerzahl) : '–'; });
     }
 
+    // FEATURE-004: Qualitäts-Kennzahl (AK 15/16) - analog zur Fehlerzahl-
+    // Zeile oben nur sichtbar, wenn mindestens eine Runde tatsächlich eine
+    // Qualitätsauswertung mitbringt (ausschließlich Runde 4); Runde 1-3
+    // bleiben dadurch unverändert.
+    if (vergleich.some(function (r) { return r.qualitaet != null; })) {
+      zeile('Qualität (korrekt/gesamt)', function (r) {
+        return r.qualitaet ? r.qualitaet.korrekt + '/' + r.qualitaet.gesamtStaedte : '–';
+      });
+      zeile('Qualität – falsches Land', function (r) {
+        return r.qualitaet ? String(r.qualitaet.falschesLand) : '–';
+      });
+      zeile('Qualität – Dubletten', function (r) {
+        return r.qualitaet ? String(r.qualitaet.dublette) : '–';
+      });
+    }
+
     tabelle.appendChild(tbody);
     container.appendChild(tabelle);
   }
@@ -1042,6 +1458,25 @@
       box.appendChild(label);
       kennzahlenGrid.appendChild(box);
     });
+
+    // FEATURE-004: Qualitäts-Kennzahl (AK 15/16) - nur vorhanden, wenn diese
+    // Runde die Runde 4 ist (siehe pruefeUndSetzeRundenEndeRundeVier() in
+    // rundeVier.js, das als einziges "qualitaet" ins Runden-Dokument
+    // schreibt) - Runde 1-3 bleiben dadurch unverändert, kein Sonderfall
+    // nötig, nur diese zusätzliche Bedingung.
+    if (runde.qualitaet) {
+      const box = document.createElement('div');
+      box.className = 'kennzahl-box';
+      const wert = document.createElement('div');
+      wert.className = 'wert';
+      wert.textContent = runde.qualitaet.korrekt + '/' + runde.qualitaet.gesamtStaedte;
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = 'Qualität (korrekt)';
+      box.appendChild(wert);
+      box.appendChild(label);
+      kennzahlenGrid.appendChild(box);
+    }
 
     kennzahlenBeteiligung.innerHTML = '';
     const stationsNummern = Object.keys(runde.proStation || {})

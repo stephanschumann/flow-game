@@ -195,6 +195,197 @@ service cloud.firestore {
         && stapelTorOffen(spielId, runde, vonPosition, vorherigerStapel);
     }
 
+    // FEATURE-004: Runde 4 (Kontextwechsel). Wiederverwendet die bestehende
+    // runden/{runde}-Struktur oben UNVERÄNDERT (DoR, Host-Rundenstart,
+    // servergesetzte Zeitstempel, Fall-B-Rundenende) – siehe "Wiederverwendungs-
+    // /Regressionsnachweis" in tests/game-round4.security.rules.test.js, dort
+    // bereits GRÜN, weil {runde} ein Wildcard-Pfadsegment ist. Neu sind
+    // ausschliesslich die beiden Unterkollektionen elemente/{elementId} und
+    // fortschritt/{uid} unter runden/{runde} (siehe deren match-Blöcke weiter
+    // unten) und die folgenden Helfer-Funktionen dafür. Bewusst auf dieser
+    // TOP-LEVEL-Ebene definiert (statt innerhalb von match /runden/{runde}),
+    // exakt nach demselben Muster wie istAktiv/istTeilnehmer/istHost/
+    // bewegungErlaubt oben – kein neu erfundenes Scoping-Muster.
+    //
+    // Datenmodell (NAMENSGEBUNG aus tests/game-round4.*.test.js, "eine
+    // gemeinsame Unterkollektion mit Typ-Feld" statt zwei getrennter):
+    //   elemente/{elementId}: typ ('wuerfel'|'laenderkarte'), reihenfolge
+    //     (1..12, feste Startreihenfolge), position (1..5 aktuell zuständige
+    //     Person, 6 = fertig bei Spieler 5), angekommenAm (servergesetzt,
+    //     Grundlage FIFO AK 8), bei Länderkarten zusätzlich land + staedte,
+    //     bei Würfeln wurfAnzahl/letzterWurf (rein clientseitig, siehe
+    //     Pre-Mortem-Risiko 9 – bewusst NICHT serverseitig geprüft).
+    //
+    //   staedte: BEWUSST eine MAP mit String-Schlüsseln "0".."4" (append-only,
+    //     Einfüge-Reihenfolge = Schlüssel-Reihenfolge), NICHT ein Array von
+    //     Objekten. Grund (2026-07-20, echter Emulator-Testlauf durch Stephan,
+    //     siehe Abschlussbericht): Firestore lehnt serverTimestamp() als
+    //     Feldwert INNERHALB eines Arrays grundsätzlich ab ("serverTimestamp()
+    //     is not currently supported inside arrays") – das gilt auch für ein
+    //     Objekt, das per arrayUnion()/direkter Array-Zuweisung in ein Array
+    //     geschrieben wird. Da jeder Städte-Eintrag laut AK 14 einen ECHTEN
+    //     servergesetzten Zeitstempel tragen MUSS (Grundlage der späteren
+    //     deterministischen Dublettenerkennung in qualitaetsauswertung.js),
+    //     ist ein Array hier technisch unmöglich. Firestore erlaubt
+    //     serverTimestamp() dagegen uneingeschränkt innerhalb von Map-Feldern
+    //     – deshalb: staedte: { "0": { stadt, von, am }, "1": {...}, ... }.
+    //     Jeder Eintrag bleibt einzeln adressierbar (wichtig für den
+    //     Append-only-Prefix-Vergleich unten), Größe weiterhin per .size().
+    //   fortschritt/{uid}: letzterAbgeschlossenerTyp je Person, Grundlage der
+    //     Wechselzwang-Regel (AK 9).
+    //
+    // Zuständigkeit folgt AUSDRÜCKLICH teilnehmende/{uid}.rundeVierPosition –
+    // bewusst NICHT dasselbe Feld wie `station` aus FEATURE-002 (Pre-Mortem-
+    // Risiko 10: eine Person kann in Runde 1-3 an einer anderen Position
+    // stehen als in Runde 4, siehe "Zuständigkeit über Person/uid"-Testblock).
+    function rundeVierPositionVon(spielId, uid) {
+      return get(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(uid)).data.get('rundeVierPosition', null);
+    }
+
+    // Fortschritt-Dokumente werden für alle fünf Spielenden ATOMAR beim
+    // Rundenstart angelegt (analog zur Garantie bei den sechs Karten aus
+    // FEATURE-002, siehe Kommentar bei karteAnPositionUndStapel oben) –
+    // deshalb hier bewusst ein direktes get() ohne vorherige exists()-Prüfung
+    // (spart einen Aufruf gegen das Get()/Exists()-Kontingent, Pre-Mortem-
+    // Risiko 6).
+    function rundeVierFortschrittTyp(spielId, runde, uid) {
+      return get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)/fortschritt/$(uid)).data.get('letzterAbgeschlossenerTyp', null);
+    }
+
+    // Wechselzwang (AK 9): Der Elementtyp des jetzt zu bearbeitenden Elements
+    // (resource.data.typ) darf NICHT identisch mit dem zuletzt von dieser
+    // Person abgeschlossenen Typ sein. Zu Rundenbeginn (noch kein
+    // abgeschlossener Typ) ist beides erlaubt.
+    function rundeVierWechselzwangErlaubt(spielId, runde) {
+      let letzterTyp = rundeVierFortschrittTyp(spielId, runde, request.auth.uid);
+      return letzterTyp == null || letzterTyp != resource.data.typ;
+    }
+
+    // FIFO (AK 8): Prüft, ob unter den sechs namentlich bekannten Geschwister-
+    // Elementen DESSELBEN Typs (wuerfel-1..6 bzw. karte-1..6 – Sicherheits-
+    // regeln können keine Sammlungs-Query ausführen, Pre-Mortem-Risiko 6,
+    // gleiches Muster wie karteAnPositionUndStapel oben) eines existiert, das
+    // an DERSELBEN abgebenden Position noch wartet (position == vonPosition)
+    // UND früher dort angekommen ist (angekommenAm < eigenesAngekommenAm) als
+    // das gerade bewegte Element selbst. `kandidatId == elementId`
+    // überspringt das bewegte Element selbst OHNE zusätzlichen get()-Aufruf
+    // (CEL wertet den Ternary-Zweig nur bei Bedarf aus) – hält die Gesamt-
+    // auswertung bei maximal 9 get()-Aufrufen (1 istAktiv + 1 dorAbgeschlossen
+    // + 1 rundeVierPositionVon + 1 rundeVierFortschrittTyp + 5 FIFO-Gets nach
+    // Selbstausschluss), siehe Abschlussbericht.
+    function rundeVierElementAngekommenVor(spielId, runde, elementId, kandidatId, vonPosition, eigenesAngekommenAm) {
+      return kandidatId == elementId ? 0 : (
+        get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)/elemente/$(kandidatId)).data.position == vonPosition
+        && get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)/elemente/$(kandidatId)).data.angekommenAm < eigenesAngekommenAm
+        ? 1 : 0
+      );
+    }
+
+    function rundeVierAnzahlFrueherWartend(spielId, runde, elementId, vonPosition, eigenesAngekommenAm) {
+      return resource.data.typ == 'wuerfel'
+        ? rundeVierElementAngekommenVor(spielId, runde, elementId, 'wuerfel-1', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'wuerfel-2', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'wuerfel-3', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'wuerfel-4', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'wuerfel-5', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'wuerfel-6', vonPosition, eigenesAngekommenAm)
+        : rundeVierElementAngekommenVor(spielId, runde, elementId, 'karte-1', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'karte-2', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'karte-3', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'karte-4', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'karte-5', vonPosition, eigenesAngekommenAm)
+          + rundeVierElementAngekommenVor(spielId, runde, elementId, 'karte-6', vonPosition, eigenesAngekommenAm);
+    }
+
+    // Kettenfortschritt (AK 7): Ein Element darf ausschliesslich um GENAU
+    // einen Schritt an die nächste Person weitergegeben werden (niemals
+    // rückwärts, niemals eine Person überspringen, niemals direkt auf
+    // "fertig" springen – alle drei Fälle scheitern bereits an `nachPosition
+    // == vonPosition + 1`), ausschliesslich durch die Person, bei der es laut
+    // `rundeVierPosition` gerade zuständig ist, ausschliesslich nach
+    // abgeschlossener Definition of Ready, und nur wenn Wechselzwang UND FIFO
+    // das zulassen.
+    //
+    // Ankunftszeitstempel (BUGFIX 2026-07-20, zweiter Fund direkt nach dem
+    // Array->Map-Umbau bei staedte, siehe rundeVierStaedteAngehaengt() unten):
+    // Für einen Würfel bleibt es dabei, dass `angekommenAm` bei JEDEM
+    // Kettenfortschritt zwingend frisch servergesetzt sein muss (sonst könnte
+    // FIFO durch Wiederverwenden eines alten Zeitstempels umgangen werden).
+    // Für eine Länderkarte ist der servergesetzte Nachweis der Ankunft an der
+    // NEUEN Position bereits durch den neu angehängten Städte-Eintrag selbst
+    // erbracht (`neu[neuerSchluessel].am == request.time`, erzwungen von
+    // rundeVierStaedteAngehaengt()) – ein Client, der eine Karte weiterreicht,
+    // muss deshalb `angekommenAm` NICHT zusätzlich anfassen; erlaubt ist bei
+    // Länderkarten daher entweder ein frischer servergesetzter Zeitstempel
+    // (falls ein Client ihn trotzdem mitschickt) ODER ein unveränderter alter
+    // Wert. Sicherheitstechnisch unkritisch: ein Client kann `angekommenAm`
+    // damit weiterhin nicht auf einen selbstgewählten Wert setzen, sondern nur
+    // zwischen "jetzt" und "unverändert" wählen.
+    function rundeVierKettenfortschrittErlaubt(spielId, runde, elementId) {
+      let vonPosition = resource.data.position;
+      let nachPosition = request.resource.data.position;
+      return get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)).data.get('dorAbgeschlossen', false) == true
+        && rundeVierPositionVon(spielId, request.auth.uid) == vonPosition
+        && nachPosition == vonPosition + 1
+        && nachPosition <= 6
+        && (request.resource.data.angekommenAm == request.time
+          || (resource.data.typ == 'laenderkarte' && request.resource.data.angekommenAm == resource.data.angekommenAm))
+        && rundeVierWechselzwangErlaubt(spielId, runde)
+        && rundeVierAnzahlFrueherWartend(spielId, runde, elementId, vonPosition, resource.data.angekommenAm) == 0;
+    }
+
+    // Würfel-Zwischenwurf (AK 10): Ein Wurf ≤3 bleibt bei derselben Person
+    // stehen (kein Kettenfortschritt, keine FIFO-/Wechselzwang-Prüfung nötig,
+    // weil das Element dadurch nicht "fertig" wird) – der konkrete Wert wird
+    // bewusst NICHT geprüft (Pre-Mortem-Risiko 9, akzeptiertes Restrisiko,
+    // analog CatTube).
+    function rundeVierWuerfelZwischenwurfErlaubt(spielId, runde) {
+      return get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)).data.get('dorAbgeschlossen', false) == true
+        && rundeVierPositionVon(spielId, request.auth.uid) == resource.data.position
+        && request.resource.data.position == resource.data.position;
+    }
+
+    // Append-only Städte-MAP (AK 14, BUGFIX 2026-07-20 – siehe Datenmodell-
+    // Kommentar bei rundeVierPositionVon() weiter oben): ursprünglich als
+    // Array von Objekten { stadt, von, am: serverTimestamp() } modelliert;
+    // echter Emulator-Testlauf zeigte, dass Firestore serverTimestamp() als
+    // Feldwert innerhalb eines Arrays grundsätzlich ablehnt (dokumentierte
+    // SDK-Einschränkung, kein Regel-Bug) – der Schreibversuch scheiterte
+    // bereits CLIENTSEITIG, bevor überhaupt eine Regel ausgewertet wurde.
+    // Fix: `staedte` ist jetzt eine MAP mit String-Schlüsseln "0".."4"
+    // (Einfüge-Reihenfolge = Schlüssel-Reihenfolge), Firestore erlaubt
+    // serverTimestamp() innerhalb von Map-Feldern uneingeschränkt. Die
+    // Prüf-Logik selbst bleibt inhaltlich UNVERÄNDERT (1:1 von Array-Index auf
+    // String-Schlüssel übertragen): Die neue Map muss GENAU einen Eintrag
+    // länger sein, die bereits vorhandenen Einträge müssen inhaltlich
+    // (Stadt + eintragende Person) UNVERÄNDERT bleiben, und der neu
+    // angehängte Eintrag muss von der schreibenden Person selbst stammen und
+    // einen servergesetzten Zeitstempel tragen (Grundlage der
+    // deterministischen Dublettenerkennung, Pre-Mortem-Risiko 1). Bewusst OHNE
+    // Prüfung des `am`-Felds bereits vorhandener Einträge (nur Stadt+von) –
+    // ein Client, der eine Karte weiterreicht, kennt deren bereits
+    // gespeicherten Server-Zeitstempel nicht zwangsläufig exakt genug, um ihn
+    // byteidentisch zurückzusenden; das Verbot einer inhaltlichen Änderung
+    // (Stadt/Person) bleibt trotzdem durchgesetzt.
+    function rundeVierStaedtePrefixUnveraendert(alt, neu) {
+      return alt.size() == 0
+        || (neu['0'].stadt == alt['0'].stadt && neu['0'].von == alt['0'].von && (alt.size() == 1
+          || (neu['1'].stadt == alt['1'].stadt && neu['1'].von == alt['1'].von && (alt.size() == 2
+            || (neu['2'].stadt == alt['2'].stadt && neu['2'].von == alt['2'].von && (alt.size() == 3
+              || (neu['3'].stadt == alt['3'].stadt && neu['3'].von == alt['3'].von && (alt.size() == 4
+                || (neu['4'].stadt == alt['4'].stadt && neu['4'].von == alt['4'].von)))))))));
+    }
+
+    function rundeVierStaedteAngehaengt() {
+      let alt = resource.data.get('staedte', {});
+      let neu = request.resource.data.get('staedte', {});
+      let neuerSchluessel = string(alt.size());
+      return neu.size() == alt.size() + 1
+        && rundeVierStaedtePrefixUnveraendert(alt, neu)
+        && neu[neuerSchluessel].von == request.auth.uid
+        && neu[neuerSchluessel].am == request.time;
+    }
+
     match /spiele/{spielId} {
       // Lesbar für jede angemeldete Person (auch anonym), die den Code kennt
       // oder rät – das ist die Grundlage des Beitritts-Flusses (Code-Prüfung,
@@ -409,6 +600,65 @@ service cloud.firestore {
           allow update: if request.auth != null
             && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
             && bewegungErlaubt(spielId, runde, kartenId);
+
+          allow delete: if false;
+        }
+
+        // FEATURE-004: Runde 4 (Kontextwechsel) – Datenmodell und Helfer-
+        // Funktionen siehe Kommentar bei rundeVierPositionVon() weiter oben
+        // (top-level, gleiches Scoping-Muster wie istHost/bewegungErlaubt).
+        match /elemente/{elementId} {
+          allow read: if istTeilnehmer(spielId) && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data);
+
+          // Alle zwölf Elemente werden ausschliesslich im selben Vorgang wie
+          // der Runde-4-Start vom Host angelegt (analog zu den sechs Karten
+          // aus FEATURE-002) – kein separates Client-"Nachschieben".
+          allow create: if istHost(spielId)
+            && request.resource.data.typ in ['wuerfel', 'laenderkarte']
+            && request.resource.data.position == 1;
+
+          // Zwei grundverschiedene, erlaubte Update-Formen:
+          //  (a) Würfel-Zwischenwurf: bleibt bei derselben Person stehen.
+          //  (b) Kettenfortschritt: ein Schritt an die nächste Person, bei
+          //      Länderkarten zusätzlich zwingend mit genau einem neuen,
+          //      angehängten Städte-Eintrag (AK 11-14).
+          // Bewusst KEIN separater istTeilnehmer()-Aufruf hier (gleiche
+          // Optimierung wie bei bewegungErlaubt() oben) – eine Nicht-
+          // Teilnehmer-Person hat kein eigenes teilnehmende-Dokument, wodurch
+          // rundeVierPositionVon() bereits mit einem Auswertungsfehler
+          // scheitert (sicherheitstechnisch gleichwertig abgelehnt).
+          allow update: if request.auth != null
+            && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+            && request.resource.data.typ == resource.data.typ
+            && (
+              (resource.data.typ == 'wuerfel'
+                && request.resource.data.position == resource.data.position
+                && rundeVierWuerfelZwischenwurfErlaubt(spielId, runde))
+              ||
+              (rundeVierKettenfortschrittErlaubt(spielId, runde, elementId)
+                && (resource.data.typ == 'wuerfel' || rundeVierStaedteAngehaengt()))
+            );
+
+          allow delete: if false;
+        }
+
+        // fortschritt/{uid}: nicht Teil der gegebenen automatisierten Regel-
+        // Testfälle für dieses Ticket (siehe Kopf von
+        // tests/game-round4.security.rules.test.js – dort ausschliesslich per
+        // withSecurityRulesDisabled() geseedet), trotzdem mit einer
+        // realistischen, restriktiven Regel versehen (kein dauerhaft offener
+        // Pfad): nur die eigene Person darf ihren eigenen Fortschritt
+        // schreiben, nur der Host darf die initialen fünf Dokumente beim
+        // Rundenstart anlegen.
+        match /fortschritt/{uid} {
+          allow read: if istTeilnehmer(spielId) && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data);
+
+          allow create: if istHost(spielId)
+            && request.resource.data.letzterAbgeschlossenerTyp == null;
+
+          allow update: if request.auth != null && uid == request.auth.uid
+            && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+            && request.resource.data.letzterAbgeschlossenerTyp in ['wuerfel', 'laenderkarte'];
 
           allow delete: if false;
         }

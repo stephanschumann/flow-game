@@ -10,12 +10,113 @@
 | **Priorität** | Mittel |
 | **Status** | ToDo |
 | **Erstellt** | 2026-07-19 |
+| **Analyse am** | 2026-07-20 |
 
 **Beschreibung:** Das Spiel ist vollständig auf Deutsch und Englisch nutzbar. Grundeinstellung (Default) ist Englisch. Betrifft alle sichtbaren Texte für alle Rollen (Host, Spielende, Beobachtende) über alle Phasen/Runden hinweg — Startseite, Lobby, Spielbrett, Kennzahlen-/Auswertungsansicht, Fehlermeldungen.
 
 **User Story:** Als Host oder Spielender, möchte ich das Spiel in meiner bevorzugten Sprache (Deutsch oder Englisch) nutzen können, sodass internationale oder gemischtsprachige Gruppen den Workshop ohne Sprachbarriere durchführen können.
 
 **Kontext/Verweise:** `Product.md` Abschnitt 9 (nicht-fachliche Anforderungen, ergänzt am 2026-07-19). Noch offen (für die Analysephase): wie die Sprache gewählt/umgeschaltet wird (z. B. pro Gerät/Person individuell vs. einheitlich pro Spiel), ob die Wahl über den Beitritt hinweg gespeichert bleibt, und ob Host und Spielende unabhängig voneinander die Sprache wählen können.
+
+---
+
+#### Analyse-Spec (2026-07-20)
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code, nicht angenommen):**
+- Das Spiel besteht heute ausschließlich auf Deutsch: alle sichtbaren Texte in `public/index.html` (Landingpage, z. B. „Spiel erstellen oder beitreten") und `public/spiel.html` (Start-/Beitrittsformular, Lobby, Spielbrett, Kennzahlenanzeige, z. B. „Spiel erstellen", „Beitreten", „Durchlaufzeit", „Bearbeitungszeit") sind direkt und ausschließlich auf Deutsch ins Markup geschrieben. Es gibt keine Trennung von Text und Struktur, keine Übersetzungstabelle, keinen Sprachschalter.
+- Auch Fehlermeldungen sind heute ausschließlich deutsche Sätze, die direkt in den gemeinsam genutzten Spiellogik-Modulen geworfen werden (`src/game/joinGame.js`, `kartenBewegung.js`, `stapelTor.js`, `hostSession.js`, `teilnehmerSession.js`, `rundenwechsel.js`, `rundeVier/elementBewegung.js` u. a.), z. B. „Ungültiger oder unbekannter Code." oder „Nur ein Schritt vorwärts erlaubt – Stationen können nicht übersprungen werden." Diese Module werden auch von bestehenden automatisierten Tests genutzt; ein Test in `tests/game-rooms.logic.test.js` prüft sogar per Regex (`/code/i`) auf einen Ausschnitt des deutschen Fehlertexts.
+- Die Runde-4-Referenzdaten (`src/game/rundeVier/laenderStaedte.js`, FEATURE-004) sind ausschließlich in deutscher Schreibweise angelegt (z. B. „München") – bereits in FEATURE-004 als Pre-Mortem-Risiko 8 dokumentiert und dort ausdrücklich als Abhängigkeit an dieses Ticket übergeben.
+- Es existiert aktuell kein Mechanismus zum Umschalten der Sprache, keine gespeicherte Spracheinstellung, keine Übersetzungsdatei.
+
+**Von Stephan bereits bestätigter Scope (nicht mehr offen, keine erneute Rückfrage nötig):** Sprachen Deutsch + Englisch, Default Englisch; wirklich alle sichtbaren Texte für alle Rollen sind betroffen, keine Teilbereiche ausgenommen (Startseite/Landingpage, Beitritts-/Erstellungsformular, Lobby, Spielbrett aller vier Runden, Anleitungs-/Instruktionstexte, Kennzahlen-/Auswertungsansicht, Fehlermeldungen).
+
+**Durchgespielte Beispiele:**
+- Eine Person öffnet die Landingpage zum ersten Mal, ohne zuvor eine Sprache gewählt zu haben → sie sieht alle Texte auf Englisch (Grundeinstellung).
+- Dieselbe Person wechselt zu Deutsch → alle sichtbaren Texte auf dem aktuellen Bildschirm wechseln sofort zu Deutsch, ohne dass die Seite neu geladen wird.
+- Der Host erstellt ein Spiel mit Deutsch als eigener Anzeigesprache; eine mitspielende Person tritt mit Englisch als eigener Anzeigesprache bei → ob beide unabhängig voneinander ihre eigene Sprache sehen dürfen oder ob eine Sprache für das ganze Spiel gilt, ist eine der zentralen offenen Fragen unten.
+- Eine Person versucht, mit einem ungültigen Code beizutreten → die Fehlermeldung „Ungültiger oder unbekannter Code" müsste bei englisch eingestellter Sprache auf Englisch erscheinen, obwohl der Text heute hart im Code als deutscher Satz hinterlegt ist.
+- In Runde 4 trägt eine Person „Munich" statt „München" für eine Deutschland-Karte ein → das muss unabhängig von der UI-Sprache als dieselbe korrekte, ggf. bereits vergebene Stadt erkannt werden (Zusammenspiel mit FEATURE-004).
+- Eine Person wechselt mitten in einer laufenden, zeitgemessenen Runde die Sprache → die serverseitig gemessenen Zeiten dürfen dadurch nicht beeinflusst werden, nur die angezeigten Texte wechseln.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): wie die Sprache gewählt/umgeschaltet wird (pro Gerät/Person individuell vs. einheitlich fürs ganze Spiel), ob die Wahl über Beitritt/Rejoin gespeichert bleibt, ob Host und Spielende unabhängig voneinander wählen können, und wie Land-/Stadt-Eingaben in Runde 4 zweisprachig gehandhabt werden.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Öffnet jemand das Spiel zum ersten Mal, ohne zuvor selbst eine Sprache gewählt zu haben, sieht die Person alle Texte auf Englisch.
+2. Jede Person kann jederzeit zwischen Deutsch und Englisch wechseln; die sichtbaren Texte wechseln sofort, ohne dass die Seite neu geladen werden muss und ohne dass dabei der aktuelle Spielfortschritt oder eine laufende Zeitmessung beeinflusst wird.
+3. Die gewählte Sprache gilt für wirklich alle sichtbaren Texte: Startseite/Landingpage, Beitritts- und Erstellungsformular, Lobby, Spielbrett in allen vier Runden, Anleitungs-/Instruktionstexte, Kennzahlen- und Auswertungsansicht sowie alle Fehlermeldungen – keine Teilbereiche bleiben in der jeweils anderen Sprache stehen.
+4. Nach einem Sprachwechsel ist auf keinem Bildschirm ein Mix aus deutschen und englischen Texten zu sehen.
+5. Die Sprachwahl verändert ausschließlich die Anzeige, nie die Spielregeln oder die gemessenen Zeiten – unabhängig von der eingestellten Sprache laufen dieselben Regeln und Zeitmessungen wie bisher.
+6. In Runde 4 wird eine eingegebene Stadt unabhängig von der eingestellten Sprache erkannt: Eine deutsche und eine englische Schreibweise derselben Stadt (z. B. „München" und „Munich") gelten als dieselbe Stadt für die Korrektheits- und Dublettenprüfung.
+7. Fehlermeldungen (z. B. bei ungültigem Beitritts-Code oder vollem Spiel) erscheinen in der von der jeweiligen Person aktuell eingestellten Sprache.
+
+*(Kriterien zur Reichweite/Speicherung/Kopplung der Sprachwahl – „gilt sie pro Person/Gerät oder pro Spiel", „bleibt sie über einen Rejoin erhalten", „kann der Host sie für alle vorgeben" – werden erst nach Klärung der offenen Fragen unten in konkrete Akzeptanzkriterien überführt; hier bewusst nicht vorweggenommen.)*
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Unvollständige Übersetzung / vergessene Texte:** Weil heute keine zentrale Text-/Schlüssel-Stelle existiert, sondern Texte verstreut direkt im Markup zweier HTML-Dateien und in Fehlermeldungen mehrerer Logikmodule stehen, ist es leicht, einzelne Texte beim Übersetzen zu übersehen (z. B. dynamisch per JavaScript erzeugte Texte, `aria-label`s aus FEATURE-005, künftige Runde-4-Oberfläche). Gegenmaßnahme: eine zentrale Text-/Schlüssel-Tabelle statt verstreuter Strings, plus ein automatisierter Test, der prüft, dass zu jedem verwendeten Text-Schlüssel ein Eintrag in beiden Sprachen existiert.
+2. **Fehlermeldungen sitzen als literale deutsche Sätze direkt in `throw new Error(...)` in bereits abgenommenen, testgedeckten Logikmodulen:** Ein Umbau auf sprachneutrale Fehlercodes/Schlüssel (nötig für AK 7) greift in Code ein, der schon durch FEATURE-001/002/004-Tests abgedeckt ist – darunter ein Test, der aktuell einen Ausschnitt des deutschen Fehlertexts per Regex prüft (`tests/game-rooms.logic.test.js`, `/code/i`). Gegenmaßnahme: Umbau schrittweise und mit vollem Regressionslauf gegen FEATURE-001/002/003/004 absichern; wo ein Test auf konkreten Text prüft, bewusst auf einen sprachunabhängigen Fehlercode statt auf Text umstellen, nicht den Text nur in einer zweiten Sprache duplizieren.
+3. **Gleichzeitig unterschiedliche Sprache pro Person im selben Spiel (falls individuell entschieden, siehe offene Frage 1/3):** Würde die Sprachwahl versehentlich serverseitig auf dem gemeinsamen Spiel-Dokument statt rein clientseitig pro Person/Gerät gespeichert, könnte der Sprachwechsel einer Person alle anderen im selben Spiel ungewollt mit umschalten. Gegenmaßnahme: Sprachwahl rein clientseitig speichern (analog zum bereits bewährten Host-Session-`localStorage`-Muster aus FEATURE-001/FEATURE-005), kein gemeinsames Server-Feld für die individuelle Sprache – es sei denn, Stephan entscheidet sich bewusst für eine spielweit einheitliche Sprache.
+4. **Zweisprachige Land-/Stadt-Prüfung in Runde 4 (direkte Abhängigkeit zu FEATURE-004 Pre-Mortem-Risiko 8):** Die aktuelle Referenzliste (`laenderStaedte.js`) kennt nur die deutsche Schreibweise. Ohne Anpassung würde eine englische Eingabe wie „Munich" fälschlich als falsches Land oder als neue (nicht-doppelte) Stadt gewertet, obwohl sie inhaltlich mit „München" identisch ist. Gegenmaßnahme: Städtelisten um beide Sprachvarianten erweitern bzw. eine Normalisierung vor dem Vergleich (z. B. „Munich" und „München" auf denselben internen Schlüssel abbilden), mit einem Regressionstest gegen die bestehenden FEATURE-004-Tests der Qualitätsauswertung.
+5. **Re-Render/State-Verlust beim Sprachwechsel mitten im Spiel:** Ähnlich wie bereits in FEATURE-005 Pre-Mortem 4 für Live-Updates beschrieben, könnte ein Sprachwechsel, der Teile der Oberfläche neu aufbaut, den Tastaturfokus verschieben oder clientseitigen UI-Zustand (z. B. die „Fokus + Warteschlange"-Ansicht aus FEATURE-004) unbeabsichtigt zurücksetzen. Gegenmaßnahme: Sprachwechsel als reines Text-Update ohne vollständigen Neuaufbau der Oberfläche und ohne Seiten-Neuladen umsetzen.
+6. **Doppelpflege-Risiko zwischen Barrierefreiheit (FEATURE-005) und Mehrsprachigkeit:** `aria-label`s und sichtbare Texte müssen inhaltlich zusammenpassen und in beiden Sprachen konsistent gepflegt werden; ohne zentrale Verwaltung könnten sie in einer Sprache aktualisiert werden, in der anderen aber nicht. Gegenmaßnahme: `aria-label`s ebenfalls über dieselbe zentrale Text-/Schlüssel-Tabelle pflegen, nicht separat.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/index.html` und `public/spiel.html`: aktuell reiner, direkt ins Markup geschriebener deutscher Text ohne jede Trennung von Text und Struktur – nötig: ein Weg, Text-Schlüssel im Markup zu markieren, und eine zentrale Übersetzungstabelle (DE/EN), aus der der jeweils passende Text zur Laufzeit eingesetzt wird.
+- Fehlermeldungen in den gemeinsam genutzten Logikmodulen unter `src/game/` (u. a. `joinGame.js`, `kartenBewegung.js`, `stapelTor.js`, `hostSession.js`, `teilnehmerSession.js`, `rundenwechsel.js`, `rundeVier/elementBewegung.js`) – derzeit literale deutsche Sätze; brauchen sprachneutrale Fehlercodes/Schlüssel, deren Übersetzung an der Anzeigestelle (nicht in der Logik selbst) erfolgt.
+- Neuer, bisher nicht vorhandener Baustein: eine zentrale Text-/Übersetzungstabelle (Schlüssel → deutscher Text, englischer Text) sowie ein clientseitiger Mechanismus, der die aktuell gewählte Sprache hält und alle sichtbaren Texte live umschaltet.
+- Speicherort der Sprachwahl: voraussichtlich rein clientseitig (`localStorage`, analog zum bestehenden Host-Session-Muster aus FEATURE-001/FEATURE-005) – abhängig von der Antwort auf die offene Frage, ob die Sprache pro Person/Gerät oder einheitlich pro Spiel gilt; im letzteren Fall käme ein neues Feld auf dem Spiel-Dokument in Firestore samt entsprechender Regel-Ergänzung hinzu.
+- Runde 4 (FEATURE-004, aktuell „In Progress"): `src/game/rundeVier/laenderStaedte.js` (Referenzdaten) und `qualitaetsauswertung.js` (Korrektheits-/Duplikat-Prüfung) müssten beide Sprachvarianten der Städtenamen als gleichwertig behandeln.
+- Kennzahlen-/Auswertungsansicht (`kennzahlen.js`, `vergleichsansicht.js`): Beschriftungen wie „Durchlaufzeit", „Bearbeitungszeit" sind ebenfalls Text und müssten über dieselbe Übersetzungstabelle laufen.
+- Barrierefreiheit (FEATURE-005, Done): `aria-label`s und sichtbare Texte müssen in beiden Sprachen konsistent bleiben – idealerweise über dieselbe zentrale Text-/Schlüssel-Verwaltung wie der übrige UI-Text.
+- Keine erwartete Änderung an den bestehenden Sicherheitsregeln für Spielregeln/Zeitmessung selbst (Product.md §10, „Server bleibt die Wahrheit") – Mehrsprachigkeit ist reine UI-Textübersetzung, keine Regellogik; nur falls die Sprache spielweit serverseitig gespeichert werden soll (siehe offene Frage 1/3), kämen minimale Regel-Ergänzungen für ein neues, unkritisches Text-/Konfigurationsfeld hinzu.
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Host-Session-Mechanismus als Vorbild für clientseitige Sprachspeicherung, darf durch einen zusätzlichen `localStorage`-Schlüssel nicht gestört werden), FEATURE-002 (Fehlermeldungen in `kartenBewegung.js`/`stapelTor.js` sind testgedeckt – Umbau auf Fehlercodes braucht vollen Regressionslauf), FEATURE-003 (Kennzahlen-/Vergleichsansicht-Beschriftungen werden Text-Schlüssel, dürfen sich für Runden 1–3 inhaltlich nicht ändern, nur übersetzbar werden), FEATURE-004 (In Progress – Land-/Stadt-Referenzdaten und Fehlermeldungen in `rundeVier/elementBewegung.js` sind unmittelbar betroffen; FEATURE-004 hat diese Abhängigkeit bereits selbst als Pre-Mortem-Risiko 8 vermerkt), FEATURE-005 (Done – `aria-label`s und Barrierefreiheits-Texte müssen mit der neuen Übersetzungstabelle konsistent bleiben, der bestehende Rejoin-Mechanismus darf durch eine zusätzliche Sprachspeicherung im `localStorage` nicht gestört werden).
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Rein clientseitiges, schlüsselbasiertes Übersetzungssystem (kein Cloud Functions, bleibt im Spark-Tarif):* Eine zentrale Text-Schlüssel-Tabelle (DE/EN) im Frontend-Code, die aktuelle Sprache wird rein im Browser gehalten (State + `localStorage`), Fehlermeldungen aus den Logikmodulen werden auf sprachneutrale Fehlercodes umgestellt und erst an der Anzeigestelle übersetzt. Vorteile: bleibt kostenlos, folgt der bisherigen Architektur-Linie „keine Cloud Functions" (Product.md §10) konsequent weiter, reine UI-Textübersetzung berührt weder Spielregeln noch Sicherheitsregeln. Nachteile: spürbarer Migrationsaufwand, weil aktuell keinerlei Trennung von Text und Struktur existiert – muss Datei für Datei nachgezogen werden; die Umstellung der Fehlermeldungen auf Fehlercodes berührt mehrere bereits abgenommene, testgedeckte Module.
+
+*Option B – Serverseitig ausgelieferte Übersetzungen (z. B. über eine Cloud Function, die Texte je nach angefragter Sprache liefert):* Vorteile: zentrale Pflege an einer einzigen Stelle, denkbar praktisch, falls später mehr als zwei Sprachen dazukommen. Nachteile: bricht mit der bislang durchgehend verfolgten Architektur-Linie „keine Cloud Functions" (Product.md §10), verlangt den Wechsel auf den kostenpflichtigen Blaze-Tarif für eine reine UI-Textfrage, bei der – anders als z. B. bei der Qualitätsauswertung in FEATURE-004 – keine serverautoritative Prüfung nötig ist. Deutlich höherer Aufwand ohne erkennbaren fachlichen Zusatznutzen für dieses Ticket.
+
+*Option C – Zwei vollständige, parallel gepflegte Sprachversionen (z. B. separate HTML-Dateien je Sprache) statt eines Schlüssel-Systems:* Vorteile: kein struktureller Umbau der bestehenden Dateien nötig, jede Sprachversion bleibt für sich genommen einfach lesbar. Nachteile: doppelte Pflege bei jeder künftigen inhaltlichen Änderung (jede Textanpassung, jedes neue Feature müsste zweimal gepflegt werden), hohes Risiko, dass beide Versionen mit der Zeit auseinanderlaufen – widerspricht dem in anderen Tickets verfolgten Grundsatz „eine Quelle der Wahrheit". Nicht empfohlen.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie hält die bisherige, konsequent kostenfreie Architektur-Linie durch (Product.md §10), betrifft ausschließlich UI-Text statt Spielregeln oder Sicherheitsregeln, und lässt sich schrittweise migrieren (z. B. zuerst Landingpage/Beitrittsformular, dann Spielbrett und Kennzahlenansicht, zuletzt die Fehlermeldungen aus den Logikmodulen). Von Option B wird abgeraten, weil sie einen Kostenwechsel für eine reine Textfrage ohne Sicherheitsbezug verlangen würde. Von Option C wird abgeraten, weil sie dauerhaften doppelten Pflegeaufwand und Drift-Risiko erzeugt.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+
+- Given/When/Then je Akzeptanzkriterium oben (7 Stück; weitere zur Reichweite/Speicherung folgen nach Klärung der offenen Fragen).
+- Vollständigkeits-Test: Given alle im Frontend verwendeten Text-Schlüssel, When gegen die Übersetzungstabelle geprüft wird, Then existiert für jeden Schlüssel sowohl ein deutscher als auch ein englischer Eintrag.
+- Regressionstest Fehlermeldungen: Given die bestehenden Tests in `tests/game-rooms.logic.test.js` (u. a. der Regex-Test auf einen Fehlertext-Ausschnitt), When die Fehlermeldungen auf Fehlercodes umgestellt werden, Then bleiben diese Tests grün (ggf. nach kontrollierter Anpassung des Test-Assertion-Stils, nicht durch stillschweigendes Entschärfen).
+- Zweisprachigkeits-Test Runde 4: Given eine Länderkarte „Deutschland"/„Germany", When einmal „München" und einmal „Munich" eingetragen wird, Then erkennt die Qualitätsauswertung beide als dieselbe Stadt (Korrektheit und Dublettenprüfung identisch, unabhängig von der Schreibweise).
+- Kein-Datenverlust-Test: Given eine laufende, zeitgemessene Runde, When die Sprache mitten in der Runde gewechselt wird, Then bleiben Zeitmessung und Spielzustand unverändert, nur die angezeigten Texte wechseln.
+- Regressionstests: FEATURE-001/002/003/004/005 laufen nach der Umstellung auf das Übersetzungssystem unverändert grün (insbesondere Kennzahlen-/Vergleichsansicht-Inhalte für Runden 1–3, Barrierefreiheits-Prüfungen aus FEATURE-005, Host-Session-Rejoin-Mechanismus).
+
+---
+
+**Offene Fragen an Stephan (müssen vor Freigabe der Spec geklärt werden, keine Annahmen getroffen):**
+
+1. **Geltungsbereich der Sprachwahl:** Wählt jede Person auf ihrem eigenen Gerät individuell ihre Sprache (z. B. Host sieht Deutsch, eine mitspielende Person sieht Englisch, im selben Spiel gleichzeitig), oder gilt eine einzige, einheitliche Sprache für das ganze Spiel (z. B. vom Host vorgegeben)? Das entscheidet maßgeblich, ob die Sprachwahl rein clientseitig (`localStorage`) oder zusätzlich serverseitig auf dem Spiel-Dokument gespeichert werden muss.
+2. **Persistenz über Beitritt/Rejoin hinweg:** Bleibt die einmal gewählte Sprache einer Person über einen erneuten Beitritt oder ein automatisches Wiederbetreten (FEATURE-005) auf demselben Gerät hinweg gespeichert, oder wird bei jedem neuen Besuch wieder mit der Grundeinstellung Englisch gestartet?
+3. **Unabhängigkeit von Host und Spielenden:** Können Host und Spielende unabhängig voneinander ihre eigene Anzeigesprache wählen (siehe Frage 1), oder gibt der Host die Sprache verbindlich für alle Teilnehmenden seines Spiels vor?
+4. **Zweisprachige Land-/Stadt-Handhabung in Runde 4 (aus FEATURE-004 Pre-Mortem-Risiko 8):** Sollen beide Schreibweisen (z. B. „München" und „Munich") in jedem Fall als dieselbe, gleichwertige Stadt gelten – unabhängig davon, in welcher Sprache die eingebende Person das Spiel gerade sieht? Oder soll die gültige Schreibweise von der zum Zeitpunkt der Eingabe eingestellten Sprache der jeweiligen Person abhängen? Die Analyse geht in Akzeptanzkriterium 6 und im Pre-Mortem von der ersten, wahrscheinlicheren Variante aus, trifft diese Annahme aber nicht endgültig.
+
+**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Die vier offenen Fragen oben sind Reichweiten-/Policy-Entscheidungen (wer sieht welche Sprache, wird sie gespeichert, wie werden Städtenamen zweisprachig behandelt) – keine „fühlt sich Variante X oder Y in der Bedienung besser an"-Fragen wie beim Runde-4-Warteschlangen-Prototyp in FEATURE-004. Ein klickbarer Prototyp ist dafür nicht der richtige nächste Schritt; sinnvoller ist, die vier Fragen direkt mit Stephan zu klären. Eine einzelne, für sich genommen leichtgewichtige Interaktionsfrage bleibt zusätzlich im Hinterkopf zu behalten, falls sie nach Klärung der Policy-Fragen noch unklar ist: die konkrete Platzierung/Gestaltung eines Sprachumschalters im Layout (z. B. Dropdown oben rechts vs. Text-Umschalter „DE | EN" vs. Flaggen-Icons). Diese Frage ist aber, anders als die Runde-4-Warteschlangen-Darstellung, ein gut etabliertes, alltägliches UI-Muster mit geringem Fehlrisiko – sie überschreitet die im Skill genannte Schwelle nicht eindeutig. Empfehlung: zunächst ohne Prototyp mit einer einfachen, üblichen Umsetzung starten (z. B. Text-Umschalter); nur falls sich beim Bauen oder bei einer ersten Rückmeldung zeigt, dass die Platzierung/Darstellung selbst strittig ist, gezielt einen `prototype-builder`-Durchlauf nachschieben.
 
 ---
 
@@ -198,17 +299,53 @@ Zwei neue Testdateien, gleiches Muster wie FEATURE-002/003 (Firestore-Emulator +
 
 ---
 
+#### Umsetzungsstand (2026-07-20, `flow-game-impl`)
+
+**Implementiert:**
+- `src/game/rundeVier/elemente.js` (`erzeugeElemente()`): erzeugt die zwölf Elemente in fester, strikt alternierender Startreihenfolge (Würfel 1, Karte 1, Würfel 2, ...), alle mit Position 1, Länderkarten mit zufällig zugeordnetem Land aus den acht festgelegten Ländern und leerer Städte-Liste.
+- `src/game/rundeVier/elementBewegung.js` (`bewegeElement()`): Referenzlogik für Kettenfortschritt (nur ein Schritt vorwärts, Position 6 als Obergrenze) und Wechselzwang; FIFO bewusst NICHT hier nachgebildet (siehe Testplan-Hinweis "primäre Durchsetzung siehe Sicherheitsregeln" – FIFO hängt vom tatsächlichen Firestore-Zustand mehrerer gleichzeitig wartender Geschwister-Elemente ab).
+- `src/game/rundeVier/rundenEnde.js` (`pruefeRundenEndeRundeVier()`): Rundenende, sobald alle zwölf Elemente Position 6 erreicht haben, unabhängig von der inhaltlichen Korrektheit der Städte.
+- `src/game/rundeVier/qualitaetsauswertung.js` (`berechneQualitaet()`): deterministische Land-/Stadt-Prüfung + Duplikat-Erkennung über alle Städte-Einträge, sortiert nach Server-Zeitstempel (frühester Eintrag einer Stadt gilt als korrekt, spätere gleichlautende als Dublette); Grenzfall „falsches Land UND Dublette" zählt einmal als fehlerhaft, erscheint aber in beiden Kategorien (Klärungsvermerk AK 12/13).
+- `src/game/rundeVier/wuerfelLogik.js` (`istWurfErfolgreich()`): reine „>3"-Regel.
+- `src/game/rundeVier/laenderStaedte.js`: Referenzdaten (8 Länder × 5-7 Städte, deutsche Schreibweise); `src/game/rundeVier/_rundeVierStatus.js`: interner Zwischenspeicher der Node-Referenzlogik, bewusst getrennt vom Runde-1–3-Pendant.
+- `firestore.rules`: neue Helfer-Funktionen (`rundeVierPositionVon`, `rundeVierFortschrittTyp`, `rundeVierWechselzwangErlaubt`, `rundeVierElementAngekommenVor`/`rundeVierAnzahlFrueherWartend` für FIFO, `rundeVierKettenfortschrittErlaubt`, `rundeVierWuerfelZwischenwurfErlaubt`, `rundeVierStaedtePrefixUnveraendert`/`rundeVierStaedteAngehaengt` für Append-only) auf derselben Top-Level-Ebene wie `istHost`/`bewegungErlaubt` (kein neues Scoping-Muster), plus zwei neue `match`-Blöcke `elemente/{elementId}` und `fortschritt/{uid}` unter dem bestehenden `runden/{runde}`. Die bestehenden `runden/{runde}`- und `karten/{kartenId}`-Regeln aus FEATURE-002/003 wurden NICHT verändert – nur ergänzt. Get()/Exists()-Budget pro Kettenfortschritt-Schreibvorgang bewusst auf maximal 9 Aufrufe gehalten (gleiche Grössenordnung wie die bestehende `karteAnPositionUndStapel`-Prüfung), indem die FIFO-Prüfung das bewegte Element selbst ohne zusätzlichen `get()`-Aufruf überspringt.
+
+**Bewusste Architekturabweichung von der wörtlichen Spec-Formulierung (Implementierungsoption A):** Die Land-/Städte-Liste liegt NICHT zusätzlich dupliziert in `firestore.rules`, sondern ausschliesslich in `laenderStaedte.js`. Grund: Die vollständige, deterministische Duplikat-Erkennung über bis zu 30 Städte-Einträge (Pre-Mortem-Risiko 1) ist mit der Firestore-Regelsprache (keine Schleifen, kein Sammlungs-Zugriff, striktes Get()-Kontingent) nicht praktikabel nachbildbar. Kein einziger der 28 Sicherheitsregel-Testfälle verlangt eine Rules-seitige Land-/Stadt-Prüfung – die tatsächlich sicherheitskritischen Stellen (Kettenfortschritt, Wechselzwang, FIFO, Append-only) sitzen wie gefordert in `firestore.rules`. Die Qualitätsauswertung bleibt damit im selben, bereits etablierten Vertrauensmodell wie die Zeit-Kennzahlen aus FEATURE-003 (`kennzahlen.js` wird ebenfalls nicht durch Sicherheitsregeln inhaltlich geprüft, nur der Rahmen ist serverautoritativ: Host-only, servergesetzter Zeitstempel).
+
+**Testlauf-Status:**
+- `tests/game-round4.logic.test.js`: **32/32 grün** (direkt gegen Node ausgeführt, siehe unten – kein Firestore-Emulator nötig für dieses reine Logik-Modul).
+- `tests/game-round4.security.rules.test.js`: **28 Testfälle geschrieben und implementiert, aber NICHT in dieser Sandbox lauffähig geprüft** – der Firestore-Emulator-Download ist über die Netzwerk-Allowlist blockiert (`firebase emulators:exec` scheitert mit „Connection blocked by network allowlist", erneut bestätigt vor Beginn der Implementierung). Die Regeln wurden stattdessen manuell Test-für-Test gegen den tatsächlichen Regeltext durchgespielt (Bedingungen, Get()-Budget, Feldnamen) – das ersetzt keinen echten Emulator-Lauf.
+- Regressionslauf (nur netzwerkfrei ausführbare Suiten): `tests/game-evaluation.logic.test.js` weiterhin grün (Wiederverwendungsnachweis `kennzahlen.js`/`vergleichsansicht.js` bestätigt: Runde 4 lässt sich ohne Strukturumbau ergänzen, Runden 1-3 unverändert). `tests/game-a11y-static.test.js`, `tests/game-connection-status.logic.test.js`, `tests/game-feature-005-manual-checks.test.js` weiterhin grün. Die emulator-abhängigen Suiten (`game-rooms.*`, `game-round.*`, `game-round.stapel-zaehlung.test.js`, `game-evaluation.security.rules.test.js`, `game-round4.security.rules.test.js`) konnten aus demselben Netzwerkgrund nicht in dieser Sandbox laufen – **das ist keine Aussage über deren Zustand, nur über die Umgebung.**
+
+**Was noch von Stephan lokal zu bestätigen ist (nicht stillschweigend als erledigt behandelt):**
+1. ~~`npm run test:emulator:feature-004` einmal lokal ausführen~~ – **erledigt, siehe Bestätigung unten.**
+2. ~~`npm run test:emulator` (voller Regressionslauf inkl. FEATURE-001/002/003) einmal lokal ausführen~~ – **erledigt, siehe Bestätigung unten.**
+3. Ein manueller Mehrpersonen-Testlauf von Runde 4 existiert NICHT, weil die Spielbrett-Oberfläche (UI-Konzept „Fokus + Warteschlange", CatTube-Würfelanimation) in diesem Durchgang bewusst nicht gebaut wurde – nur das serverautoritative Fundament (Regeln + Referenzlogik), das durch die 60 BDD-Tests abgedeckt ist. Das Anbinden an `public/js/game`/`spiel.html` ist als Folgeschritt offen und sollte vor einem echten Mehrpersonen-Test explizit besprochen werden (eigenes Ticket oder Erweiterung dieses Tickets – Stephans Entscheidung).
+
+**Bestätigt (2026-07-20):** `npm run test:emulator:feature-004` von Stephan lokal ausgeführt — 60/60 Tests grün (2 Test-Suiten), nach zwei Bugfix-Runden während der Verifikation (serverTimestamp() nicht in Arrays erlaubt → Datenmodell für Städte-Einträge von Array auf Map umgestellt; Zeitstempel-Prüfung beim Kettenfortschritt für Länderkarten korrigiert). Damit ist der FEATURE-004-eigene Testlauf real bestätigt.
+
+**Voller Regressionstest bestätigt (2026-07-20):** `npm run test:emulator` (FEATURE-001/002/003, 7 Test-Suiten) von Stephan lokal ausgeführt — 103/103 Tests grün, keine Regression durch die FEATURE-004-Erweiterungen an firestore.rules.
+
+Ticket bleibt „In Progress" – die eigentliche Spieler-Oberfläche für Runde 4 (Punkt 3 oben) ist noch nicht gebaut (Backend/Logik-Ebene fertig, UI folgt separat); Wechsel auf „Done" erfolgt erst nach Stephans expliziter Gate-3-Bestätigung.
+
+**Nicht angetastet (Scope-Disziplin):** `src/game/kennzahlen.js`, `src/game/vergleichsansicht.js`, alle Runde-1–3-Regeln/-Module, `package.json` (nur das bereits von `flow-game-bdd` angelegte `test:emulator:feature-004`-Skript wird genutzt, keine bestehenden Sammelskripte verändert).
+
+---
+
+## ✅ Done
+
 ### FEATURE-005 Phase 5 – Robustheit
 
 | Feld | Wert |
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Niedrig |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-17 |
 | **Analyse am** | 2026-07-20 |
 | **Spec freigegeben am** | 2026-07-20 |
 | **In Progress seit** | 2026-07-20 |
+| **Done seit** | 2026-07-20 |
 
 **Beschreibung:** Wiederbetreten nach Neuladen oder Verbindungsverlust (zurück ins selbe Spiel und dieselbe Station, keine Doppel-Anmeldung), vollständige Tastatur-Bedienung, weitere Barrierefreiheits-Punkte (Kontrast, ruhiger Modus, Bedeutung nie nur über Farbe).
 
@@ -431,9 +568,11 @@ Kein Syntax-/Setup-Fehler beteiligt – jeder Fehlschlag ist entweder ein fehlen
 
 **Echter Fund — Kontrast-Fehler (AK13), nicht durch Mustersuche erkennbar:** Per `getComputedStyle` im Live-Browser gemessen (nicht nur Code gelesen): Der primäre Button-Verlauf (`#5a97ff`→`#3f7ff0`, weißer Text) erreichte nur ca. **2,9–3,8:1** statt der geforderten 4,5:1 — ein vorbestehender Fehler (nicht durch dieses Ticket verursacht), aber im Scope von AK13 ("gesamte Oberfläche"). Mit Stephans Freigabe direkt behoben: Verlauf auf `#2b6fd8`→`#1a56c4` gedunkelt (4,81:1 bzw. 6,62:1 gegen Weiß, gleiche Blau-Familie), in `public/spiel.html` UND `public/index.html` (gleicher Button dort). Neuer automatisierter Regressionstest ergänzt in `tests/game-a11y-static.test.js` ("Primärer Button erreicht WCAG-AA-Textkontrast"), berechnet den Kontrast direkt aus den CSS-Verlaufsfarben nach WCAG-Formel — verhindert diese konkrete Regression künftig, ohne Emulator oder Browser. `npm run test:static:feature-005`-Äquivalent lokal in der Sandbox erneut ausgeführt: **6/6 Tests grün** (inkl. der 2 neuen Kontrast-Tests).
 
-**Status:** Contrast-Fix noch nicht committed/gepusht/deployed — steht als nächster Schritt aus. Stephan hat sich bewusst dagegen entschieden, das Ticket auf Basis des aktuellen Stands schon auf "Done" zu setzen; die verbliebenen manuellen Prüfungen (vollständiger Tastatur-Durchlauf mit echten Mitspielenden, echter WLAN-Reconnect) stehen noch aus.
+**Contrast-Fix committed, gepusht (`a66560f`) und deployed:** GitHub Action `build_and_deploy` erfolgreich (37s), live erneut per Chrome-Automatisierung gegengeprüft (`getComputedStyle` zeigt den neuen Verlauf `rgb(43,111,216)`→`rgb(26,86,196)`).
 
-## ✅ Done
+**Manuelle Abschluss-Bestätigung durch Stephan (2026-07-20):** Vollständiger Tastatur-Durchlauf ohne Maus und der echte WLAN-Verbindungsabbruch/Reconnect wurden von Stephan selbst durchgeführt und bestätigt. Damit sind alle 16 Akzeptanzkriterien real geprüft — automatisiert (129 Tests: 6 statische A11y-Tests inkl. Kontrast-Regression, 8 Rejoin-Emulator-Tests, 103 Regressionstests FEATURE-001/002/003, 3 Deploy-Regressionstests, plus 9 weitere aus dem ursprünglichen `test:static:feature-005`-Lauf) und manuell/live (Fokus-Stil, Kontrast-Fund+Fix, Tastatur-Durchlauf, WLAN-Reconnect). Bewusst noch offen und an FEATURE-004 „Done" übergeben (nicht Teil dieses Tickets): Bedeutung nie nur über Farbe in Runde 4 (AK12), Rejoin mitten in laufender Runde 4 (AK6, Cross-Ticket-Risiko 10).
+
+---
 
 ### FEATURE-003 Phase 3 – Auswertung
 
