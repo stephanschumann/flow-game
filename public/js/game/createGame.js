@@ -54,13 +54,24 @@
     return ergebnis;
   }
 
-  async function createGame({ hostAnzeigename, uid }, db) {
+  async function createGame({ hostAnzeigename, uid, sprache }, db) {
     if (!hostAnzeigename || !hostAnzeigename.trim()) {
-      throw new Error('Anzeigename ist erforderlich.');
+      const fehler = new Error('Anzeigename ist erforderlich.');
+      fehler.code = 'ANZEIGENAME_ERFORDERLICH';
+      throw fehler;
     }
     if (!uid) {
-      throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+      const fehler = new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+      fehler.code = 'FEHLENDE_AUTH_SITZUNG';
+      throw fehler;
     }
+    // FEATURE-006 (AK 1, AK 9): Default STANDARD_SPRACHE ("en") von
+    // window.FlowGame.SPRACHEN/STANDARD_SPRACHE (js/game/sprache.js, muss vor
+    // dieser Datei als <script> eingebunden sein), wenn keine eigene, gültige
+    // Sprache übergeben wurde.
+    const spracheListe = global.FlowGame.SPRACHEN || ['de', 'en'];
+    const standardSprache = global.FlowGame.STANDARD_SPRACHE || 'en';
+    const spielSprache = spracheListe.includes(sprache) ? sprache : standardSprache;
 
     const hostKennung = zufallsGeheimnis();
     const maxVersuche = 10;
@@ -81,6 +92,7 @@
             erstelltAm: jetzt,
             letzteAktivitaet: jetzt,
             belegteStationen: {},
+            sprache: spielSprache,
           });
           tx.set(spielRef.collection('geheim').doc('kennung'), { hostKennung });
           tx.set(spielRef.collection('teilnehmende').doc(uid), {

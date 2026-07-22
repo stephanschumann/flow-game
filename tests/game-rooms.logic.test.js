@@ -298,10 +298,21 @@ describe('Szenario: Beitritt als Beobachterin ohne Schreibrechte auf Spielzüge'
 });
 
 describe('Szenario: Ablehnung bei falschem/unbekanntem Code', () => {
-  test('Gegeben kein Spiel mit diesem Code existiert, wenn jemand mit einem falschen Code beitreten will, dann wird eine verständliche Fehlermeldung geliefert und kein Beitritt vollzogen', async () => {
-    await expect(
-      joinGame({ code: 'ZZZZZZZZ', anzeigename: 'Wer auch immer', rolle: 'spielende', uid: neueUid() }, db)
-    ).rejects.toThrow(/code/i);
+  // ÄNDERUNG (flow-game-impl, FEATURE-006, 2026-07-21, mit Stephan
+  // abgestimmt): Prüfte ursprünglich per `.rejects.toThrow(/code/i)` einen
+  // Ausschnitt der DEUTSCHEN Fehlermeldung. Seit joinGame.js auf
+  // sprachneutrale Fehlercodes umgestellt ist (AK 7, Pre-Mortem-Risiko 2,
+  // siehe src/i18n/uebersetzungen.js), prüft dieser Test stattdessen das neue,
+  // sprachunabhängige `err.code`-Feld – die Fehlermeldung selbst kann sich
+  // dadurch künftig je nach eingestellter Sprache ändern, ohne diesen Test zu
+  // brechen.
+  test('Gegeben kein Spiel mit diesem Code existiert, wenn jemand mit einem falschen Code beitreten will, dann wird ein sprachneutraler Fehlercode geliefert und kein Beitritt vollzogen', async () => {
+    expect.assertions(1);
+    try {
+      await joinGame({ code: 'ZZZZZZZZ', anzeigename: 'Wer auch immer', rolle: 'spielende', uid: neueUid() }, db);
+    } catch (fehler) {
+      expect(fehler.code).toBe('UNGUELTIGER_CODE');
+    }
   });
 });
 

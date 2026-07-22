@@ -16,9 +16,15 @@
  * GLEICHZEITIG im falschen Land liegt UND eine Dublette ist, zählt insgesamt
  * als EIN Fehler (nicht doppelt), erscheint aber in BEIDEN Fehlerkategorien
  * (`falschesLand` UND `dublette`) der Gesamtstatistik.
+ *
+ * FEATURE-006-ERGÄNZUNG (2026-07-21, AK 6): Die Dublettenprüfung vergleicht
+ * jetzt über normalisiereStadt() statt über den rohen Eingabetext – "München"
+ * (früher erfasst) und "Munich" (später erfasst) gelten dadurch als dieselbe,
+ * bereits erfasste Stadt, unabhängig von der UI-Sprache der eintragenden
+ * Person (siehe laenderStaedte.js).
  */
 
-const { istStadtInLand } = require('./laenderStaedte');
+const { istStadtInLand, normalisiereStadt } = require('./laenderStaedte');
 
 function wertungFuerEintrag(richtigesLand, istDublette) {
   if (richtigesLand && !istDublette) return 'korrekt';
@@ -56,9 +62,10 @@ async function berechneQualitaet({ karten } = {}) {
   sortiertNachZeit.forEach((eintrag) => {
     const schluessel = `${eintrag.kartenIndex}-${eintrag.eintragIndex}`;
     const richtigesLand = istStadtInLand(eintrag.land, eintrag.stadt);
-    const istDublette = bereitsGeseheneStaedte.has(eintrag.stadt);
+    const stadtSchluessel = normalisiereStadt(eintrag.stadt);
+    const istDublette = bereitsGeseheneStaedte.has(stadtSchluessel);
     if (!istDublette) {
-      bereitsGeseheneStaedte.add(eintrag.stadt);
+      bereitsGeseheneStaedte.add(stadtSchluessel);
     }
     bewertungProSchluessel.set(schluessel, { richtigesLand, istDublette });
   });

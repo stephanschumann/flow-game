@@ -50,10 +50,14 @@
     code, rundenNummer, kartenId, vonPosition, uid,
   }, db) {
     if (typeof vonPosition !== 'number') {
-      throw new Error('vonPosition ist erforderlich.');
+      const fehler = new Error('vonPosition ist erforderlich.');
+      fehler.code = 'POSITION_FEHLT';
+      throw fehler;
     }
     if (vonPosition + 1 > 6) {
-      throw new Error('Position 6 (Ziel) ist die letzte gültige Position.');
+      const fehler = new Error('Position 6 (Ziel) ist die letzte gültige Position.');
+      fehler.code = 'POSITION_MAX';
+      throw fehler;
     }
     const kartenRef = db.collection('spiele').doc(code)
       .collection('runden').doc(String(rundenNummer))

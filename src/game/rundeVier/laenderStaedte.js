@@ -7,9 +7,17 @@
  * Festlegung dieser Phase (`flow-game-impl`), wie in der Spec vorgesehen.
  *
  * Städtenamen bewusst in der im Spiel verwendeten (teils deutschen) Schreibweise
- * (z. B. "Rom", "Mailand", "Neapel") – Mehrsprachigkeit/alternative Schreib-
- * weisen ("München" vs. "Munich") sind ausdrücklich NICHT Teil dieses Tickets,
- * siehe Pre-Mortem-Risiko 8 (Abhängigkeit zu FEATURE-006).
+ * (z. B. "Rom", "Mailand", "Neapel").
+ *
+ * FEATURE-006-ERGÄNZUNG (2026-07-21, AK 6, Pre-Mortem-Risiko 4/8): Die zum
+ * Zeitpunkt von FEATURE-004 noch offene Abhängigkeit ("München" vs. "Munich")
+ * ist jetzt geschlossen – unabhängig von der eingestellten UI-Sprache gelten
+ * beide Schreibweisen einer Stadt als dieselbe Stadt, sowohl für die
+ * Korrektheitsprüfung (istStadtInLand) als auch für die Dublettenprüfung
+ * (qualitaetsauswertung.js, dort über normalisiereStadt()). STADT_ALIAS deckt
+ * die im Spiel tatsächlich vorkommenden Länder/Städte ab (Germany, Italy) –
+ * bei Bedarf um weitere Länder erweiterbar, ohne bestehende Einträge
+ * anzufassen.
  *
  * ARCHITEKTUR-HINWEIS (Abweichung von der wörtlichen Spec-Formulierung, siehe
  * Umsetzungsstand-Vermerk in Backlog.md): Diese Liste liegt NICHT zusätzlich
@@ -42,9 +50,34 @@ const LAENDER_STAEDTE = {
   Canada: ['Toronto', 'Vancouver', 'Montreal', 'Ottawa', 'Calgary', 'Quebec'],
 };
 
-function istStadtInLand(land, stadt) {
-  const liste = LAENDER_STAEDTE[land] || [];
-  return liste.includes(stadt);
+// Englische <-> deutsche Alternativ-Schreibweisen derselben Stadt (AK 6).
+// Schlüssel ist die kleingeschriebene englische/alternative Schreibweise,
+// Wert die kanonische, in LAENDER_STAEDTE verwendete Schreibweise.
+const STADT_ALIAS = {
+  munich: 'münchen',
+  cologne: 'köln',
+  rome: 'rom',
+  milan: 'mailand',
+  naples: 'neapel',
+  florence: 'florenz',
+  venice: 'venedig',
+};
+
+// Normalisiert eine Stadt-Eingabe (trim + kleingeschrieben + Alias-Auflösung)
+// auf einen sprachunabhängigen Vergleichsschlüssel – z. B. liefern "München",
+// "Munich" und "  munich " denselben Schlüssel "münchen".
+function normalisiereStadt(stadt) {
+  if (typeof stadt !== 'string') return '';
+  const bereinigt = stadt.trim().toLowerCase();
+  return STADT_ALIAS[bereinigt] || bereinigt;
 }
 
-module.exports = { LAENDER_LISTE, LAENDER_STAEDTE, istStadtInLand };
+function istStadtInLand(land, stadt) {
+  const liste = LAENDER_STAEDTE[land] || [];
+  const eingabeSchluessel = normalisiereStadt(stadt);
+  return liste.some((kandidat) => normalisiereStadt(kandidat) === eingabeSchluessel);
+}
+
+module.exports = {
+  LAENDER_LISTE, LAENDER_STAEDTE, istStadtInLand, normalisiereStadt,
+};

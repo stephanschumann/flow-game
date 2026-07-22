@@ -18,9 +18,17 @@
  * Schleife bleibt davon unberührt: mitVerbindungsRetry() erkennt
  * CODE_KOLLISION nicht als transienten Verbindungsfehler und wirft ihn sofort
  * unverändert weiter, sodass der äußere try/catch wie bisher greift.
+ *
+ * FEATURE-006 (2026-07-21): Optionaler `sprache`-Parameter (AK 1, AK 9) –
+ * Default STANDARD_SPRACHE ("en"), von src/game/sprache.js übernommen statt
+ * hier dupliziert. Der Host kann die Sprache dadurch bereits beim Erstellen
+ * festlegen; ändern kann er sie später über setzeSpielSprache() (siehe dort),
+ * dessen serverseitige Durchsetzung (nur Host darf schreiben) in
+ * firestore.rules sitzt, nicht hier.
  */
 
 const { mitVerbindungsRetry } = require('./verbindungsRetry');
+const { SPRACHEN, STANDARD_SPRACHE } = require('./sprache');
 
 const STATIONEN = [
   'wareneingang',
@@ -53,13 +61,19 @@ function zufallsGeheimnis() {
   return ergebnis;
 }
 
-async function createGame({ hostAnzeigename, uid }, db, retryOptionen = {}) {
+async function createGame({ hostAnzeigename, uid, sprache }, db, retryOptionen = {}) {
   if (!hostAnzeigename || !hostAnzeigename.trim()) {
     throw new Error('Anzeigename ist erforderlich.');
   }
   if (!uid) {
     throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
   }
+  // FEATURE-006 (AK 1, AK 9): Default STANDARD_SPRACHE ("en"), wenn keine
+  // eigene, gültige Sprache übergeben wurde – ein ungültiger Wert fällt
+  // bewusst still auf den Default zurück statt die Spielerstellung selbst
+  // scheitern zu lassen (Erstellung ist keine sicherheitskritische Aktion,
+  // die eigentliche Durchsetzung gültiger Werte sitzt in firestore.rules).
+  const spielSprache = SPRACHEN.includes(sprache) ? sprache : STANDARD_SPRACHE;
 
   const hostKennung = zufallsGeheimnis();
   const maxVersuche = 10;
@@ -81,6 +95,7 @@ async function createGame({ hostAnzeigename, uid }, db, retryOptionen = {}) {
           erstelltAm: jetzt,
           letzteAktivitaet: jetzt,
           belegteStationen: {},
+          sprache: spielSprache,
         });
         tx.set(spielRef.collection('geheim').doc('kennung'), { hostKennung });
         tx.set(spielRef.collection('teilnehmende').doc(uid), {

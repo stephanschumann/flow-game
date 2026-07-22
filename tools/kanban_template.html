@@ -1,0 +1,173 @@
+<!DOCTYPE html><script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Flow Game Kanban",
+  "schemaVersion": 1,
+  "description": "Flow Game Kanban Board – aktueller Ticketstand aus Backlog.md (ToDo, In Progress, Done)"
+}
+</script>
+<html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Flow Game Pipeline</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:auto}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;padding:16px}
+h1{font-size:1.2rem;font-weight:700;color:#f8fafc}
+.sub{font-size:.72rem;color:#64748b;margin:4px 0 12px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.btn{font-size:.7rem;background:#1e2130;color:#94a3b8;border:1px solid #2d3148;border-radius:7px;padding:5px 10px;cursor:pointer}
+.btn:hover{color:#e2e8f0;border-color:#3b82f6}
+.board{display:flex;gap:12px;overflow-x:auto;padding-bottom:14px;align-items:flex-start;scroll-behavior:smooth}
+.col{background:#1a1d2b;border-radius:12px;padding:10px;min-width:240px;max-width:280px;flex:1 1 0;border-top:3px solid #475569}
+.col.gate{border-top-color:#f59e0b;background:#1d1a14;box-shadow:0 0 0 1px #f59e0b40}
+.col.retro{border-top-color:#a855f7}
+.col.over{outline:2px dashed #3b82f6;outline-offset:-4px}
+.col.excl{border-top-color:#ef4444}
+.col-h{display:flex;align-items:baseline;gap:6px;margin-bottom:4px}
+.col-t{font-size:.74rem;font-weight:700;letter-spacing:.03em}
+.col.gate .col-t{color:#fbbf24}
+.col.retro .col-t{color:#c084fc}
+.col-c{font-size:.65rem;color:#64748b;background:#2d3148;padding:1px 6px;border-radius:99px;margin-left:auto}
+.col-s{font-size:.6rem;color:#64748b;margin-bottom:9px;text-transform:uppercase;letter-spacing:.05em}
+.lane{min-height:30px;max-height:74vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px}
+.card{background:#252840;border-radius:8px;padding:9px 10px;border-left:3px solid #475569}
+.card.bug{border-left-color:#f87171}.card.us{border-left-color:#60a5fa}.card.task{border-left-color:#86efac}
+.card.drag{opacity:.4}
+.card-top{display:flex;align-items:center;gap:6px}
+.cid{font-size:.62rem;font-weight:700;letter-spacing:.04em;color:#cbd5e1;flex:1;cursor:grab}
+.nav{display:flex;gap:3px}
+.nav button{width:22px;height:22px;border:none;border-radius:5px;background:#2d3148;color:#94a3b8;font-size:.8rem;line-height:1;cursor:pointer;padding:0}
+.nav button:hover:not(:disabled){background:#3b82f6;color:#fff}
+.nav button:disabled{opacity:.25;cursor:default}
+.nav button.fwd{background:#1e3a2a;color:#6ee7b7}
+.nav button.fwd:hover:not(:disabled){background:#10b981;color:#04130c}
+.ct{font-size:.76rem;font-weight:600;line-height:1.3;color:#f1f5f9;margin-top:4px;cursor:pointer}
+.tags{margin-top:6px}
+.tag{display:inline-block;font-size:.58rem;font-weight:600;padding:1px 5px;border-radius:4px;margin-right:4px}
+.t-bug{background:#3f1515;color:#f87171}.t-us{background:#1a2a3f;color:#60a5fa}.t-task{background:#1f2a1f;color:#86efac}
+.t-hoch{background:#3b1f08;color:#fb923c}.t-mittel{background:#2a2a08;color:#facc15}.t-niedrig{background:#10241a;color:#34d399}
+.ov{position:fixed;inset:0;background:#0008;backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.ov.open{display:flex}
+.modal{background:#161925;border:1px solid #2d3148;border-radius:14px;max-width:680px;width:100%;max-height:86vh;overflow-y:auto;padding:22px}
+.modal h2{font-size:1rem;color:#f8fafc;margin-bottom:2px}
+.modal .mid{font-size:.66rem;color:#64748b;font-weight:700;letter-spacing:.05em;margin-bottom:12px}
+.md{font-size:.8rem;line-height:1.55;color:#cbd5e1}
+.md h3,.md h4{color:#f1f5f9;font-size:.84rem;margin:13px 0 5px}
+.md strong{color:#f8fafc}
+.md code{background:#0f1117;padding:1px 5px;border-radius:4px;font-size:.74rem;color:#fbbf24}
+.md pre{background:#0f1117;padding:10px;border-radius:8px;overflow-x:auto;margin:8px 0;font-size:.72rem}
+.md ul{margin:6px 0 6px 18px}.md li{margin:2px 0}
+.md table{border-collapse:collapse;margin:8px 0;font-size:.74rem}
+.md th,.md td{border:1px solid #2d3148;padding:4px 8px;text-align:left}
+.md th{background:#1e2130;color:#e2e8f0}
+.md blockquote{border-left:3px solid #3b82f6;padding-left:10px;color:#94a3b8;margin:8px 0}
+.x{float:right;cursor:pointer;color:#64748b;font-size:1.3rem;line-height:1}.x:hover{color:#f87171}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:#1e2130;border:1px solid #3b82f6;color:#e2e8f0;padding:10px 16px;border-radius:9px;font-size:.76rem;transition:transform .3s;z-index:60;max-width:90%}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.hint{font-size:.68rem;color:#475569;margin-left:auto}
+</style></head><body>
+<h1>🌀 Flow Game Pipeline</h1>
+<p class="sub">▶ schiebt eine Karte eine Spalte weiter · ◀ zurück · oder per Drag&amp;Drop · Klick auf den Titel öffnet Details · jede Änderung soll Backlog.md synchron halten</p>
+<div class="bar">
+<button class="btn" id="toggleDone">Done ausblenden</button>
+<button class="btn" id="reset">Ansicht zurücksetzen</button>
+<span class="hint">Quelle: Backlog.md · Stand __STAMP__</span>
+</div>
+<div class="board" id="board"></div>
+<div class="ov" id="ov"><div class="modal"><span class="x" id="x">&times;</span><div id="mbody"></div></div></div>
+<div class="toast" id="toast"></div>
+<script>
+const VERSION="__STAMP__";
+const TICKETS=__TICKETS_JSON__;
+const LANES=[
+ {k:"todo",t:"📋 ToDo",s:"offen"},
+ {k:"inprogress",t:"🔄 In Progress",s:"wird bearbeitet"},
+ {k:"done",t:"✅ Done",s:"abgeschlossen"},
+];
+const PIPE=["todo","inprogress","done"];
+const LK=Object.fromEntries(LANES.map(l=>[l.k,l.t]));
+const SKEY="fg_kanban_"+VERSION;
+let state={};
+try{const s=JSON.parse(localStorage.getItem(SKEY)||"null");if(s)state=s;}catch(e){}
+Object.keys(localStorage).forEach(k=>{if(k.startsWith("fg_kanban_")&&k!==SKEY)localStorage.removeItem(k)});
+const byId=Object.fromEntries(TICKETS.map(t=>[t.id,t]));
+function laneOf(t){return state[t.id]||t.lane}
+function save(){localStorage.setItem(SKEY,JSON.stringify(state))}
+let showDone=true;
+function typeClass(ty){ty=(ty||"").toLowerCase();return ty.includes("bug")?"bug":ty.startsWith("task")||ty.includes("aufgabe")?"task":"us"}
+function typeTag(ty){const c=typeClass(ty);return {bug:["t-bug","Bug"],us:["t-us","Feature"],task:["t-task","Task"]}[c]}
+function priTag(p){p=(p||"").toLowerCase();if(p.includes("hoch"))return["t-hoch","Hoch"];if(p.includes("mittel"))return["t-mittel","Mittel"];if(p.includes("niedrig"))return["t-niedrig","Niedrig"];return null}
+function render(){
+ const b=document.getElementById("board");b.innerHTML="";
+ LANES.forEach(l=>{
+   if(l.k==="done"&&!showDone)return;
+   const items=TICKETS.filter(t=>laneOf(t)===l.k);
+   const col=document.createElement("div");
+   col.className="col"+(l.gate?" gate":"")+(l.excl?" excl":"")+(l.retro?" retro":"");
+   col.dataset.lane=l.k;
+   col.innerHTML=`<div class="col-h"><span class="col-t">${l.t}</span><span class="col-c">${items.length}</span></div><div class="col-s">${l.s}</div><div class="lane"></div>`;
+   const lane=col.querySelector(".lane");
+   items.forEach(t=>lane.appendChild(cardEl(t)));
+   col.addEventListener("dragover",e=>{e.preventDefault();col.classList.add("over")});
+   col.addEventListener("dragleave",()=>col.classList.remove("over"));
+   col.addEventListener("drop",e=>{e.preventDefault();col.classList.remove("over");const id=e.dataTransfer.getData("text");move(id,l.k)});
+   b.appendChild(col);
+ });
+}
+function cardEl(t){
+ const c=document.createElement("div");
+ c.className="card "+typeClass(t.type);c.dataset.id=t.id;
+ const tt=typeTag(t.type),pt=priTag(t.priority);
+ const cur=laneOf(t),pi=PIPE.indexOf(cur);
+ const nextK=pi>=0&&pi<PIPE.length-1?PIPE[pi+1]:null;
+ const prevK=pi>0?PIPE[pi-1]:null;
+ const back=prevK?`<button class="bak" title="zurück nach ${LK[prevK]}">◀</button>`:`<button disabled>◀</button>`;
+ const fwd=nextK?`<button class="fwd" title="weiter nach ${LK[nextK]}">▶</button>`:`<button class="fwd" disabled>▶</button>`;
+ c.innerHTML=`<div class="card-top"><span class="cid" draggable="true">${t.id}</span><span class="nav">${back}${fwd}</span></div><div class="ct">${esc(t.title)}</div><div class="tags"><span class="tag ${tt[0]}">${tt[1]}</span>${pt?`<span class="tag ${pt[0]}">${pt[1]}</span>`:""}</div>`;
+ const handle=c.querySelector(".cid");
+ handle.addEventListener("dragstart",e=>{e.dataTransfer.setData("text",t.id);c.classList.add("drag")});
+ handle.addEventListener("dragend",()=>c.classList.remove("drag"));
+ c.querySelector(".ct").addEventListener("click",()=>openDetail(t));
+ const fb=c.querySelector(".fwd"),bb=c.querySelector(".bak");
+ if(fb&&nextK)fb.addEventListener("click",e=>{e.stopPropagation();move(t.id,nextK)});
+ if(bb&&prevK)bb.addEventListener("click",e=>{e.stopPropagation();move(t.id,prevK)});
+ return c;
+}
+function move(id,to){
+ const t=byId[id];if(!t)return;const from=laneOf(t);if(from===to)return;
+ state[id]=to;save();render();
+ const col=document.querySelector(`.col[data-lane="${to}"]`);
+ if(col)col.scrollIntoView({behavior:"smooth",inline:"center",block:"nearest"});
+ const msg=`Verschiebe Ticket ${id} im Flow-Game-Backlog von "${LK[from]}" nach "${LK[to]}" und aktualisiere Backlog.md entsprechend (nur das Status-Feld).`;
+ toast(`${id} → ${LK[to]} · synchronisiere Backlog.md …`);
+ if(window.sendPrompt)window.sendPrompt(msg);
+}
+function openDetail(t){
+ document.getElementById("mbody").innerHTML=`<h2>${esc(t.title)}</h2><div class="mid">${t.id} · ${esc(t.type)}${t.priority?" · "+esc(t.priority):""} · Lane: ${LK[laneOf(t)]}</div><div class="md">${mdRender(t.body)}</div>`;
+ document.getElementById("ov").classList.add("open");
+}
+document.getElementById("x").onclick=()=>document.getElementById("ov").classList.remove("open");
+document.getElementById("ov").onclick=e=>{if(e.target.id==="ov")e.currentTarget.classList.remove("open")};
+document.getElementById("toggleDone").onclick=e=>{showDone=!showDone;e.target.textContent=showDone?"Done ausblenden":"Done einblenden";render()};
+document.getElementById("reset").onclick=()=>{state={};save();render();toast("Ansicht auf Backlog.md-Stand zurückgesetzt")};
+let tto;function toast(m){const e=document.getElementById("toast");e.textContent=m;e.classList.add("show");clearTimeout(tto);tto=setTimeout(()=>e.classList.remove("show"),3200)}
+function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function mdRender(src){
+ src=src||"";const lines=src.split("\n");let out=[],i=0;
+ while(i<lines.length){
+  let ln=lines[i];
+  if(/^```/.test(ln)){let buf=[];i++;while(i<lines.length&&!/^```/.test(lines[i])){buf.push(esc(lines[i]));i++}i++;out.push("<pre>"+buf.join("\n")+"</pre>");continue}
+  if(/^\|/.test(ln)&&i+1<lines.length&&/^\|[\s:|-]+\|/.test(lines[i+1])){
+    let rows=[];while(i<lines.length&&/^\|/.test(lines[i])){rows.push(lines[i]);i++}
+    let head=rows[0].split("|").slice(1,-1).map(c=>"<th>"+inl(c.trim())+"</th>").join("");
+    let body=rows.slice(2).map(r=>"<tr>"+r.split("|").slice(1,-1).map(c=>"<td>"+inl(c.trim())+"</td>").join("")+"</tr>").join("");
+    out.push(`<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`);continue}
+  let h=ln.match(/^(#{3,4})\s+(.*)/);if(h){out.push(`<h${h[1].length}>`+inl(h[2])+`</h${h[1].length}>`);i++;continue}
+  if(/^>\s?/.test(ln)){let buf=[];while(i<lines.length&&/^>\s?/.test(lines[i])){buf.push(inl(lines[i].replace(/^>\s?/,"")));i++}out.push("<blockquote>"+buf.join("<br>")+"</blockquote>");continue}
+  if(/^\s*[-*]\s+/.test(ln)){let buf=[];while(i<lines.length&&/^\s*[-*]\s+/.test(lines[i])){buf.push("<li>"+inl(lines[i].replace(/^\s*[-*]\s+/,""))+"</li>");i++}out.push("<ul>"+buf.join("")+"</ul>");continue}
+  if(ln.trim()===""){out.push("");i++;continue}
+  out.push("<p>"+inl(ln)+"</p>");i++;
+ }
+ return out.join("\n");
+}
+function inl(s){s=esc(s);s=s.replace(/`([^`]+)`/g,"<code>$1</code>");s=s.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");return s}
+render();
+</script></body></html>

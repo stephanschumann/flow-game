@@ -13,13 +13,19 @@
 
   async function restoreHostSession({ code, hostSessionKennung, uid }, db) {
     if (!code || typeof code !== 'string') {
-      throw new Error('Ungültiger oder unbekannter Code.');
+      const fehler = new Error('Ungültiger oder unbekannter Code.');
+      fehler.code = 'UNGUELTIGER_CODE';
+      throw fehler;
     }
     if (!uid) {
-      throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+      const fehler = new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+      fehler.code = 'FEHLENDE_AUTH_SITZUNG';
+      throw fehler;
     }
     if (!hostSessionKennung) {
-      throw new Error('Host-Session-Kennung ist ungültig.');
+      const fehler = new Error('Host-Session-Kennung ist ungültig.');
+      fehler.code = 'HOST_KENNUNG_UNGUELTIG';
+      throw fehler;
     }
 
     const teilnehmerRef = db.collection('spiele').doc(code).collection('teilnehmende').doc(uid);
@@ -33,7 +39,9 @@
         { merge: true }
       );
     } catch (err) {
-      throw new Error('Host-Session-Kennung ist ungültig.');
+      const fehler = new Error('Host-Session-Kennung ist ungültig.');
+      fehler.code = 'HOST_KENNUNG_UNGUELTIG';
+      throw fehler;
     }
 
     return { rolle: 'host', spielCode: code };

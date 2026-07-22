@@ -61,6 +61,16 @@
   .center{text-align:center}
   .muted{color:var(--muted);font-size:14px}
 
+  /* FEATURE-006: Sprachumschalter - nur fuer den Host bedienbar/wirksam
+     (AK 8/9). Fuer Nicht-Host-Rollen sichtbar, aber deaktiviert (disabled),
+     mit erklaerendem title-Attribut statt einfach ausgeblendet zu werden -
+     macht sichtbar, dass die Sprache spielweit gilt und nicht persoenlich
+     waehlbar ist, sobald man Teil eines Spiels ist. */
+  .sprach-umschalter{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .sprach-umschalter + a.btn.ghost{margin-left:0}
+  .sprach-umschalter select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:6px 10px;font-size:13px;font-family:inherit}
+  .sprach-umschalter select:disabled{opacity:.5;cursor:not-allowed}
+
   /* FEATURE-002: Spielbrett + Runden 1-3. Nutzt konsequent [hidden] statt
      eigener display-Klassenlogik (siehe globale [hidden]-Regel oben). */
   .runde-kopf{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:18px}
@@ -138,7 +148,20 @@
 <body>
 <div class="hud"><div class="hud-in">
   <div class="brand">FLOW <b>GAME</b></div>
-  <a href="index.html" class="btn ghost" style="padding:8px 14px;font-size:13px;margin-left:auto">Zur Startseite</a>
+  <!-- FEATURE-006 (AK 2, 8, 9): Sprachumschalter. Vor dem Beitritt/Erstellen
+       eines Spiels wirkt er rein lokal (Personen-Vorliebe, noch kein
+       spielweites sprache-Feld vorhanden); sobald ein Spiel besteht, ist er
+       nur fuer den Host aktiv bedienbar - die Aenderung schreibt dann auf
+       spiele/{code}.sprache und wirkt dadurch sofort fuer ALLE Rollen (siehe
+       wendeSpracheAn()/setzeSpielSprache() im Skript unten). -->
+  <div class="sprach-umschalter">
+    <label for="sprach-auswahl" id="sprach-label" class="muted" style="text-transform:uppercase;font-size:11px;letter-spacing:.06em">Sprache</label>
+    <select id="sprach-auswahl" aria-label="Sprache wählen">
+      <option value="en">English</option>
+      <option value="de">Deutsch</option>
+    </select>
+  </div>
+  <a href="index.html" class="btn ghost" id="link-startseite" style="padding:8px 14px;font-size:13px">Zur Startseite</a>
 </div></div>
 <!-- FEATURE-005 (AK4/AK5): ruhiger, genereller Verbindungsstatus-Hinweis -
      sichtbar unabhaengig davon, welches Panel gerade aktiv ist. -->
@@ -147,10 +170,11 @@
      aktiv, sobald ein neuerer Tab/Fenster derselben Person uebernommen hat -
      keine aktive Blockade, nur sichtbare Markierung. -->
 <div class="hinweis fehler" id="tab-inaktiv-hinweis" hidden role="status" style="max-width:1080px;margin:10px auto 0;text-align:center">Dieses Fenster ist nicht mehr aktiv – du hast das Spiel in einem neueren Fenster/Tab geöffnet. Bitte dort weiterspielen.</div>
+<!-- Text wird beim Start (wendeSpracheAufStatischeTexteAn()) per t('hinweis.tabInaktiv') neu gesetzt. -->
 <div class="wrap">
   <div class="stage">
     <div class="hero">
-      <div class="logo">Spiel-Räume</div>
+      <div class="logo" id="spiel-kicker">Spiel-Räume</div>
       <h1 id="titel">Flow Game</h1>
       <div class="tag" id="untertitel">Lädt…</div>
     </div>
@@ -163,28 +187,28 @@
 
       <form id="form-erstellen">
         <div class="field">
-          <label for="host-name">Dein Anzeigename (als Host)</label>
+          <label for="host-name" id="label-host-name">Dein Anzeigename (als Host)</label>
           <input id="host-name" name="host-name" type="text" maxlength="40" required autocomplete="off" placeholder="z. B. Chris">
         </div>
-        <div class="row"><button type="submit" class="btn primary">Spiel erstellen</button></div>
+        <div class="row"><button type="submit" id="btn-erstellen-absenden" class="btn primary">Spiel erstellen</button></div>
       </form>
 
       <form id="form-beitreten" hidden>
         <div class="field">
-          <label for="beitritt-code">Beitritts-Code</label>
+          <label for="beitritt-code" id="label-beitritt-code">Beitritts-Code</label>
           <input id="beitritt-code" name="beitritt-code" type="text" maxlength="8" required autocomplete="off" placeholder="8 Zeichen, z. B. AB3DE7GK" style="text-transform:uppercase;letter-spacing:.1em">
         </div>
         <div class="field">
-          <label for="beitritt-name">Dein Anzeigename</label>
+          <label for="beitritt-name" id="label-beitritt-name">Dein Anzeigename</label>
           <input id="beitritt-name" name="beitritt-name" type="text" maxlength="40" required autocomplete="off" placeholder="z. B. Robin">
         </div>
         <div class="field" id="rollen-feld" hidden>
-          <label for="beitritt-rolle">Alle Stationen sind belegt – bitte Rolle wählen</label>
+          <label for="beitritt-rolle" id="label-beitritt-rolle">Alle Stationen sind belegt – bitte Rolle wählen</label>
           <select id="beitritt-rolle" name="beitritt-rolle">
-            <option value="beobachtende">Als Beobachtende beitreten</option>
+            <option value="beobachtende" id="option-beobachtende">Als Beobachtende beitreten</option>
           </select>
         </div>
-        <div class="row"><button type="submit" class="btn primary">Beitreten</button></div>
+        <div class="row"><button type="submit" id="btn-beitreten-absenden" class="btn primary">Beitreten</button></div>
       </form>
 
       <div class="hinweis fehler" id="fehler" hidden></div>
@@ -204,23 +228,23 @@
          gesetzt ist (siehe ueberwacheSpielUndRunden() im Skript unten). -->
     <div class="panel" id="runde-panel" hidden>
       <div class="runde-kopf">
-        <div class="runde-titel">Runde <span id="runde-nummer">–</span>
+        <div class="runde-titel"><span id="label-runde">Runde</span> <span id="runde-nummer">–</span>
           <span class="badge" id="runde-phase-badge"></span>
         </div>
         <div class="zeiten">
           <div class="zeit-box">
-            <div class="zeit-label">Durchlaufzeit</div>
+            <div class="zeit-label" id="label-durchlaufzeit">Durchlaufzeit</div>
             <div class="zeit-wert" id="zeit-durchlauf">00:00</div>
           </div>
           <div class="zeit-box" id="zeit-bearbeitung-box" hidden>
-            <div class="zeit-label">Bearbeitungszeit</div>
+            <div class="zeit-label" id="label-bearbeitungszeit">Bearbeitungszeit</div>
             <div class="zeit-wert" id="zeit-bearbeitung">00:00</div>
           </div>
         </div>
       </div>
 
       <div class="dor-bereich" id="dor-bereich" hidden>
-        <p class="muted">Bevor Karten bewegt werden können, muss die Gruppe die Aufgabe verstanden haben.</p>
+        <p class="muted" id="label-dor-hinweis">Bevor Karten bewegt werden können, muss die Gruppe die Aufgabe verstanden haben.</p>
         <button type="button" class="btn primary" id="btn-dor">Definition of Ready abschließen</button>
       </div>
 
@@ -237,6 +261,7 @@
           <div class="rv-fokus-card" id="rv-fokus-card"></div>
         </div>
         <div class="hinweis info" id="rv-leer-hinweis" hidden>Du wartest gerade auf das nächste Element - es ist noch bei einer anderen Person unterwegs.</div>
+        <!-- Text wird bei jedem Sprachwechsel/Sichtbar-Werden per t('rundeVier.leerHinweis') neu gesetzt, siehe renderRundeVier(). -->
         <div class="rv-warteschlange" id="rv-warteschlange"></div>
       </div>
 
@@ -244,7 +269,7 @@
       <div class="eigene-hinweis muted" id="rv-eigene-hinweis" hidden></div>
 
       <div class="panel" id="kennzahlen-panel" hidden>
-        <h2 style="margin-top:0">Runde beendet – Kennzahlen</h2>
+        <h2 style="margin-top:0" id="label-kennzahlen-titel">Runde beendet – Kennzahlen</h2>
 
         <!-- FEATURE-003: Solange die Ergebnisse nicht durch den Host
              freigegeben sind, sehen Spielende/Beobachtende hier nur diesen
@@ -260,8 +285,8 @@
              Rundenvergleich, bevor er für alle freigegeben wird (der Host
              darf die Runden-Dokumente laut firestore.rules jederzeit lesen). -->
         <div class="host-vorschau" id="host-vorschau-bereich" hidden>
-          <h3>Vorschau – nur für dich als Host sichtbar</h3>
-          <div class="muted">Vergleich aller bisher gespielten Runden, bevor du für alle freigibst.</div>
+          <h3 id="label-host-vorschau-titel">Vorschau – nur für dich als Host sichtbar</h3>
+          <div class="muted" id="label-host-vorschau-hinweis">Vergleich aller bisher gespielten Runden, bevor du für alle freigibst.</div>
           <div class="vergleichs-tabelle-wrap" id="host-vorschau-tabelle"></div>
         </div>
 
@@ -284,7 +309,7 @@
          identisch (Host, Spielende, Beobachtende sehen exakt denselben
          Vergleich, kein personalisierter Teilausschnitt). -->
     <div class="panel" id="auswertung-panel" hidden>
-      <h2 style="margin-top:0">Auswertung – Vergleich aller Runden</h2>
+      <h2 style="margin-top:0" id="label-auswertung-titel">Auswertung – Vergleich aller Runden</h2>
       <div class="muted" id="auswertung-hinweis"></div>
       <div class="vergleichs-tabelle-wrap" id="auswertung-tabelle"></div>
     </div>
@@ -307,6 +332,12 @@
      IIFE-Aufruf) und ist gleichzeitig das erste Skript, das window.FlowGame
      anlegt. -->
 <script src="js/game/verbindungsRetry.js"></script>
+<!-- FEATURE-006: uebersetzungen.js/sprache.js muessen VOR createGame.js
+     stehen (createGame.js liest window.FlowGame.SPRACHEN/STANDARD_SPRACHE
+     beim eigenen Aufruf) und VOR dem Hauptskript unten (nutzt
+     window.FlowGame.uebersetze()/setzeSpielSprache() durchgehend). -->
+<script src="js/i18n/uebersetzungen.js"></script>
+<script src="js/game/sprache.js"></script>
 <script src="js/game/createGame.js"></script>
 <script src="js/game/joinGame.js"></script>
 <script src="js/game/hostSession.js"></script>
@@ -348,6 +379,13 @@
   const tabBeitreten = document.getElementById('tab-beitreten');
   const formErstellen = document.getElementById('form-erstellen');
   const formBeitreten = document.getElementById('form-beitreten');
+  // BUGFIX-002: eigener, allgemeiner Wartezustand am jeweiligen Absenden-
+  // Button - bewusst getrennt vom bestehenden verbindungsHinweis-Element aus
+  // BUGFIX-001 (Freigabe-Entscheidung 3, Pre-Mortem-Risiko 1/4). Beide
+  // Buttons zeigen bei Beginn eines Vorgangs denselben neutralen Text und
+  // werden in jedem Fall (Erfolg oder Fehler) wieder zurückgesetzt.
+  const btnErstellenAbsenden = document.getElementById('btn-erstellen-absenden');
+  const btnBeitretenAbsenden = document.getElementById('btn-beitreten-absenden');
   const rollenFeld = document.getElementById('rollen-feld');
   const beitrittCodeInput = document.getElementById('beitritt-code');
   const lobbyCode = document.getElementById('lobby-code');
@@ -409,6 +447,162 @@
   const rvWarteschlange = document.getElementById('rv-warteschlange');
   const rvEigeneHinweis = document.getElementById('rv-eigene-hinweis');
 
+  // ---- FEATURE-006: Mehrsprachigkeit (Deutsch/Englisch) --------------------
+  // AK 1: Grundeinstellung Englisch. AK 2/8/9: eine gemeinsame Sprache pro
+  // Spiel, vom Host vorgegeben/änderbar, wirkt sofort für alle Rollen, ohne
+  // Spielfortschritt/Zeitmessung zu beeinflussen. Vor Beitritt/Erstellen
+  // (aktuellerSpielCode noch null) ist die Sprache eine rein lokale, in
+  // localStorage gespeicherte Personen-Vorliebe (noch kein spielweites Feld
+  // vorhanden) - siehe SPRACHE_LOCALSTORAGE_KEY unten.
+  const SPRACHE_LOCALSTORAGE_KEY = 'flowGameSpracheVorliebe';
+  const sprachAuswahl = document.getElementById('sprach-auswahl');
+  let aktuelleSprache = window.FlowGame.STANDARD_SPRACHE || 'en';
+  try {
+    const gespeicherteSprache = localStorage.getItem(SPRACHE_LOCALSTORAGE_KEY);
+    if (gespeicherteSprache && window.FlowGame.SPRACHEN.includes(gespeicherteSprache)) {
+      aktuelleSprache = gespeicherteSprache;
+    }
+  } catch (err) { /* localStorage evtl. nicht verfügbar - Default bleibt bestehen */ }
+
+  function t(schluessel, ersetzungen) {
+    return window.FlowGame.uebersetze(schluessel, aktuelleSprache, ersetzungen);
+  }
+
+  // Zeigt eine Fehlermeldung: bevorzugt über das sprachneutrale err.code-Feld
+  // (AK 7, Pre-Mortem-Risiko 2), fällt für (noch) nicht umgestellte
+  // Fehlerquellen auf die rohe err.message zurück statt eine leere Anzeige
+  // zu erzeugen.
+  function zeigeFehlerAusException(err, fallbackSchluessel) {
+    const text = err && err.code
+      ? window.FlowGame.uebersetzeFehlercode(err.code, aktuelleSprache, err.message)
+      : (fallbackSchluessel ? t(fallbackSchluessel) : (err ? err.message : ''));
+    zeigeFehler(text);
+  }
+
+  // Setzt alle statischen, nicht datengetriebenen Texte gemäß aktuelleSprache.
+  // Datengetriebene Ansichten (Teilnehmerliste, Spielbrett, Kennzahlen, ...)
+  // werden zusätzlich über ihre jeweiligen render*()-Funktionen neu gezeichnet
+  // (siehe wendeSpracheAufSichtbareAnsichtenAn() weiter unten) - AK 2/4: kein
+  // Sprachen-Mix, kein Neuladen der Seite.
+  function wendeSpracheAufStatischeTexteAn() {
+    document.documentElement.lang = aktuelleSprache;
+    sprachAuswahl.value = aktuelleSprache;
+
+    setText('titel', t('startseite.titel'));
+    setText('spiel-kicker', t('lobby.kicker'));
+    setText('sprach-label', t('sprachumschalter.label'));
+    setText('link-startseite', t('startseite.zurStartseite'));
+    setText('tab-erstellen', t('lobby.tabErstellen'));
+    setText('tab-beitreten', t('lobby.tabBeitreten'));
+    setText('label-host-name', t('lobby.hostNameLabel'));
+    setText('label-beitritt-code', t('lobby.beitrittCodeLabel'));
+    setText('label-beitritt-name', t('lobby.beitrittNameLabel'));
+    setText('label-beitritt-rolle', t('lobby.rolleWahlLabel'));
+    setText('option-beobachtende', t('lobby.rolleBeobachtendeOption'));
+    setText('btn-runde-starten', t('lobby.rundeStarten'));
+    setText('label-runde', t('spielbrett.runde'));
+    setText('label-durchlaufzeit', t('spielbrett.durchlaufzeit'));
+    setText('label-bearbeitungszeit', t('spielbrett.bearbeitungszeit'));
+    setText('label-dor-hinweis', t('spielbrett.dorHinweis'));
+    setText('btn-dor', t('spielbrett.dorButton'));
+    setText('rv-leer-hinweis', t('rundeVier.leerHinweis'));
+    setText('tab-inaktiv-hinweis', t('hinweis.tabInaktiv'));
+    setText('label-kennzahlen-titel', t('kennzahlen.titel'));
+    setText('kennzahlen-gesperrt-hinweis', t('kennzahlen.gesperrt'));
+    setText('label-host-vorschau-titel', t('kennzahlen.hostVorschauTitel'));
+    setText('label-host-vorschau-hinweis', t('kennzahlen.hostVorschauHinweis'));
+    setText('btn-naechste-runde', t('kennzahlen.naechsteRunde'));
+    setText('btn-ergebnisse-freigeben', t('kennzahlen.ergebnisseFreigeben'));
+    setText('spiel-fertig-hinweis', t('kennzahlen.spielFertigHinweis'));
+    setText('label-auswertung-titel', t('auswertung.titel'));
+
+    // Absenden-Buttons: nur neu setzen, solange kein Wartezustand
+    // (BUGFIX-002, aria-busy) aktiv ist - sonst würde ein Sprachwechsel
+    // mitten in einem laufenden Absendevorgang den Wartetext überschreiben.
+    if (!btnErstellenAbsenden.hasAttribute('aria-busy')) {
+      btnErstellenAbsenden.textContent = t('lobby.erstellen');
+    }
+    if (!btnBeitretenAbsenden.hasAttribute('aria-busy')) {
+      btnBeitretenAbsenden.textContent = t('lobby.beitreten');
+    }
+    document.getElementById('host-name').placeholder = t('lobby.hostNamePlatzhalter');
+    document.getElementById('beitritt-code').placeholder = t('lobby.beitrittCodePlatzhalter');
+    document.getElementById('beitritt-name').placeholder = t('lobby.beitrittNamePlatzhalter');
+
+    // BUGFIX (2026-07-21, live von Stephan im Browser gefunden, siehe
+    // Backlog.md FEATURE-006): #untertitel wurde bislang nur EINMALIG beim
+    // initialen Laden gesetzt (Tagline vor Spielbeginn) bzw. im
+    // init().catch()-Fehlerfall, aber nie erneut bei einem späteren
+    // Sprachwechsel - blieb dadurch für immer in der beim ersten Laden
+    // aktiven Sprache eingefroren. aktualisiereUntertitel() merkt sich per
+    // untertitelModus, welcher der beiden Zustände gerade aktiv ist, und
+    // berechnet den passenden Text bei jedem Aufruf neu.
+    aktualisiereUntertitel();
+  }
+
+  function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  // Siehe Kommentar oben in wendeSpracheAufStatischeTexteAn() - #untertitel
+  // wird in genau zwei Bedeutungen wiederverwendet: die Tagline vor
+  // Spielbeginn (Normalfall) und die Fehlermeldung, falls init() insgesamt
+  // fehlschlägt (siehe init().catch() ganz unten). untertitelModus hält
+  // fest, welche der beiden gerade aktiv ist, damit ein Sprachwechsel den
+  // jeweils RICHTIGEN Text neu übersetzt statt immer auf die Tagline
+  // zurückzufallen.
+  let untertitelModus = 'tagline'; // 'tagline' | 'fehler'
+  let untertitelFehlerNachricht = '';
+
+  function aktualisiereUntertitel() {
+    if (untertitelModus === 'fehler') {
+      untertitel.textContent = t('fehler.ladenFehlgeschlagen', { nachricht: untertitelFehlerNachricht });
+    } else {
+      untertitel.textContent = t('lobby.untertitel');
+    }
+  }
+
+  // Nur der Host darf die spielweite Sprache tatsächlich ändern (AK 8/9,
+  // Pre-Mortem-Risiko 3) - die serverseitige Durchsetzung sitzt in
+  // firestore.rules; hier zusätzlich rein clientseitig deaktiviert, solange
+  // die Person Teil eines Spiels, aber nicht Host ist, mit erklärendem
+  // title-Attribut statt einfach ausgeblendet zu werden.
+  function aktualisiereSprachumschalterBerechtigung() {
+    const inSpiel = Boolean(aktuellerSpielCode);
+    const istHost = eigeneRolle === 'host';
+    sprachAuswahl.disabled = inSpiel && !istHost;
+    sprachAuswahl.title = sprachAuswahl.disabled ? t('sprachumschalter.nurHost') : '';
+  }
+
+  sprachAuswahl.addEventListener('change', async function () {
+    const neueSprache = sprachAuswahl.value;
+    if (!aktuellerSpielCode) {
+      // Vor Beitritt/Erstellen: rein lokale Vorliebe, kein Spiel-Dokument
+      // vorhanden, das aktualisiert werden könnte.
+      aktuelleSprache = neueSprache;
+      try { localStorage.setItem(SPRACHE_LOCALSTORAGE_KEY, neueSprache); } catch (err) { /* nicht kritisch */ }
+      wendeSpracheAufStatischeTexteAn();
+      return;
+    }
+    if (eigeneRolle !== 'host') {
+      // Clientseitige Absicherung (siehe Kommentar oben) - die eigentliche
+      // Durchsetzung sitzt in firestore.rules; dieser Zweig greift nur, falls
+      // der Umschalter dennoch bedient wird (z. B. Tastatur).
+      sprachAuswahl.value = aktuelleSprache;
+      return;
+    }
+    try {
+      await window.FlowGame.setzeSpielSprache({ code: aktuellerSpielCode, sprache: neueSprache }, aktuelleDbInstanz);
+      // aktuelleSprache wird NICHT hier direkt gesetzt, sondern erst über den
+      // ueberwacheSpielUndRunden()-Snapshot-Listener (AK 9: alle Rollen,
+      // inklusive des Hosts selbst, wechseln über denselben Mechanismus).
+    } catch (err) {
+      sprachAuswahl.value = aktuelleSprache;
+      zeigeFehlerAusException(err);
+    }
+  });
+
   let eigeneUid = null;
   let eigeneRolle = null;
   let eigeneStationsNummer = null; // 1-5, oder null für Host/Beobachtende
@@ -436,6 +630,42 @@
   let rundenEndeSchreibversuchLaeuftRundeVier = false;
   let ergebnisseFreigegeben = false; // FEATURE-003: aus spiele/{code}.ergebnisseFreigegeben
   let auswertungBereitsAngezeigt = false; // FEATURE-003: verhindert doppeltes Laden
+  // FEATURE-006: Referenz auf die jeweils aktuelle renderTeilnehmerListe()-
+  // Closure aus zeigeLobby() - siehe wendeSpracheAufSichtbareAnsichtenAn().
+  let renderTeilnehmerListeAktuell = null;
+  // BUGFIX (2026-07-21, live von Stephan im Browser gefunden, siehe
+  // Backlog.md FEATURE-006): lobbyRolleHinweis bekam bislang nur EINMALIG in
+  // zeigeLobby() einen bereits fertig übersetzten String hineingeschrieben
+  // und wurde danach nie wieder aktualisiert - blieb bei einem späteren
+  // Sprachwechsel für immer in der ursprünglichen Sprache stehen. Diese
+  // Variable merkt sich, WELCHE der drei Text-Varianten zuletzt verwendet
+  // wurde (die zugehörige Rolle steht bereits in eigeneRolle), damit
+  // wendeSpracheAufSichtbareAnsichtenAn() den Text bei jedem Sprachwechsel
+  // über t() mit der aktuellen Sprache neu berechnen kann, statt den alten,
+  // eingefrorenen String wiederzuverwenden.
+  let lobbyRolleHinweisArt = null; // 'hostSchlicht' | 'hostMitTeilen' | 'teilnehmendeRolle'
+
+  // Re-rendert alle aktuell sichtbaren, datengetriebenen Ansichten nach einem
+  // Sprachwechsel (AK 2, AK 4: kein Sprachen-Mix, kein Seiten-Neuladen) - die
+  // rein statischen Texte übernimmt wendeSpracheAufStatischeTexteAn() oben.
+  function wendeSpracheAufSichtbareAnsichtenAn() {
+    if (renderTeilnehmerListeAktuell) renderTeilnehmerListeAktuell();
+    if (aktuelleRundenDaten && aktuellerSpielCode && aktuelleDbInstanz) {
+      renderRundenStatus(aktuelleDbInstanz, aktuellerSpielCode);
+      if (aktuelleRundenNummer !== 4) {
+        renderBrett(aktuelleDbInstanz, aktuellerSpielCode);
+      }
+    }
+    if (letzterVergleichHostVorschau) renderVergleichsTabelle(hostVorschauTabelle, letzterVergleichHostVorschau);
+    if (letzterVergleichAuswertung) renderVergleichsTabelle(auswertungTabelle, letzterVergleichAuswertung);
+    // BUGFIX (2026-07-21, siehe Kommentar bei lobbyRolleHinweisArt oben):
+    // lobbyRolleHinweis ist datengetrieben (hängt von eigeneRolle und dem
+    // Einstiegspfad ab), gehört deshalb hier hin statt in
+    // wendeSpracheAufStatischeTexteAn() - wird über t() mit der jetzt
+    // aktuellen aktuelleSprache komplett neu berechnet, NICHT der zuletzt
+    // übersetzte String wiederverwendet.
+    if (lobbyRolleHinweisArt) lobbyRolleHinweis.textContent = berechneLobbyRolleHinweisText();
+  }
 
   function zeigeFehler(nachricht) {
     fehlerBox.textContent = nachricht;
@@ -516,18 +746,52 @@
     versteckeFehler();
   });
 
-  const ROLLEN_LABEL = { host: 'Host', spielende: 'Spielende', beobachtende: 'Beobachtende' };
+  // FEATURE-006: über t() statt einer statischen Tabelle, damit ein
+  // Sprachwechsel sofort auch bereits gerenderte Rollen-Bezeichnungen erfasst
+  // (renderTeilnehmerListe() wird bei jedem Sprachwechsel erneut aufgerufen,
+  // siehe wendeSpracheAufSichtbareAnsichtenAn()).
+  function rollenLabel(rolle) {
+    if (rolle === 'host') return t('rollen.host');
+    if (rolle === 'spielende') return t('rollen.spielende');
+    if (rolle === 'beobachtende') return t('rollen.beobachtende');
+    return rolle;
+  }
 
-  function zeigeLobby(db, code, eigeneRolleText, rolle) {
+  // Siehe Kommentar bei lobbyRolleHinweisArt weiter oben - berechnet den
+  // lobbyRolleHinweis-Text anhand des zuletzt für diese Person ermittelten
+  // Einstiegspfads (lobbyRolleHinweisArt) und der aktuellen eigeneRolle, statt
+  // eines einmalig übergebenen, bereits fertig übersetzten Strings. Wird
+  // sowohl von zeigeLobby() (erstmaliges Setzen) als auch von
+  // wendeSpracheAufSichtbareAnsichtenAn() (Neuberechnung nach Sprachwechsel)
+  // aufgerufen.
+  function berechneLobbyRolleHinweisText() {
+    if (lobbyRolleHinweisArt === 'hostSchlicht') return t('lobby.duBistHostSchlicht');
+    if (lobbyRolleHinweisArt === 'hostMitTeilen') return t('lobby.duBistHostMitTeilen');
+    if (lobbyRolleHinweisArt === 'teilnehmendeRolle') return t('lobby.duBistRolleInSpiel', { rolle: rollenLabel(eigeneRolle) });
+    return '';
+  }
+
+  // BUGFIX (2026-07-21, siehe lobbyRolleHinweisArt): dritter Parameter ist
+  // jetzt die ART des Hinweises ('hostSchlicht' | 'hostMitTeilen' |
+  // 'teilnehmendeRolle') statt eines bereits fertig übersetzten Strings -
+  // der eigentliche Text wird über berechneLobbyRolleHinweisText() erzeugt,
+  // damit er bei einem späteren Sprachwechsel erneut (mit der dann aktuellen
+  // Sprache) berechnet werden kann.
+  function zeigeLobby(db, code, rolleHinweisArt, rolle) {
     auswahlPanel.hidden = true;
     lobbyPanel.hidden = false;
     rundePanel.hidden = true;
     lobbyCode.textContent = code;
-    lobbyRolleHinweis.textContent = eigeneRolleText;
 
     eigeneRolle = rolle;
+    lobbyRolleHinweisArt = rolleHinweisArt;
+    lobbyRolleHinweis.textContent = berechneLobbyRolleHinweisText();
+
     aktuellerSpielCode = code;
     aktuelleDbInstanz = db;
+    // FEATURE-006 (AK 8/9): sobald bekannt ist, ob diese Person Host ist,
+    // Sprachumschalter entsprechend (de-)aktivieren.
+    aktualisiereSprachumschalterBerechtigung();
 
     // FEATURE-005 (AK16): dieser Tab meldet sich als der aktuell aktive Tab
     // fuer diese Person in diesem Spiel - ein zuvor aktiver, aelterer Tab
@@ -605,12 +869,17 @@
         name.textContent = daten.anzeigename + (stationsAnzeige ? ' – ' + stationsAnzeige : '');
         const badge = document.createElement('span');
         badge.className = 'badge ' + (daten.rolle === 'host' ? 'host' : daten.rolle === 'spielende' ? 'spielende' : 'beobachtende');
-        badge.textContent = ROLLEN_LABEL[daten.rolle] || daten.rolle;
+        badge.textContent = rollenLabel(daten.rolle);
         li.appendChild(name);
         li.appendChild(badge);
         teilnehmerListe.appendChild(li);
       });
     }
+    // FEATURE-006: über die äussere Variable auch von einem Sprachwechsel
+    // aus erneut aufrufbar (siehe wendeSpracheAufSichtbareAnsichtenAn()) -
+    // renderTeilnehmerListe() selbst bleibt eine lokale Closure dieser
+    // Funktion (braucht teilnehmendeCache).
+    renderTeilnehmerListeAktuell = renderTeilnehmerListe;
 
     db.collection('spiele').doc(code).collection('teilnehmende').doc(eigeneUid)
       .onSnapshot(function (docSnap) {
@@ -625,7 +894,7 @@
           tabInaktivHinweis.hidden = !(eigeneDaten.aktiverTab && eigeneDaten.aktiverTab !== eigeneTabId);
         }
       }, function (err) {
-        zeigeFehler('Eigene Teilnahme konnte nicht geladen werden: ' + err.message);
+        zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
       });
 
     db.collection('spiele').doc(code).collection('teilnehmende')
@@ -636,7 +905,7 @@
         });
         renderTeilnehmerListe();
       }, function (err) {
-        zeigeFehler('Teilnehmendenliste konnte nicht geladen werden: ' + err.message);
+        zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
       });
 
     ueberwacheSpielUndRunden(db, code);
@@ -656,6 +925,19 @@
       const daten = snap.data();
       const aktuelle = daten.aktuelleRunde || null;
 
+      // FEATURE-006 (AK 8/9): sprache gilt spielweit und wird ausschliesslich
+      // vom Host gesetzt (durchgesetzt in firestore.rules) - jede Rolle,
+      // inklusive des Hosts selbst, übernimmt einen Wechsel über GENAU diesen
+      // Listener, damit alle sofort und gemeinsam wechseln, ohne dass dabei
+      // Spielfortschritt/Zeitmessung berührt werden (reines Text-Update, kein
+      // Neuaufbau der Oberfläche, kein Seiten-Neuladen - Pre-Mortem-Risiko 5).
+      if (daten.sprache && window.FlowGame.SPRACHEN.includes(daten.sprache) && daten.sprache !== aktuelleSprache) {
+        aktuelleSprache = daten.sprache;
+        try { localStorage.setItem(SPRACHE_LOCALSTORAGE_KEY, aktuelleSprache); } catch (err) { /* nicht kritisch */ }
+        wendeSpracheAufStatischeTexteAn();
+        wendeSpracheAufSichtbareAnsichtenAn();
+      }
+
       // Host-Button "Aufgabe vorstellen" nur zeigen, solange Host UND noch
       // keine Runde existiert.
       hostRundenstartBereich.hidden = !(eigeneRolle === 'host' && !aktuelle);
@@ -673,7 +955,7 @@
         wechsleZuRunde(db, code, aktuelle);
       }
     }, function (err) {
-      zeigeFehler('Spielstatus konnte nicht geladen werden: ' + err.message);
+      zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
     });
   }
 
@@ -691,21 +973,31 @@
     return String(minuten).padStart(2, '0') + ':' + String(sekunden).padStart(2, '0');
   }
 
+  // FEATURE-006: stationsLabel()/positionLabels()/phaseLabel() sind jetzt
+  // Funktionen statt statischer Tabellen, damit sie bei jedem Aufruf die
+  // aktuell eingestellte Sprache widerspiegeln (aktuelleSprache), statt nur
+  // einmal beim Laden der Seite berechnet zu werden.
   function stationsLabel(name) {
+    const schluessel = 'station.' + name;
+    const uebersetzt = t(schluessel);
+    if (uebersetzt !== schluessel) return uebersetzt;
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
 
-  const POSITION_LABELS = ['Auftragseingang']
-    .concat(window.FlowGame.STATIONEN.map(function (name, i) {
-      return (i + 1) + '. ' + stationsLabel(name);
-    }))
-    .concat(['Ziel']);
+  function positionLabels() {
+    return [t('spielbrett.auftragseingang')]
+      .concat(window.FlowGame.STATIONEN.map(function (name, i) {
+        return (i + 1) + '. ' + stationsLabel(name);
+      }))
+      .concat([t('spielbrett.ziel')]);
+  }
 
-  const PHASE_LABEL = {
-    aufgabe_vorgestellt: 'Aufgabe vorgestellt',
-    dor_abgeschlossen: 'Bereit – Karten können bewegt werden',
-    beendet: 'Runde beendet',
-  };
+  function phaseLabel(phase) {
+    if (phase === 'aufgabe_vorgestellt') return t('phase.aufgabeVorgestellt');
+    if (phase === 'dor_abgeschlossen') return t('phase.dorAbgeschlossen');
+    if (phase === 'beendet') return t('phase.beendet');
+    return phase || '';
+  }
 
   function wechsleZuRunde(db, code, rundenNummer) {
     if (unsubRundenDoc) unsubRundenDoc();
@@ -771,7 +1063,7 @@
         zeigeErgebnisseGesperrt();
         return;
       }
-      zeigeFehler('Rundendaten konnten nicht geladen werden: ' + err.message);
+      zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
     });
 
     if (rundenNummer === 4) {
@@ -804,7 +1096,7 @@
         renderRundeVier(db, code);
         versucheRundenEndeRundeVier(db, code);
       }, function (err) {
-        zeigeFehler('Elemente konnten nicht geladen werden: ' + err.message);
+        zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
       });
 
       // FEATURE-004: ausschliesslich das EIGENE fortschritt-Dokument (per
@@ -819,7 +1111,7 @@
           eigenerFortschrittTyp = docSnap.exists ? (docSnap.data().letzterAbgeschlossenerTyp || null) : null;
           renderRundeVier(db, code);
         }, function (err) {
-          zeigeFehler('Fortschritt konnte nicht geladen werden: ' + err.message);
+          zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
         });
     } else {
       unsubKartenCol = rundenRef.collection('karten').onSnapshot(function (snapshot) {
@@ -852,7 +1144,7 @@
         renderBrett(db, code);
         versucheRundenEnde(db, code);
       }, function (err) {
-        zeigeFehler('Kartendaten konnten nicht geladen werden: ' + err.message);
+        zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
       });
     }
   }
@@ -862,7 +1154,7 @@
     const runde = aktuelleRundenDaten;
 
     rundePhaseBadge.className = 'badge phase-' + (runde.phase || '');
-    rundePhaseBadge.textContent = PHASE_LABEL[runde.phase] || runde.phase || '';
+    rundePhaseBadge.textContent = phaseLabel(runde.phase);
 
     dorBereich.hidden = Boolean(runde.dorAbgeschlossen);
 
@@ -931,6 +1223,7 @@
   function renderBrett(db, code) {
     if (!aktuelleRundenDaten) return;
     const rundenNummer = aktuelleRundenNummer;
+    const positionLabelsAktuell = positionLabels();
     brett.innerHTML = '';
 
     for (let position = 0; position <= 6; position += 1) {
@@ -939,7 +1232,7 @@
 
       const titel = document.createElement('div');
       titel.className = 'spalte-titel';
-      titel.textContent = POSITION_LABELS[position];
+      titel.textContent = positionLabelsAktuell[position];
       spalte.appendChild(titel);
 
       // Stapel-Tor-Status: nur für Stationen relevant, die weitergeben
@@ -969,7 +1262,8 @@
             rundenNummer, vonPosition: position, stapel: null, karten: aktuelleKartenListe,
           });
           torInfo.className = 'spalte-tor' + (offen ? ' offen' : '');
-          torInfo.textContent = 'Tor: ' + anzahl + '/' + schwelle + (offen ? ' offen' : ' geschlossen');
+          torInfo.textContent = t('spielbrett.torPraefix') + ': ' + anzahl + '/' + schwelle
+            + ' ' + (offen ? t('spielbrett.torOffen') : t('spielbrett.torGeschlossen'));
         }
         spalte.appendChild(torInfo);
       }
@@ -995,8 +1289,11 @@
             // Zielposition explizit.
             btn.setAttribute(
               'aria-label',
-              karte.id.replace('karte-', 'Karte ') + ' weiterbewegen von '
-                + POSITION_LABELS[position] + ' zu ' + POSITION_LABELS[position + 1]
+              t('aria.kartePosition', {
+                karte: karte.id.replace('karte-', ''),
+                von: positionLabelsAktuell[position],
+                nach: positionLabelsAktuell[position + 1],
+              })
             );
             btn.addEventListener('click', async function () {
               btn.disabled = true;
@@ -1010,7 +1307,7 @@
                   }, db).catch(function () { /* siehe Kommentar in rundenStart.js */ });
                 }
               } catch (err) {
-                zeigeFehler('Karte konnte nicht bewegt werden: ' + err.message);
+                zeigeFehlerAusException(err);
                 btn.disabled = false;
               }
             });
@@ -1026,8 +1323,8 @@
     eigeneHinweis.hidden = eigeneStationsNummer !== null;
     if (eigeneStationsNummer === null) {
       eigeneHinweis.textContent = eigeneRolle === 'host'
-        ? 'Du bist Host und beobachtest das Spielfeld - eigene Kartenzüge macht das Team.'
-        : 'Du bist Beobachtende/r - du siehst dem Team beim Spielen zu.';
+        ? t('spielbrett.hostHinweis')
+        : t('spielbrett.beobachtendeHinweis');
     }
   }
 
@@ -1053,7 +1350,15 @@
 
   // ---- FEATURE-004: Runde 4 (Kontextwechsel) - "Fokus + Warteschlange" ----
 
-  const RV_TYP_LABEL = { wuerfel: 'Würfel', laenderkarte: 'Länderkarte' };
+  // FEATURE-006: über t() statt statischer Tabelle (siehe rollenLabel() oben).
+  // Kurzform ("Würfel"/"Länderkarte") für die Warteschlangen-Chips - die
+  // Fokus-Karte selbst nutzt die längere Form ("Würfel-Aufgabe"), siehe
+  // renderRundeVierFokusCard().
+  function rvTypLabel(typ) {
+    if (typ === 'wuerfel') return t('rundeVier.wuerfel');
+    if (typ === 'laenderkarte') return t('rundeVier.laenderkarte');
+    return typ;
+  }
 
   // Ermittelt, welches Element (falls vorhanden) für die eigene Person gerade
   // bedienbar ist: an der eigenen Position, laut Wechselzwang erlaubt (Typ
@@ -1113,7 +1418,7 @@
         }, db);
       }
     } catch (err) {
-      zeigeFehler('Würfeln fehlgeschlagen: ' + err.message);
+      zeigeFehlerAusException(err);
     } finally {
       wuerfelAnimationLaeuft = false;
       btn.disabled = false;
@@ -1125,7 +1430,7 @@
 
     const typLabel = document.createElement('div');
     typLabel.className = 'rv-fokus-typ';
-    typLabel.textContent = element.typ === 'wuerfel' ? 'Würfel-Aufgabe' : 'Länderkarte';
+    typLabel.textContent = element.typ === 'wuerfel' ? t('rundeVier.wuerfelAufgabe') : t('rundeVier.laenderkarte');
     rvFokusCard.appendChild(typLabel);
 
     if (element.typ === 'wuerfel') {
@@ -1137,7 +1442,7 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn primary';
-      btn.textContent = 'Würfeln';
+      btn.textContent = t('rundeVier.wuerfeln');
       btn.addEventListener('click', function () {
         if (wuerfelAnimationLaeuft) return;
         wuerfelAnimationLaeuft = true;
@@ -1175,14 +1480,14 @@
       const input = document.createElement('input');
       input.type = 'text';
       input.maxLength = 60;
-      input.placeholder = 'Stadt eintragen';
-      input.setAttribute('aria-label', 'Stadt eintragen');
+      input.placeholder = t('rundeVier.stadtEintragen');
+      input.setAttribute('aria-label', t('aria.stadtEintragen'));
       input.required = true;
       input.autocomplete = 'off';
       const absendenBtn = document.createElement('button');
       absendenBtn.type = 'submit';
       absendenBtn.className = 'btn primary';
-      absendenBtn.textContent = 'Absenden';
+      absendenBtn.textContent = t('rundeVier.absenden');
       form.appendChild(input);
       form.appendChild(absendenBtn);
 
@@ -1204,7 +1509,7 @@
           staedteAlt: element.staedte,
           neueStadt: input.value,
         }, db).catch(function (err) {
-          zeigeFehler('Stadt konnte nicht eingetragen werden: ' + err.message);
+          zeigeFehlerAusException(err);
           absendenBtn.disabled = false;
           input.disabled = false;
         });
@@ -1226,12 +1531,12 @@
         chip.className = 'rv-chip';
         const typSpan = document.createElement('span');
         typSpan.className = 'rv-chip-typ';
-        typSpan.textContent = RV_TYP_LABEL[e.typ] || e.typ;
+        typSpan.textContent = rvTypLabel(e.typ);
         const grundSpan = document.createElement('span');
         grundSpan.className = 'rv-chip-grund';
         grundSpan.textContent = e.position === eigeneRundeVierPosition
-          ? 'wartet, bis du mit der aktuellen Aufgabe fertig bist'
-          : 'wartet, bis es bei dir ankommt';
+          ? t('rundeVier.wartetAufAufgabe')
+          : t('rundeVier.wartetBisAnkunft');
         chip.appendChild(typSpan);
         chip.appendChild(grundSpan);
         rvWarteschlange.appendChild(chip);
@@ -1246,8 +1551,8 @@
     rvEigeneHinweis.hidden = eigeneRundeVierPosition !== null;
     if (eigeneRundeVierPosition === null) {
       rvEigeneHinweis.textContent = eigeneRolle === 'host'
-        ? 'Du bist Host und beobachtest das Spielfeld - eigene Züge macht das Team.'
-        : 'Du bist Beobachtende/r - du siehst dem Team beim Spielen zu.';
+        ? t('rundeVier.hostHinweis')
+        : t('rundeVier.beobachtendeHinweis');
       rvFokusBereich.hidden = true;
       rvLeerHinweis.hidden = true;
       rvWarteschlange.innerHTML = '';
@@ -1302,7 +1607,7 @@
     brett.hidden = true;
     eigeneHinweis.hidden = true;
     rundePhaseBadge.className = 'badge phase-beendet';
-    rundePhaseBadge.textContent = PHASE_LABEL.beendet;
+    rundePhaseBadge.textContent = phaseLabel('beendet');
 
     kennzahlenPanel.hidden = false;
     kennzahlenGesperrtHinweis.hidden = false;
@@ -1338,7 +1643,7 @@
     if (!vergleich || vergleich.length === 0) {
       const hinweis = document.createElement('div');
       hinweis.className = 'muted';
-      hinweis.textContent = 'Es liegen noch keine ausgewerteten Runden vor.';
+      hinweis.textContent = t('vergleich.keineDaten');
       container.appendChild(hinweis);
       return;
     }
@@ -1350,7 +1655,7 @@
     kopfZeile.appendChild(document.createElement('th'));
     vergleich.forEach(function (runde) {
       const th = document.createElement('th');
-      th.textContent = 'Runde ' + runde.rundenNummer;
+      th.textContent = t('spielbrett.runde') + ' ' + runde.rundenNummer;
       kopfZeile.appendChild(th);
     });
     thead.appendChild(kopfZeile);
@@ -1371,19 +1676,19 @@
       tbody.appendChild(tr);
     }
 
-    zeile('Durchlaufzeit', function (r) { return formatiereZeit(r.durchlaufzeit); });
-    zeile('Bearbeitungszeit', function (r) { return formatiereZeit(r.bearbeitungszeit); });
-    zeile('Zeit bis 1. Lieferung', function (r) { return formatiereZeit(r.zeitBisErsterLieferung); });
-    zeile('Zeit bis letzte Lieferung', function (r) { return formatiereZeit(r.zeitBisLetzterLieferung); });
-    zeile('Abstand erste↔letzte Lieferung (Kundenerlebnis)', function (r) { return formatiereZeit(r.abstandErsteLetzteLieferung); });
+    zeile(t('spielbrett.durchlaufzeit'), function (r) { return formatiereZeit(r.durchlaufzeit); });
+    zeile(t('spielbrett.bearbeitungszeit'), function (r) { return formatiereZeit(r.bearbeitungszeit); });
+    zeile(t('vergleich.zeitBisErsteLieferung'), function (r) { return formatiereZeit(r.zeitBisErsterLieferung); });
+    zeile(t('vergleich.zeitBisLetzteLieferung'), function (r) { return formatiereZeit(r.zeitBisLetzterLieferung); });
+    zeile(t('vergleich.abstandKundenerlebnis'), function (r) { return formatiereZeit(r.abstandErsteLetzteLieferung); });
 
     window.FlowGame.STATIONEN.forEach(function (stationName, index) {
       const station = index + 1;
-      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – Bewegungen', function (r) {
+      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.bewegungen'), function (r) {
         const eintrag = r.proStation && r.proStation[station];
         return eintrag ? String(eintrag.anzahlBewegungen) : '0';
       });
-      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – Beteiligungsspanne', function (r) {
+      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.beteiligungsspanne'), function (r) {
         const eintrag = r.proStation && r.proStation[station];
         return eintrag ? formatiereZeit(eintrag.beteiligungsspanne) : '00:00';
       });
@@ -1393,7 +1698,7 @@
     // tatsächlich eine Fehlerzahl mitbringt - für Runde 1-3 (dieses Ticket)
     // bleibt die Zeile schlicht weg, kein Sonderfall/keine leere Zeile.
     if (vergleich.some(function (r) { return r.fehlerzahl != null; })) {
-      zeile('Fehlerzahl', function (r) { return r.fehlerzahl != null ? String(r.fehlerzahl) : '–'; });
+      zeile(t('vergleich.fehlerzahl'), function (r) { return r.fehlerzahl != null ? String(r.fehlerzahl) : '–'; });
     }
 
     // FEATURE-004: Qualitäts-Kennzahl (AK 15/16) - analog zur Fehlerzahl-
@@ -1401,13 +1706,13 @@
     // Qualitätsauswertung mitbringt (ausschließlich Runde 4); Runde 1-3
     // bleiben dadurch unverändert.
     if (vergleich.some(function (r) { return r.qualitaet != null; })) {
-      zeile('Qualität (korrekt/gesamt)', function (r) {
+      zeile(t('vergleich.qualitaet'), function (r) {
         return r.qualitaet ? r.qualitaet.korrekt + '/' + r.qualitaet.gesamtStaedte : '–';
       });
-      zeile('Qualität – falsches Land', function (r) {
+      zeile(t('vergleich.qualitaetFalschesLand'), function (r) {
         return r.qualitaet ? String(r.qualitaet.falschesLand) : '–';
       });
-      zeile('Qualität – Dubletten', function (r) {
+      zeile(t('vergleich.qualitaetDubletten'), function (r) {
         return r.qualitaet ? String(r.qualitaet.dublette) : '–';
       });
     }
@@ -1418,17 +1723,20 @@
 
   // FEATURE-003: Host-Vorschau - der Host darf jede beendete Runde jederzeit
   // lesen (firestore.rules), unabhängig von der Gesamtfreigabe.
+  let letzterVergleichHostVorschau = null;
   async function ladeUndRenderHostVorschau() {
     try {
       const vergleich = await ladeVergleichsansicht(aktuelleDbInstanz, aktuellerSpielCode, aktuelleRundenNummer);
+      letzterVergleichHostVorschau = vergleich;
       renderVergleichsTabelle(hostVorschauTabelle, vergleich);
     } catch (err) {
-      zeigeFehler('Vorschau konnte nicht geladen werden: ' + err.message);
+      zeigeFehlerAusException(err);
     }
   }
 
   // FEATURE-003: Finale Auswertung nach der Gesamtfreigabe - für ALLE
   // Beteiligten inhaltlich identisch (Entscheidung 3 der Spec).
+  let letzterVergleichAuswertung = null;
   async function zeigeAuswertung(db, code, anzahlRunden) {
     if (auswertungBereitsAngezeigt) return;
     auswertungBereitsAngezeigt = true;
@@ -1440,13 +1748,14 @@
     lobbyPanel.hidden = true;
     rundePanel.hidden = true;
     auswertungPanel.hidden = false;
-    auswertungHinweis.textContent = 'Freigegeben durch den Host – alle Kennzahlen aller gespielten Runden, alle fünf Stationen.';
+    auswertungHinweis.textContent = t('auswertung.hinweis');
 
     try {
       const vergleich = await ladeVergleichsansicht(db, code, anzahlRunden || LETZTE_RUNDE);
+      letzterVergleichAuswertung = vergleich;
       renderVergleichsTabelle(auswertungTabelle, vergleich);
     } catch (err) {
-      zeigeFehler('Auswertung konnte nicht geladen werden: ' + err.message);
+      zeigeFehlerAusException(err);
     }
   }
 
@@ -1460,11 +1769,11 @@
     // rundenEnde.js), Akzeptanzkriterium "clientseitig nichts neu berechnet".
     kennzahlenGrid.innerHTML = '';
     [
-      ['Durchlaufzeit', runde.durchlaufzeit],
-      ['Bearbeitungszeit', runde.bearbeitungszeit],
-      ['Bis 1. Lieferung', runde.zeitBisErsterLieferung],
-      ['Bis letzte Lieferung', runde.zeitBisLetzterLieferung],
-      ['Abstand 1.↔letzte Lieferung', runde.abstandErsteLetzteLieferung],
+      [t('spielbrett.durchlaufzeit'), runde.durchlaufzeit],
+      [t('spielbrett.bearbeitungszeit'), runde.bearbeitungszeit],
+      [t('kennzahlen.bisErsteLieferung'), runde.zeitBisErsterLieferung],
+      [t('kennzahlen.bisLetzteLieferung'), runde.zeitBisLetzterLieferung],
+      [t('kennzahlen.abstandLieferung'), runde.abstandErsteLetzteLieferung],
     ].forEach(function (eintrag) {
       const box = document.createElement('div');
       box.className = 'kennzahl-box';
@@ -1492,7 +1801,7 @@
       wert.textContent = runde.qualitaet.korrekt + '/' + runde.qualitaet.gesamtStaedte;
       const label = document.createElement('div');
       label.className = 'label';
-      label.textContent = 'Qualität (korrekt)';
+      label.textContent = t('kennzahlen.qualitaetKorrekt');
       box.appendChild(wert);
       box.appendChild(label);
       kennzahlenGrid.appendChild(box);
@@ -1506,7 +1815,7 @@
       const titel = document.createElement('div');
       titel.className = 'muted';
       titel.style.marginTop = '10px';
-      titel.textContent = 'Beteiligung je Station:';
+      titel.textContent = t('kennzahlen.beteiligungTitel');
       const liste = document.createElement('ul');
       liste.className = 'beteiligung-liste';
       stationsNummern.forEach(function (station) {
@@ -1515,7 +1824,8 @@
         const name = document.createElement('span');
         name.textContent = 'Station ' + station + ' (' + stationsLabel(window.FlowGame.STATIONEN[station - 1]) + ')';
         const wert = document.createElement('span');
-        wert.textContent = eintrag.anzahlBewegungen + ' Bewegungen, ' + formatiereZeit(eintrag.beteiligungsspanne) + ' Beteiligungsspanne';
+        wert.textContent = eintrag.anzahlBewegungen + ' ' + t('kennzahlen.bewegungen') + ', '
+          + formatiereZeit(eintrag.beteiligungsspanne) + ' ' + t('kennzahlen.beteiligungsspanne');
         li.appendChild(name);
         li.appendChild(wert);
         liste.appendChild(li);
@@ -1544,7 +1854,7 @@
     try {
       await window.FlowGame.starteRunde({ code: aktuellerSpielCode, rundenNummer: 1 }, aktuelleDbInstanz);
     } catch (err) {
-      zeigeFehler('Runde konnte nicht gestartet werden: ' + err.message);
+      zeigeFehlerAusException(err);
       btnRundeStarten.disabled = false;
     }
   });
@@ -1556,7 +1866,7 @@
         { code: aktuellerSpielCode, rundenNummer: aktuelleRundenNummer }, aktuelleDbInstanz
       );
     } catch (err) {
-      zeigeFehler('Definition of Ready konnte nicht abgeschlossen werden: ' + err.message);
+      zeigeFehlerAusException(err);
       btnDor.disabled = false;
     }
   });
@@ -1568,7 +1878,7 @@
         { code: aktuellerSpielCode, vonRunde: aktuelleRundenNummer }, aktuelleDbInstanz
       );
     } catch (err) {
-      zeigeFehler('Nächste Runde konnte nicht gestartet werden: ' + err.message);
+      zeigeFehlerAusException(err);
       btnNaechsteRunde.disabled = false;
     }
   });
@@ -1578,9 +1888,7 @@
   // Annahme nicht rücknehmbar), Vorprüfung unten ist reiner UX-Komfort, die
   // eigentliche Durchsetzung liegt in firestore.rules (siehe ergebnisseFreigeben.js).
   btnErgebnisseFreigeben.addEventListener('click', async function () {
-    const bestaetigt = window.confirm(
-      'Ergebnisse jetzt für alle freigeben? Danach sehen alle Spielenden und Beobachtenden sofort alle Kennzahlen aller Runden - das lässt sich nicht zurücknehmen.'
-    );
+    const bestaetigt = window.confirm(t('kennzahlen.freigabeBestaetigung'));
     if (!bestaetigt) return;
     btnErgebnisseFreigeben.disabled = true;
     try {
@@ -1589,7 +1897,7 @@
         letzteRundePhase: aktuelleRundenDaten ? aktuelleRundenDaten.phase : null,
       }, aktuelleDbInstanz);
     } catch (err) {
-      zeigeFehler('Ergebnisse konnten nicht freigegeben werden: ' + err.message);
+      zeigeFehlerAusException(err);
       btnErgebnisseFreigeben.disabled = false;
     }
   });
@@ -1616,7 +1924,8 @@
     // NIEMAND je einen Bewegen-Button auf dem Spielbrett sehen konnte.
     eigeneUid = user.uid;
 
-    untertitel.textContent = 'Erstelle ein Spiel oder tritt mit einem Beitritts-Code bei.';
+    untertitelModus = 'tagline';
+    wendeSpracheAufStatischeTexteAn();
 
     const letztesSpiel = localStorage.getItem('flowGameLetztesSpiel');
     if (letztesSpiel) {
@@ -1627,7 +1936,7 @@
             { code: letztesSpiel, hostSessionKennung, uid: user.uid },
             db
           );
-          zeigeLobby(db, ergebnis.spielCode, 'Du bist Host dieses Spiels.', 'host');
+          zeigeLobby(db, ergebnis.spielCode, 'hostSchlicht', 'host');
           return;
         } catch (err) {
           // Kennung nicht mehr gültig – normal weiter zur Start-Auswahl.
@@ -1657,12 +1966,12 @@
           versteckeVerbindungsRetryHinweis();
           if (ergebnis.rolle !== 'stationenVoll') {
             lobbyEigeneStation.textContent = ergebnis.station
-              ? 'Deine Station: ' + ergebnis.station
-              : 'Du bist als Beobachtende dabei.';
+              ? t('lobby.deineStation') + ' ' + ergebnis.station
+              : t('lobby.duBistBeobachtende');
             zeigeLobby(
               db,
               letzterTeilnehmerCode,
-              'Du bist ' + ROLLEN_LABEL[ergebnis.rolle] + ' in diesem Spiel.',
+              'teilnehmendeRolle',
               ergebnis.rolle
             );
             return;
@@ -1679,22 +1988,44 @@
     formErstellen.addEventListener('submit', async function (ev) {
       ev.preventDefault();
       versteckeFehler();
+      // BUGFIX-002 (AK1/AK2/AK5/AK6): sofortige, wirksame Rückmeldung, dass
+      // der Klick angekommen ist - Button deaktiviert, neutraler Wartetext,
+      // Screenreader-Kennzeichnung. Bewusst NICHT derselbe Text wie der
+      // BUGFIX-001-Verbindungshinweis (Pre-Mortem-Risiko 1).
+      btnErstellenAbsenden.disabled = true;
+      btnErstellenAbsenden.setAttribute('aria-busy', 'true');
+      btnErstellenAbsenden.textContent = t('lobby.wirdBearbeitet');
       const hostAnzeigename = document.getElementById('host-name').value;
       try {
         // BUGFIX-001 (AK7): auch der Host-Erstellungspfad ist auf einem
         // frischen Gerät demselben "client is offline"-Zeitfenster
         // ausgesetzt wie der Beitritt.
+        // FEATURE-006 (AK 1, AK 9): Der Host legt die Spielsprache beim
+        // Erstellen fest - übernimmt die gerade eingestellte lokale Vorliebe
+        // (Sprachumschalter) als Startwert für das gesamte Spiel.
         const ergebnis = await window.FlowGame.createGame(
-          { hostAnzeigename, uid: user.uid },
+          { hostAnzeigename, uid: user.uid, sprache: aktuelleSprache },
           db,
           { onRetry: zeigeVerbindungsRetryHinweis }
         );
         versteckeVerbindungsRetryHinweis();
+        // BUGFIX-002 (AK3): garantierter Reset vor dem Wechsel in die Lobby.
+        btnErstellenAbsenden.disabled = false;
+        btnErstellenAbsenden.removeAttribute('aria-busy');
+        btnErstellenAbsenden.textContent = t('lobby.erstellen');
         speichereHostSession(ergebnis.code, ergebnis.hostSessionKennung);
-        zeigeLobby(db, ergebnis.code, 'Du bist Host dieses Spiels. Teile den Code mit deiner Gruppe.', 'host');
+        zeigeLobby(db, ergebnis.code, 'hostMitTeilen', 'host');
       } catch (err) {
         versteckeVerbindungsRetryHinweis();
-        zeigeFehler(err.message);
+        // BUGFIX-002 (AK3, Pre-Mortem-Risiko 3): garantierter Reset auch bei
+        // jedem Fehlerfall, kein "Hängenbleiben".
+        btnErstellenAbsenden.disabled = false;
+        btnErstellenAbsenden.removeAttribute('aria-busy');
+        btnErstellenAbsenden.textContent = t('lobby.erstellen');
+        // FEATURE-006: zeigeFehler() bleibt der aeussere Aufruf (Name laut
+        // tests/game-form-loading-state.static.test.js/BUGFIX-002 geprueft),
+        // uebersetzt aber intern ueber err.code, falls vorhanden.
+        zeigeFehler(err.code ? window.FlowGame.uebersetzeFehlercode(err.code, aktuelleSprache, err.message) : err.message);
       }
     });
 
@@ -1713,6 +2044,14 @@
         rollenFeld.hidden = true;
         return;
       }
+      // BUGFIX-002 (Freigabe-Entscheidung 2): derselbe allgemeine
+      // Wartezustand wie beim eigentlichen Beitreten-Klick, aber weiterhin
+      // ausschliesslich nach der obigen Prüfung auf einen vollständigen
+      // 8-stelligen Code ausgelöst - keine Ausweitung auf jeden einzelnen
+      // Tastendruck (Pre-Mortem-Risiko 5).
+      btnBeitretenAbsenden.disabled = true;
+      btnBeitretenAbsenden.setAttribute('aria-busy', 'true');
+      btnBeitretenAbsenden.textContent = t('lobby.wirdBearbeitet');
       try {
         // BUGFIX-001: Auf einem frischen Gerät kann dieser Lesevorgang mit
         // dem bekannten, transienten Verbindungsfehler ("client is offline")
@@ -1741,6 +2080,12 @@
         // Verbindungs-Wiederholungsversuche): die eigentliche, verständliche
         // Fehlermeldung kommt beim tatsächlichen Beitrittsversuch weiter unten.
         rollenFeld.hidden = true;
+      } finally {
+        // BUGFIX-002 (Pre-Mortem-Risiko 3): garantierter Reset, unabhängig
+        // davon, über welchen Pfad die Funktion endet.
+        btnBeitretenAbsenden.disabled = false;
+        btnBeitretenAbsenden.removeAttribute('aria-busy');
+        btnBeitretenAbsenden.textContent = t('lobby.beitreten');
       }
     }
     beitrittCodeInput.addEventListener('blur', pruefeStationsVerfuegbarkeit);
@@ -1755,6 +2100,13 @@
     formBeitreten.addEventListener('submit', async function (ev) {
       ev.preventDefault();
       versteckeFehler();
+      // BUGFIX-002 (AK1/AK2/AK5/AK6): sofortige, wirksame Rückmeldung, dass
+      // der Klick angekommen ist - Button deaktiviert, neutraler Wartetext,
+      // Screenreader-Kennzeichnung. Bewusst NICHT derselbe Text wie der
+      // BUGFIX-001-Verbindungshinweis (Pre-Mortem-Risiko 1).
+      btnBeitretenAbsenden.disabled = true;
+      btnBeitretenAbsenden.setAttribute('aria-busy', 'true');
+      btnBeitretenAbsenden.textContent = t('lobby.wirdBearbeitet');
       const code = document.getElementById('beitritt-code').value.trim().toUpperCase();
       const anzeigename = document.getElementById('beitritt-name').value;
       const rolleWahl = rollenFeld.hidden ? 'spielende' : document.getElementById('beitritt-rolle').value;
@@ -1769,9 +2121,14 @@
           { onRetry: zeigeVerbindungsRetryHinweis }
         );
         versteckeVerbindungsRetryHinweis();
+        // BUGFIX-002 (AK3): garantierter Reset, unabhängig davon, ob unten
+        // noch ein "stationenVoll"-Fehlerzweig folgt oder direkt die Lobby.
+        btnBeitretenAbsenden.disabled = false;
+        btnBeitretenAbsenden.removeAttribute('aria-busy');
+        btnBeitretenAbsenden.textContent = t('lobby.beitreten');
         if (ergebnis.rolle === 'stationenVoll') {
           rollenFeld.hidden = false;
-          zeigeFehler('Alle Stationen wurden gerade in diesem Moment vergeben. Bitte Rolle wählen und erneut beitreten.');
+          zeigeFehler(t('fehler.stationenVollNachtraeglich'));
           return;
         }
         // FEATURE-005 (AK1-3): analog zu speichereHostSession() beim Host -
@@ -1779,21 +2136,33 @@
         // Code/Name/Rolle erneut eingegeben werden müssen.
         speichereTeilnehmerSession(code, ergebnis.rolle, anzeigename);
         lobbyEigeneStation.textContent = ergebnis.station
-          ? 'Deine Station: ' + ergebnis.station
-          : 'Du bist als Beobachtende dabei.';
-        zeigeLobby(db, code, 'Du bist ' + ROLLEN_LABEL[ergebnis.rolle] + ' in diesem Spiel.', ergebnis.rolle);
+          ? t('lobby.deineStation') + ' ' + ergebnis.station
+          : t('lobby.duBistBeobachtende');
+        zeigeLobby(db, code, 'teilnehmendeRolle', ergebnis.rolle);
       } catch (err) {
         versteckeVerbindungsRetryHinweis();
-        if (/belegt/i.test(err.message)) {
+        // BUGFIX-002 (AK3, Pre-Mortem-Risiko 3): garantierter Reset auch bei
+        // jedem Fehlerfall, kein "Hängenbleiben".
+        btnBeitretenAbsenden.disabled = false;
+        btnBeitretenAbsenden.removeAttribute('aria-busy');
+        btnBeitretenAbsenden.textContent = t('lobby.beitreten');
+        // FEATURE-006: sprachunabhängige Prüfung über err.code statt einer
+        // Text-Regex auf die (nun ggf. übersetzte) Fehlermeldung.
+        if (err.code === 'SPIEL_VOLL') {
           rollenFeld.hidden = false;
         }
-        zeigeFehler(err.message);
+        // FEATURE-006: zeigeFehler() bleibt der aeussere Aufruf (Name laut
+        // tests/game-form-loading-state.static.test.js/BUGFIX-002 geprueft),
+        // uebersetzt aber intern ueber err.code, falls vorhanden.
+        zeigeFehler(err.code ? window.FlowGame.uebersetzeFehlercode(err.code, aktuelleSprache, err.message) : err.message);
       }
     });
   }
 
   init().catch(function (err) {
-    untertitel.textContent = 'Fehler beim Laden: ' + err.message;
+    untertitelModus = 'fehler';
+    untertitelFehlerNachricht = err.message;
+    aktualisiereUntertitel();
   });
 })();
 </script>

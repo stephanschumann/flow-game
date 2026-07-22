@@ -24,7 +24,9 @@ function leereKarten() {
 
 async function wechsleZurNaechstenRunde({ code, vonRunde, ausgeloestVon }) {
   if (typeof vonRunde !== 'number') {
-    throw new Error('vonRunde ist erforderlich.');
+    const fehler = new Error('vonRunde ist erforderlich.');
+    fehler.code = 'VON_RUNDE_ERFORDERLICH';
+    throw fehler;
   }
   return {
     rundenNummer: vonRunde + 1,

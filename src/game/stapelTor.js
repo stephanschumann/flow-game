@@ -31,7 +31,9 @@ const SCHWELLEN = { 1: 6, 2: 3, 3: 1 };
 function stapelTorSchwelle(rundenNummer) {
   const schwelle = SCHWELLEN[rundenNummer];
   if (schwelle === undefined) {
-    throw new Error(`Unbekannte Rundennummer: ${rundenNummer}`);
+    const fehler = new Error(`Unbekannte Rundennummer: ${rundenNummer}`);
+    fehler.code = 'UNBEKANNTE_RUNDE';
+    throw fehler;
   }
   return schwelle;
 }
@@ -71,7 +73,9 @@ async function pruefeStapelTor({ runde, station, angekommeneKarten, stapel, istE
  */
 function zaehleAngekommeneKartenAusListe({ karten, position, stapel }) {
   if (!Array.isArray(karten)) {
-    throw new Error('karten muss eine Liste von Karten-Dokumenten sein.');
+    const fehler = new Error('karten muss eine Liste von Karten-Dokumenten sein.');
+    fehler.code = 'UNGUELTIGE_KARTENLISTE';
+    throw fehler;
   }
   return karten.filter((karte) => {
     if (karte.position < position) return false;

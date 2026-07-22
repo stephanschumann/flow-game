@@ -21,14 +21,24 @@
   const { mitVerbindungsRetry } = global.FlowGame;
   const INAKTIV_GRENZE_MS = 24 * 60 * 60 * 1000;
 
+  // FEATURE-006 (2026-07-21, AK 7, Pre-Mortem-Risiko 2): siehe
+  // src/game/joinGame.js für die ausführliche Begründung – muss synchron
+  // gehalten werden.
+  function wirfFehler(nachricht, code) {
+    const fehler = new Error(nachricht);
+    fehler.code = code;
+    throw fehler;
+  }
+
   function pruefeSpielExistiertUndAktiv(snap, code) {
     if (!snap.exists) {
-      throw new Error(`Kein Spiel mit dem Code "${code}" gefunden.`);
+      wirfFehler(`Kein Spiel mit dem Code "${code}" gefunden.`, 'UNGUELTIGER_CODE');
     }
     const spiel = snap.data();
     if (Date.now() - spiel.letzteAktivitaet > INAKTIV_GRENZE_MS) {
-      throw new Error(
-        `Das Spiel mit dem Code "${code}" ist seit über 24 Stunden inaktiv und der Code nicht mehr gültig.`
+      wirfFehler(
+        `Das Spiel mit dem Code "${code}" ist seit über 24 Stunden inaktiv und der Code nicht mehr gültig.`,
+        'SPIEL_INAKTIV'
       );
     }
     return spiel;
@@ -36,16 +46,16 @@
 
   async function joinGame({ code, anzeigename, rolle, uid }, db, retryOptionen = {}) {
     if (!anzeigename || !anzeigename.trim()) {
-      throw new Error('Anzeigename ist erforderlich.');
+      wirfFehler('Anzeigename ist erforderlich.', 'ANZEIGENAME_ERFORDERLICH');
     }
     if (!uid) {
-      throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+      wirfFehler('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.', 'FEHLENDE_AUTH_SITZUNG');
     }
     if (!['spielende', 'beobachtende'].includes(rolle)) {
-      throw new Error('Ungültige Rolle – bitte "spielende" oder "beobachtende" wählen.');
+      wirfFehler('Ungültige Rolle – bitte "spielende" oder "beobachtende" wählen.', 'UNGUELTIGE_ROLLE');
     }
     if (!code || typeof code !== 'string') {
-      throw new Error('Ungültiger oder unbekannter Code.');
+      wirfFehler('Ungültiger oder unbekannter Code.', 'UNGUELTIGER_CODE');
     }
 
     const spielRef = db.collection('spiele').doc(code);
@@ -70,8 +80,9 @@
         const belegtVorab = vorabSnap.data().belegteStationen || {};
         const freiVorab = STATIONEN.filter((s) => !belegtVorab[s]);
         if (freiVorab.length === 0) {
-          throw new Error(
-            'Alle Stationen sind bereits belegt. Bitte bewusst eine andere Rolle wählen (z. B. Beobachtende).'
+          wirfFehler(
+            'Alle Stationen sind bereits belegt. Bitte bewusst eine andere Rolle wählen (z. B. Beobachtende).',
+            'SPIEL_VOLL'
           );
         }
       }

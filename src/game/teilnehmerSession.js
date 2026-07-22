@@ -43,10 +43,14 @@ const { mitVerbindungsRetry } = require('./verbindungsRetry');
 
 async function restoreTeilnehmerSession({ code, rolle, anzeigename, uid }, db, retryOptionen = {}) {
   if (!code || typeof code !== 'string') {
-    throw new Error('Ungültiger oder unbekannter Code.');
+    const fehler = new Error('Ungültiger oder unbekannter Code.');
+    fehler.code = 'UNGUELTIGER_CODE';
+    throw fehler;
   }
   if (!uid) {
-    throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+    const fehler = new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+    fehler.code = 'FEHLENDE_AUTH_SITZUNG';
+    throw fehler;
   }
 
   const teilnehmerRef = db.collection('spiele').doc(code).collection('teilnehmende').doc(uid);
@@ -69,13 +73,19 @@ async function restoreTeilnehmerSession({ code, rolle, anzeigename, uid }, db, r
 
 async function registriereAktivenTab({ code, uid, tabId }, db) {
   if (!code || typeof code !== 'string') {
-    throw new Error('Ungültiger oder unbekannter Code.');
+    const fehler = new Error('Ungültiger oder unbekannter Code.');
+    fehler.code = 'UNGUELTIGER_CODE';
+    throw fehler;
   }
   if (!uid) {
-    throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+    const fehler = new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+    fehler.code = 'FEHLENDE_AUTH_SITZUNG';
+    throw fehler;
   }
   if (!tabId) {
-    throw new Error('tabId ist erforderlich.');
+    const fehler = new Error('tabId ist erforderlich.');
+    fehler.code = 'TAB_ID_ERFORDERLICH';
+    throw fehler;
   }
 
   const teilnehmerRef = db.collection('spiele').doc(code).collection('teilnehmende').doc(uid);
@@ -88,13 +98,19 @@ async function registriereAktivenTab({ code, uid, tabId }, db) {
 
 async function istAktiverTab({ code, uid, tabId }, db) {
   if (!code || typeof code !== 'string') {
-    throw new Error('Ungültiger oder unbekannter Code.');
+    const fehler = new Error('Ungültiger oder unbekannter Code.');
+    fehler.code = 'UNGUELTIGER_CODE';
+    throw fehler;
   }
   if (!uid) {
-    throw new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+    const fehler = new Error('Fehlende Auth-Sitzung (uid) – anonyme Anmeldung ist Voraussetzung.');
+    fehler.code = 'FEHLENDE_AUTH_SITZUNG';
+    throw fehler;
   }
   if (!tabId) {
-    throw new Error('tabId ist erforderlich.');
+    const fehler = new Error('tabId ist erforderlich.');
+    fehler.code = 'TAB_ID_ERFORDERLICH';
+    throw fehler;
   }
 
   const teilnehmerRef = db.collection('spiele').doc(code).collection('teilnehmende').doc(uid);

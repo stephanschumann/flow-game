@@ -69,9 +69,29 @@
     Canada: ['Toronto', 'Vancouver', 'Montreal', 'Ottawa', 'Calgary', 'Quebec'],
   };
 
+  // FEATURE-006 (AK 6, Pre-Mortem-Risiko 4/8, Browser-Port von
+  // src/game/rundeVier/laenderStaedte.js) - identische Alias-Tabelle, muss
+  // synchron gehalten werden.
+  const STADT_ALIAS = {
+    munich: 'münchen',
+    cologne: 'köln',
+    rome: 'rom',
+    milan: 'mailand',
+    naples: 'neapel',
+    florence: 'florenz',
+    venice: 'venedig',
+  };
+
+  function normalisiereStadt(stadt) {
+    if (typeof stadt !== 'string') return '';
+    const bereinigt = stadt.trim().toLowerCase();
+    return STADT_ALIAS[bereinigt] || bereinigt;
+  }
+
   function istStadtInLand(land, stadt) {
     const liste = LAENDER_STAEDTE[land] || [];
-    return liste.includes(stadt);
+    const eingabeSchluessel = normalisiereStadt(stadt);
+    return liste.some(function (kandidat) { return normalisiereStadt(kandidat) === eingabeSchluessel; });
   }
 
   function zufaelligesLand() {
@@ -149,9 +169,10 @@
     sortiertNachZeit.forEach(function (eintrag) {
       const schluessel = eintrag.kartenIndex + '-' + eintrag.eintragIndex;
       const richtigesLand = istStadtInLand(eintrag.land, eintrag.stadt);
-      const istDublette = Boolean(bereitsGeseheneStaedte[eintrag.stadt]);
+      const stadtSchluessel = normalisiereStadt(eintrag.stadt);
+      const istDublette = Boolean(bereitsGeseheneStaedte[stadtSchluessel]);
       if (!istDublette) {
-        bereitsGeseheneStaedte[eintrag.stadt] = true;
+        bereitsGeseheneStaedte[stadtSchluessel] = true;
       }
       bewertungProSchluessel[schluessel] = { richtigesLand: richtigesLand, istDublette: istDublette };
     });
@@ -268,11 +289,15 @@
     code, rundenNummer, elementId, typ, vonPosition, ausgefuehrtVon, staedteAlt, neueStadt,
   }, db) {
     if (typeof vonPosition !== 'number') {
-      throw new Error('vonPosition ist erforderlich.');
+      const fehler = new Error('vonPosition ist erforderlich.');
+      fehler.code = 'POSITION_FEHLT';
+      throw fehler;
     }
     const nachPosition = vonPosition + 1;
     if (nachPosition > 6) {
-      throw new Error('Position 6 ("fertig bei Spieler 5") ist die letzte gültige Position.');
+      const fehler = new Error('Position 6 ("fertig bei Spieler 5") ist die letzte gültige Position.');
+      fehler.code = 'POSITION_MAX';
+      throw fehler;
     }
 
     const rundenRef = db.collection('spiele').doc(code).collection('runden').doc(String(rundenNummer));
@@ -292,7 +317,9 @@
       update.angekommenAm = firebase.firestore.FieldValue.serverTimestamp();
     } else if (typ === 'laenderkarte') {
       if (!neueStadt || !neueStadt.trim()) {
-        throw new Error('Stadt ist erforderlich.');
+        const fehler = new Error('Stadt ist erforderlich.');
+        fehler.code = 'STADT_ERFORDERLICH';
+        throw fehler;
       }
       const alt = staedteAlt || {};
       const neuerSchluessel = String(Object.keys(alt).length);
@@ -307,7 +334,9 @@
       // dieser Datei, Punkt 2, und firestore.rules-Kommentar bei
       // rundeVierKettenfortschrittErlaubt()).
     } else {
-      throw new Error('Unbekannter Elementtyp: ' + typ);
+      const fehler = new Error('Unbekannter Elementtyp: ' + typ);
+      fehler.code = 'UNBEKANNTER_ELEMENTTYP';
+      throw fehler;
     }
 
     const batch = db.batch();

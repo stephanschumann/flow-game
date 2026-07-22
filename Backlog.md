@@ -2,174 +2,6 @@
 
 ## 📋 ToDo
 
-### BUGFIX-001 Beitritt schlägt auf frischem Gerät fehl ("client is offline")
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Bug |
-| **Priorität** | Hoch |
-| **Status** | In Progress |
-| **Erstellt** | 2026-07-21 |
-| **Analyse am** | 2026-07-21 |
-| **Spec freigegeben am** | 2026-07-21 |
-| **In Progress seit** | 2026-07-21 |
-
-**Beschreibung:** Stephan hat auf zwei echten, getrennten Computern getestet (Safari als Host, Chrome auf einem zweiten Rechner als beitretende Person). Der Beitrittsversuch mit Code und Anzeigename schlägt auf dem zweiten Rechner fehl, angezeigte Fehlermeldung: „Failed to get document because the client is offline."
-
-**User Story:** Als beitretende Person auf einem Gerät, das die Seite gerade zum ersten Mal öffnet, möchte ich zuverlässig beitreten können, sodass ein Beitritt nicht an einer kurzen Verbindungsaufbauzeit der Anwendung scheitert.
-
-**Kontext/Verweise:** Root Cause bereits durch Code-Lektüre und Abgleich mit dokumentiertem Firestore-SDK-Verhalten bestätigt (nicht angenommen, siehe Quellen unten) – Detailanalyse folgt im Analyse-Schritt (`flow-game-analyze`), hier nur die bereits gesicherten Fakten als Ausgangspunkt:
-- `public/js/game/joinGame.js` liest beim Beitreten direkt per `.get()` (kein `onSnapshot`): einmal im Vorab-Check (`spielRef.get()`, `teilnehmerRef.get()`, Zeile 49) und einmal in der Transaktion (`tx.get(...)`, Zeile 63).
-- Diese Aufrufe laufen in `public/spiel.html` unmittelbar nach `auth.signInAnonymously()` (Zeile 1585), also auf einem frischen Gerät ohne jeden lokalen Firestore-Cache, direkt nach dem Laden der Seite.
-- Das Firestore-JS-SDK (v8, wie hier verwendet) hat beim allerersten Laden noch keine bestehende Serververbindung. Antwortet der Server nicht innerhalb eines kurzen Zeitfensters und existiert kein Cache-Eintrag, wirft `.get()` genau diese Meldung – ein in mehreren offiziellen Firebase-GitHub-Issues dokumentiertes Verhalten (u. a. firebase/firebase-js-sdk#5836, firebase/firebase-android-sdk#2575).
-- Gleiches Muster (`.get()` direkt nach frischem Sign-in) liegt auch in `teilnehmerSession.js` (`restoreTeilnehmerSession`, Auto-Rejoin) vor – möglicherweise vom selben Zeitfenster-Risiko betroffen, im Analyse-Schritt mit zu prüfen.
-- Vorbestehender FEATURE-001-Bug, unabhängig von FEATURE-004; durch Stephans echten Cross-Device-Test am 2026-07-21 erstmals sichtbar geworden. Blockiert aktuell Gate 3 (finale Freigabe) von FEATURE-004, da der vollständige Mehrpersonen-Durchlauf davon abhängt.
-
-**Nächster Schritt:** Analyse-Phase (`flow-game-analyze`) für Akzeptanzkriterien, Pre-Mortem und Lösungsoptionen (z. B. Wiederholung des `.get()`-Aufrufs bei genau dieser Fehlermeldung), bevor implementiert wird.
-
----
-
-#### Analyse-Spec (2026-07-21)
-
-**Ausgangslage / Brainstorming & Example Mapping:**
-
-**Was heute bereits existiert (aus echtem Code, nicht angenommen):** Root Cause ist bereits im Ticket-Kontext oben bestätigt. Die Code-Lektüre für die Analyse hat den betroffenen Aufruf-Kreis präzisiert und erweitert:
-
-- `public/js/game/joinGame.js` (Browser-Kopie) und `src/game/joinGame.js` (Node-Kopie, manuell synchron gehalten, kein Bundler im Projekt) enthalten beide dasselbe Muster: ein Vorab-Check per `Promise.all([spielRef.get(), teilnehmerRef.get()])` (Zeile 49 bzw. 55) und danach `Promise.all([tx.get(spielRef), tx.get(teilnehmerRef)])` innerhalb der eigentlichen Beitritts-Transaktion (Zeile 62 bzw. 69). Beide Kopien sind inhaltlich identisch betroffen.
-- `teilnehmerSession.js` (beide Kopien) hat in `restoreTeilnehmerSession()` einen eigenen, zusätzlichen `teilnehmerRef.get()`-Aufruf (Zeile 19 Browser-Kopie / Zeile 52 Node-Kopie) *vor* dem Aufruf von `joinGame()` – trifft also potenziell zweimal auf dasselbe Zeitfenster-Risiko: einmal im eigenen Vorab-Lesevorgang, einmal in den `.get()`-Aufrufen von `joinGame()` selbst. Dieser Pfad wird beim automatischen Wiederbetreten genutzt (`public/spiel.html`, Zeile ~1627), ebenfalls unmittelbar nach `signInAnonymously()`.
-- `public/spiel.html` enthält eine dritte Fundstelle mit demselben Grundmuster: `pruefeStationsVerfuegbarkeit()` (Zeile 1685) liest per `.get()`, sobald ein vollständiger 8-stelliger Code eingegeben wird (schon beim Tippen, vor dem eigentlichen Beitreten). Diese Stelle hat aber bereits ein eigenes `try/catch`, das den Fehler still auffängt und nur das Rollen-Auswahlfeld ausblendet (Zeile 1695-1699) – kein sichtbarer Absturz, aber eine stille Fehlfunktion (Rollenfeld bleibt fälschlich versteckt, wenn eigentlich alle Stationen belegt wären).
-- `public/js/game/createGame.js` / `src/game/createGame.js` (Host-Pfad, „Spiel erstellen") enthalten strukturell denselben Risikofall: `tx.get(spielRef)` innerhalb der Code-Erzeugungs-Transaktion (Zeile 66), unmittelbar nach `signInAnonymously()` beim allerersten Laden. Das ist bislang **nicht** als Fehler beobachtet worden (Stephans Test lief mit Safari als Host erfolgreich), aber dieselbe Ursache liegt strukturell vor – vermutlich reine Zeitfenster-Glückssache im konkreten Test, kein grundsätzlicher Unterschied zum Beitritts-Pfad.
-- `hostSession.js` (`restoreHostSession`) verhält sich dagegen strukturell **anders**: Es nutzt `.set()` statt `.get()`. Firestore-Schreibvorgänge werfen bei fehlender Verbindung keinen sofortigen „client is offline"-Fehler, sondern werden lokal in eine Offline-Warteschlange gestellt und lösen erst bei Wiederverbindung auf (bzw. hängen bis dahin) – ein anderes, hier nicht zu behebendes Verhalten, das aber als Hintergrundwissen für die Optionsbewertung unten relevant ist.
-- Wichtiges technisches Detail, das die Optionswahl bestimmt: Firestore-**Transaktionen** (`db.runTransaction`, `tx.get(...)`) lesen laut Firestore-Funktionsweise grundsätzlich **immer live vom Server**, nie aus dem lokalen Cache – das gilt unabhängig davon, ob Offline-Persistenz aktiviert ist oder nicht. Ein reiner Cache-basierter Lösungsansatz (z. B. `enablePersistence()`) könnte deshalb höchstens die beiden Vorab-Check-Lesevorgänge abfedern, niemals aber die beiden Transaktions-Lesevorgänge in `joinGame()`/`createGame()`, die den eigentlichen Bug auslösen.
-- `firestore.rules` sind von diesem Bug nicht betroffen und müssen nicht geändert werden – reine Client-seitige Zuverlässigkeitsfrage, keine neue Berechtigung, kein neues Datenfeld.
-
-**Durchgespielte Beispiele:**
-
-- Eine Person öffnet `spiel.html` zum allerersten Mal auf einem Gerät ohne jeden Firestore-Cache, gibt sofort Code und Anzeigename ein und klickt „Beitreten" → heute: Absturz mit „client is offline". Nach dem Fix: Die Anwendung erkennt genau diesen Fehlerfall, versucht es nach kurzer Wartezeit automatisch erneut und der Beitritt gelingt, sobald die Verbindung tatsächlich steht.
-- Dieselbe Person ist wirklich offline (z. B. Flugmodus, kein WLAN) → nach einer angemessenen, begrenzten Anzahl automatischer Versuche erscheint weiterhin eine verständliche Fehlermeldung, keine Endlosschleife und kein stilles Hängenbleiben.
-- Eine Person mit gespeicherter Sitzung lädt die Seite auf einem frischen Gerät neu (automatisches Wiederbetreten, FEATURE-005) und trifft dasselbe Zeitfenster wie beim Ersteintritt → muss genauso zuverlässig funktionieren wie ein Ersteintritt, nicht nur der explizit reportete Erstbeitritts-Fall.
-- Eine Person tippt einen vollständigen Code sehr schnell nach dem Laden ein (löst `pruefeStationsVerfuegbarkeit()` aus) → heute wird der Fehler dort bereits still abgefangen (kein Absturz), aber das Rollen-Auswahlfeld bleibt dadurch fälschlich ausgeblendet, obwohl eigentlich alle Stationen belegt sein könnten. Kein vom Ticket berichteter Absturz, aber dieselbe Ursache – sollte im Zuge des Fixes konsistent mitbehoben werden.
-- Der Host erstellt auf einem frischen Gerät ein neues Spiel im selben ungünstigen Zeitfenster → strukturell dieselbe Absturzgefahr wie beim Beitritt, im Test nur nicht ausgelöst.
-- Zwei Personen treten fast gleichzeitig auf zwei verschiedenen frischen Geräten demselben Spiel bei, beide lösen den Retry aus → die bereits bestehende Idempotenz-Absicherung in `joinGame()` (Bugfix vom 2026-07-20: gleiche uid bekommt bei wiederholtem Aufruf ihre bereits vergebene Station zurück, keine doppelte Vergabe) muss auch unter Retry-Bedingungen zuverlässig greifen.
-
-**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): ob der Host-Erstellungspfad (`createGame.js`) in den Scope dieses Tickets aufgenommen wird, obwohl er im Ticket-Kontext nicht explizit genannt ist, aber strukturell dasselbe Risiko trägt; die genauen Retry-Parameter (Anzahl Versuche, Wartezeit) sind eine reine Implementierungsdetail-Einschätzung, keine Grundsatzfrage.
-
----
-
-**Akzeptanzkriterien (beobachtbares Verhalten):**
-
-1. Wer auf einem Gerät, das die Seite gerade zum ersten Mal öffnet (kein vorheriger Besuch, kein lokal gespeicherter Stand), sofort mit Code und Anzeigename einem Spiel beitritt, kann das zuverlässig tun – eine kurze Verbindungsaufbauzeit der Anwendung darf den Beitritt nicht mit einer Fehlermeldung scheitern lassen.
-2. Ist die beitretende Person tatsächlich ohne Internetverbindung (z. B. Flugmodus, kein Netz), bekommt sie nach einer begrenzten, angemessen kurzen Wartezeit weiterhin eine klare, verständliche Fehlermeldung – kein endloses Warten, keine Verwechslung mit „ungültiger Code" oder „Spiel nicht gefunden".
-3. Während die Anwendung im Hintergrund die Verbindung aufbaut bzw. den Versuch automatisch wiederholt, sieht die beitretende Person eine sichtbare, verständliche Rückmeldung, statt dass das Formular einfach nichts tut oder eingefroren wirkt.
-4. Das automatische Wiederbetreten (wenn jemand die Seite neu lädt oder nach kurzem Verbindungsverlust zurückkommt) funktioniert auf einem frischen Gerät genauso zuverlässig wie ein Ersteintritt – auch hier darf eine kurze Verbindungsaufbauzeit nicht zum sichtbaren Scheitern führen.
-5. Ein durch die automatische Wiederholung im Hintergrund entstehender, versehentlich doppelter Beitrittsversuch führt niemals dazu, dass dieselbe Person zwei Stationen zugewiesen bekommt oder ein bereits erfolgter Beitritt verändert/überschrieben wird.
-6. Alle bisherigen Beitritts- und Fehlerregeln bleiben in ihrem eigentlichen Anwendungsfall unverändert (z. B. ungültiger Code, alle Stationen belegt, Spiel seit über 24 Stunden inaktiv) – nur der zusätzliche, kurzfristige Verbindungsfehler wird neu abgefangen, keine bestehende Fehlermeldung ändert sich in ihrem eigentlichen Fall.
-7. Auch das Erstellen eines neuen Spiels als Host ist auf einem frischen Gerät genauso zuverlässig wie der Beitritt – eine kurze Verbindungsaufbauzeit darf auch hier nicht zu einer Fehlermeldung führen, obwohl das im bisherigen Test nicht aufgetreten ist.
-
----
-
-**Pre-Mortem – was könnte schiefgehen:**
-
-1. **Retry maskiert einen echten, dauerhaften Offline-Zustand:** Ohne Obergrenze könnte die Anwendung bei einer wirklich fehlenden Verbindung endlos oder unangemessen lange weiterversuchen, statt zeitnah eine klare Fehlermeldung zu zeigen. Gegenmaßnahme: feste Obergrenze an Versuchen und Gesamtwartezeit; danach wie bisher die reguläre Fehlermeldung anzeigen, idealerweise mit einem für diesen Fall klareren Text („Verbindung konnte nicht hergestellt werden – bitte Internetverbindung prüfen und erneut versuchen").
-2. **Doppelte Stationsvergabe durch unsachgemäßen Retry der Transaktion:** Würde nicht nur der fehlgeschlagene Lesevorgang, sondern versehentlich eine bereits erfolgreich abgeschlossene, nur langsam zurückgemeldete Transaktion nochmal ausgelöst, könnte im schlimmsten Fall zweimal eine Station vergeben werden. Gegenmaßnahme: Retry ausschließlich bei einem tatsächlich fehlgeschlagenen (rejected) Promise mit genau diesem Fehlerbild, nie „zur Sicherheit" bei unklarem Ausgang; die bereits bestehende Idempotenz von `joinGame()` (Bugfix 2026-07-20) bleibt die eigentliche Absicherung und wird durch einen Regressionstest unter Retry-Bedingungen zusätzlich abgesichert.
-3. **Formular wirkt während der Wiederholungsversuche eingefroren:** Ohne sichtbare Zwischenmeldung sieht die beitretende Person nur einen deaktivierten „Beitreten"-Button ohne Erklärung, was wie ein Absturz oder Hängenbleiben wirkt (mehrere Sekunden bei mehreren Versuchen mit Wartezeit dazwischen). Gegenmaßnahme: sichtbaren Zwischenzustand ergänzen, idealerweise am bereits bestehenden Muster aus FEATURE-005 orientiert (`verbindungsStatus.js`/`aktualisiereVerbindungsHinweis()`), statt stiller Wartezeit.
-4. **Inkonsistenz zwischen den zwei manuell synchron gehaltenen Dateikopien:** Das Projekt pflegt `joinGame.js`/`teilnehmerSession.js` bewusst doppelt (`src/game/` und `public/js/game/`, kein Bundler – siehe Datei-Kommentare). Wird die Retry-Logik nur in einer der beiden Kopien nachgezogen, driften sie auseinander – ein bereits mehrfach im Projekt dokumentiertes Risiko. Gegenmaßnahme: beide Kopien in derselben Implementierungs-Session anfassen, wie bei den bisherigen Bugfixes vom 2026-07-20 bereits gehandhabt.
-5. **Fix bleibt unvollständig, weil nur die im Ticket explizit genannten Stellen behoben werden:** `createGame.js` (Host-Pfad) und `pruefeStationsVerfuegbarkeit()` tragen dieselbe strukturelle Ursache, wurden aber im bisherigen Test nicht auffällig. Bliebe das unbehoben, könnte derselbe Fehler bei einem künftigen Cross-Device-Test auf der Host-Seite oder beim schnellen Code-Eintippen erneut auftauchen. Gegenmaßnahme: siehe offene Scope-Frage unten – Empfehlung, den Host-Pfad im selben Zug mit zu reparieren.
-6. **Zu enges Erkennungsmuster für den Fehler:** Wird ausschließlich der exakte Fehlertext geprüft, könnte eine künftige, leicht geänderte SDK-Formulierung die Erkennung ins Leere laufen lassen. Gegenmaßnahme: Erkennung zusätzlich über den von Firestore mitgelieferten Fehlercode absichern (nicht nur Text-Matching), soweit vom SDK bereitgestellt.
-7. **Regressionsrisiko in zentralem, bereits mehrfach gepatchtem Code:** `joinGame.js` trägt bereits die Idempotenz-Logik aus dem Bugfix vom 2026-07-20 und ist die gemeinsame Grundlage für Beitritt (FEATURE-001), Wiederbetreten (FEATURE-005) und implizit für die Stationszuweisung, die auch Runde 4 (FEATURE-004, In Progress) referenziert. Ein Retry-Wrapper darf reguläre Fehlerfälle (ungültiger Code, Rolle, alle Stationen belegt) nicht verzögern oder verändern. Gegenmaßnahme: Retry ausschließlich um den Verbindungsfehlerfall herum, alle anderen Fehlerpfade weiterhin sofort und unverändert durchreichen; voller Regressionslauf gegen `tests/game-rooms.logic.test.js` und die bestehenden FEATURE-001/002/005-Tests.
-
----
-
-**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
-
-- `public/js/game/joinGame.js` und `src/game/joinGame.js` (Browser- und Node-Kopie, synchron zu halten): Vorab-Check-Lesevorgänge und Transaktions-Lesevorgänge.
-- `public/js/game/teilnehmerSession.js` und `src/game/teilnehmerSession.js`: der zusätzliche Vorab-Lesevorgang in `restoreTeilnehmerSession()`.
-- `public/spiel.html`: Aufrufstelle unmittelbar nach `auth.signInAnonymously()` (Zeile ~1585); `pruefeStationsVerfuegbarkeit()` (Zeile ~1685); ggf. ein neuer, sichtbarer Zwischenzustand am Beitreten-Formular, idealerweise am bestehenden Verbindungshinweis-Muster aus FEATURE-005 orientiert.
-- `public/js/game/createGame.js` und `src/game/createGame.js`: strukturell dieselbe Ursache im Host-Erstellungspfad – Aufnahme in den Scope dieses Tickets ist eine offene Frage an Stephan (siehe unten).
-- Kein Eingriff in `firestore.rules` nötig – reine Client-seitige Zuverlässigkeitsverbesserung, keine neue Berechtigung, kein neues Datenfeld, keine Änderung an der serverautoritativen Zeitmessung (Product.md §10).
-- Kein Eingriff in das Firestore-Datenmodell (keine neuen Felder auf `spiele`- oder `teilnehmende`-Dokumenten).
-- `tests/game-rooms.logic.test.js` und bestehende Tests für FEATURE-001/002/005: müssen nach dem Fix unverändert grün bleiben.
-
----
-
-**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Kernlogik Beitritt/Stationsvergabe in `joinGame.js` – direkt verändert), FEATURE-002 (Idempotenz-Bugfix vom 2026-07-20 in derselben Datei – darf durch den Retry-Wrapper nicht unterlaufen werden, insbesondere die „bereits vorhandenes Teilnehmer-Dokument"-Kurzschluss-Logik), FEATURE-005 (Done – automatisches Wiederbetreten über `restoreTeilnehmerSession()` und der bestehende Verbindungshinweis-Mechanismus sind unmittelbar betroffen; der neue Zwischenzustand soll sich in dieses bestehende Muster einfügen, nicht mit ihm kollidieren). FEATURE-004 (In Progress – nutzt dieselbe Stationszuweisung/uid-Zuordnung indirekt weiter, wird durch diesen Fix nicht inhaltlich verändert, aber als Beobachtungspunkt für den vollständigen Mehrpersonen-Regressionslauf festgehalten, da genau dieser Bug aktuell Gate 3 von FEATURE-004 blockiert).
-
----
-
-**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
-
-*Option A – Gezielte Wiederholung genau bei dieser Fehlermeldung (empfohlen):* Schlägt ein `.get()`- oder Transaktions-Aufruf mit exakt diesem bekannten Verbindungsfehler fehl, wird automatisch nach kurzer Wartezeit erneut versucht, mit einer kleinen Obergrenze an Versuchen und wachsender Wartezeit dazwischen. Nach Ausschöpfen aller Versuche erscheint wie bisher die reguläre Fehlermeldung. Angewendet auf: Vorab-Check und Transaktion in `joinGame.js` (beide Kopien), Vorab-Lesevorgang in `restoreTeilnehmerSession()` (beide Kopien), sowie – falls Stephan zustimmt (siehe offene Frage) – die Transaktion in `createGame.js`. Vorteile: entspricht exakt dem in den offiziellen Firebase-GitHub-Issues dokumentierten Workaround für dieses SDK-Verhalten; einziger Ansatz, der auch den Transaktions-Lesevorgang abdeckt, der grundsätzlich nie aus dem Cache bedient werden kann; berührt weder Sicherheitsregeln noch Datenmodell noch Spielregeln; bleibt im kostenlosen Spark-Tarif. Nachteile: etwas zusätzlicher Code (Retry-Wrapper) an mehreren, teils doppelt gepflegten Stellen; braucht eine bewusst gewählte Obergrenze, damit ein wirklich offline befindliches Gerät nicht unangemessen lange wartet.
-
-*Option B – Künstliche Wartezeit nach der Anmeldung, bevor überhaupt gelesen wird:* Nach `signInAnonymously()` eine kurze feste Pause einbauen, bevor der erste `.get()`-Aufruf überhaupt startet, in der Hoffnung, dass die Verbindung bis dahin steht. Vorteile: einfacher zu implementieren als ein Retry-Mechanismus. Nachteile: verzögert **jeden** Beitritt, auch die überwiegende Mehrheit, die ohnehin sofort funktionieren würde; verringert das Risiko nur statistisch, beseitigt es aber nicht (bei einer besonders langsamen ersten Verbindung tritt der Fehler trotzdem auf); kein Schutz gegen echte Ausreißer nach oben. Allenfalls als Ergänzung zu Option A sinnvoll, kein Ersatz.
-
-*Option C – Offline-Persistenz aktivieren (`enablePersistence()`):* Würde bei wiederholten Besuchen mit vorhandenem Cache helfen. Nachteile: hilft nicht beim hier beschriebenen Fall (allererster Besuch, kein Cache vorhanden); wirkt sich auf Transaktions-Lesevorgänge (`tx.get()`) ohnehin nicht aus, da diese laut Firestore-Funktionsweise grundsätzlich immer live vom Server lesen; damit für den eigentlichen, im Ticket berichteten Fehlerfall wirkungslos. Nicht empfohlen als Lösung für dieses Ticket.
-
-**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie behebt den Bug an der tatsächlichen Ursache (kurzes Zeitfenster ohne bestehende Serververbindung), deckt anders als Option C auch die Transaktions-Lesevorgänge ab, verzögert anders als Option B nicht jeden Beitritt unnötig, entspricht dem dokumentierten Community-Workaround für genau dieses SDK-Verhalten, und bleibt vollständig innerhalb der bisherigen Architektur-Linie (kein Cloud-Functions-/Blaze-Wechsel nötig, keine Regeländerung).
-
----
-
-**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
-
-- Given/When/Then je Akzeptanzkriterium oben (7 Stück).
-- Retry-Erfolgstest: Given ein `.get()`/Transaktions-Aufruf, der beim ersten Versuch mit dem bekannten Verbindungsfehler fehlschlägt und beim zweiten Versuch erfolgreich ist, When der Beitritt ausgeführt wird, Then gelingt der Beitritt ohne sichtbaren Fehler für die Person.
-- Echt-offline-Test: Given alle Versuche schlagen mit demselben Fehlerbild fehl, When die Obergrenze erreicht ist, Then erscheint die reguläre, verständliche Fehlermeldung, kein endloses Warten.
-- Kein-Doppel-Vergabe-Test unter Retry: Given ein Retry passiert nach einer bereits serverseitig erfolgreich committeten, aber verzögert zurückgemeldeten Transaktion, When die Transaktion erneut ausgeführt wird, Then bleibt die bereits vergebene Station unverändert (bestehende Idempotenz aus dem Bugfix vom 2026-07-20 greift weiterhin).
-- Regressionstest reguläre Fehlerfälle: Given ungültiger Code / Rolle / alle Stationen belegt / Spiel inaktiv, When der Beitritt versucht wird, Then erscheinen exakt dieselben Fehlermeldungen wie bisher, ohne Verzögerung durch den neuen Retry-Mechanismus.
-- Regressionstests: FEATURE-001/002/005 laufen nach der Änderung unverändert grün (`tests/game-rooms.logic.test.js` u. a.), insbesondere der Idempotenz- und der Rejoin-Mechanismus.
-
----
-
-**Fragen an Stephan – geklärt am 2026-07-21:**
-
-1. **Scope-Erweiterung auf den Host-Erstellungspfad – geklärt: Ja.** `createGame.js` (Host erstellt ein neues Spiel) wird im selben Zug mit demselben Retry-Mechanismus abgesichert, obwohl dort im bisherigen Test kein Fehler aufgetreten ist (dieselbe strukturelle Ursache, siehe Pre-Mortem-Risiko 5).
-2. **Umgang mit `pruefeStationsVerfuegbarkeit()` – geklärt: Ja.** Die dort bereits bestehende, stille Fehlerbehandlung (Rollenfeld wird einfach ausgeblendet) wird im Zuge dieses Tickets ebenfalls auf den Retry-Mechanismus umgestellt, statt sie unverändert zu lassen.
-
-**Scope dieses Tickets damit final: alle vier Fundstellen werden behoben** – `joinGame.js` (Vorab-Check + Transaktion), `teilnehmerSession.js` (`restoreTeilnehmerSession`), `createGame.js` (Transaktion), `pruefeStationsVerfuegbarkeit()` in `spiel.html`. Akzeptanzkriterium 7 (Host-Erstellungspfad) ist damit nicht mehr bedingt, sondern gilt regulär.
-
----
-
-#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-21)
-
-Drei neue Testdateien, bewusst OHNE Firestore-Emulator (ein echter "client is offline"-Fehler lässt sich gegen den Emulator ohnehin nicht auslösen, siehe Dateikommentare):
-
-- `tests/game-connection-retry.logic.test.js` – 9 Testfälle. Reine Funktionslogik-Tests für das noch nicht existierende Modul `src/game/verbindungsRetry.js` (vorgeschlagene API: `mitVerbindungsRetry(aufgabe, optionen)`, `istTransienterVerbindungsFehler(err)`). Deckt ab: Fehlererkennung über Text UND Fehlercode (Pre-Mortem-Risiko 6), Retry-Erfolgstest (AK1), sichtbare Zwischenmeldung über `onRetry`-Callback (AK3, Pre-Mortem-Risiko 3), Obergrenze bei echtem Offline-Fall ohne Endlosschleife (AK2, Pre-Mortem-Risiko 1), sofortige Durchreichung regulärer Fehler ohne Verzögerung (AK6, Pre-Mortem-Risiko 7).
-- `tests/game-connection-retry.integration.test.js` – 11 Testfälle. Nutzt eine selbstgebaute In-Memory-Firestore-Attrappe (in der Datei selbst, exakt die von `joinGame.js`/`createGame.js`/`teilnehmerSession.js` genutzte API-Teilmenge) mit konfigurierbarem Fehlerplan pro Dokumentpfad, um einen einmaligen bzw. dauerhaften Verbindungsfehler gezielt zu injizieren – läuft gegen die ECHTEN, bereits existierenden Module. Deckt ab: Beitritt trotz einmaligem Fehler im Vorab-Check UND separat in der Transaktion (AK1), Echt-offline-Fall mit begrenzter Versuchsanzahl (AK2), automatisches Wiederbetreten trotz Fehler im eigenen Vorab-Read UND im anschließenden `joinGame()` (AK4), Host-Erstellungspfad (AK7), Kein-Doppel-Vergabe-Test unter Retry (Pre-Mortem-Risiko 2, kombiniert mit der bestehenden Idempotenz aus dem Bugfix vom 2026-07-20). Eigener Abschnitt "Regressionsfundament reguläre Fehlerfälle" (4 Testfälle: ungültiger Code, ungültige Rolle, Stationen belegt, Spiel inaktiv) ist bewusst bereits jetzt grün (AK6, Pre-Mortem-Risiko 7) – dokumentiert den unveränderten Ist-Zustand als Regressionsbasis.
-- `tests/game-connection-retry.static.test.js` – 4 Testfälle. Textmuster-Prüfung (gleiches Vorgehen wie `tests/game-a11y-static.test.js`) direkt gegen die echten Dateien: gleich hohe Trefferzahl der Verbindungsfehler-Erkennung in beiden Kopien von `joinGame.js`, `teilnehmerSession.js`, `createGame.js` (Pre-Mortem-Risiko 4), sowie eine erkennbare Behandlung innerhalb von `pruefeStationsVerfuegbarkeit()` in `spiel.html` statt des heutigen unterschiedslosen stillen Fallbacks (AK3, AK6, geklärte Frage 2).
-
-**Status:** Alle 24 neuen Testfälle real gegen Jest ausgeführt und wie erwartet ROT bestätigt (`game-connection-retry.logic.test.js`: Modul-Ladefehler "Cannot find module '../src/game/verbindungsRetry'"; `game-connection-retry.integration.test.js`: 7 echte Assertion-/Verhalens-Fehlschläge gegen die real existierenden, noch unveränderten Module, Fehler jeweils bis zum tatsächlichen unretried `.get()`-Aufruf in `joinGame.js`/`createGame.js`/`teilnehmerSession.js` zurückverfolgbar; `game-connection-retry.static.test.js`: 4 echte Assertion-Fehlschläge) – die zugehörige Funktionalität existiert noch nicht, das ist der gewünschte Zustand. Der Regressionsfundament-Abschnitt (4 Testfälle) sowie die bestehenden Suiten `game-a11y-static.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-evaluation.logic.test.js` wurden zusätzlich real gegen Jest laufen lassen und bleiben unverändert grün (28/28) – kein Bruch durch die neuen Dateien, da ausschließlich neue, eigenständige Testdateien hinzugefügt wurden (keine bestehende Datei verändert). Bereit für `flow-game-impl`.
-
-**Bewusst nicht neu geschrieben:** Die im Testplan-Grundgerüst erwähnten Regressionstests gegen FEATURE-001/002/005 (`tests/game-rooms.logic.test.js`, `tests/game-rejoin.logic.test.js` u. a.) existieren bereits vollständig und werden nicht dupliziert – sie müssen nach der Implementierung unverändert grün bleiben (Emulator-Lauf durch Stephan, wie bisher).
-
----
-
-#### Implementierung (flow-game-impl, 2026-07-21)
-
-**Neues Modul (Option A aus der Analyse-Spec, wie freigegeben):** `src/game/verbindungsRetry.js` + Browser-Kopie `public/js/game/verbindungsRetry.js`, jeweils exportiert als `mitVerbindungsRetry(aufgabe, optionen)` und `istTransienterVerbindungsFehler(err)` – exakt die in der BDD-Phase vorgeschlagene API, keine Abweichung. `istTransienterVerbindungsFehler()` erkennt sowohl `err.code === 'unavailable'/'deadline-exceeded'` als auch den Fehlertext `/client is offline/i` (Pre-Mortem-Risiko 6). `mitVerbindungsRetry()` nutzt als Produktions-Voreinstellung `maxVersuche: 4`, `basisWartezeitMs: 400` (linear wachsend: 400/800/1200 ms zwischen den Versuchen, letzter Fehler wird nach Ausschöpfen unverändert erneut geworfen – Pre-Mortem-Risiko 1). Diese Zahlen sind eine reine Implementierungsdetail-Einschätzung (wie in der Spec als "keine Grundsatzfrage" vermerkt), keine Rückfrage an Stephan nötig.
-
-**Geänderte Dateien (alle vier Fundstellen aus dem freigegebenen Scope, kein Teil-Scope):**
-- `src/game/joinGame.js` + `public/js/game/joinGame.js`: Vorab-Check (`Promise.all([spielRef.get(), teilnehmerRef.get()])`) und die gesamte Beitritts-Transaktion (`db.runTransaction(...)`) jeweils einzeln mit `mitVerbindungsRetry()` umschlossen. `joinGame()` hat jetzt einen optionalen dritten Parameter `retryOptionen` (Default `{}`), rückwärtskompatibel zu allen bestehenden Aufrufstellen. Die Idempotenz-Prüfung (`teilnehmerSnap.exists`, Bugfix 2026-07-20) bleibt unverändert *innerhalb* der (jetzt wiederholbaren) Transaktion – ein Retry der ganzen Transaktion ist unbedenklich, weil Firestore-Transaktionen ihre Schreibvorgänge erst am Ende atomar committen; schlägt `tx.get()` fehl, wurde noch nichts geschrieben.
-- `src/game/teilnehmerSession.js` + `public/js/game/teilnehmerSession.js`: der eigene `teilnehmerRef.get()`-Vorab-Lesevorgang in `restoreTeilnehmerSession()` mit `mitVerbindungsRetry()` umschlossen; `retryOptionen` wird zusätzlich an den nachfolgenden `joinGame()`-Aufruf durchgereicht, damit auch dessen interne Retries dieselbe `onRetry`-Rückmeldung auslösen.
-- `src/game/createGame.js` + `public/js/game/createGame.js`: `db.runTransaction(...)` innerhalb der bestehenden Code-Kollisions-Retry-Schleife mit `mitVerbindungsRetry()` umschlossen. Die CODE_KOLLISION-Schleife bleibt unberührt, weil `istTransienterVerbindungsFehler()` diesen Fehler (kein `err.code`, kein passender Text) nicht als transient erkennt und ihn sofort unverändert durchreicht – der äußere `try/catch` in `createGame()` greift wie bisher.
-- `public/spiel.html`: `pruefeStationsVerfuegbarkeit()` liest jetzt über `window.FlowGame.mitVerbindungsRetry(...)` statt direkt über `db...get()`; der bisherige stille Fallback (`rollenFeld.hidden = true`) bleibt nur noch als letzter Auffangzustand nach Ausschöpfen aller Versuche bzw. bei echten fachlichen Fehlern (unbekannter Code) bestehen. Neue sichtbare Zwischenmeldung `zeigeVerbindungsRetryHinweis()`/`versteckeVerbindungsRetryHinweis()` (Pre-Mortem-Risiko 3, AK3) nutzt bewusst dasselbe bestehende `verbindungsHinweis`-Element/-Muster aus FEATURE-005 (`aktualisiereVerbindungsHinweis()`/`verbindungsStatus.js`) statt ein neues UI-Element einzuführen; verdrahtet an allen vier Aufrufstellen (`formErstellen`-Submit → `createGame`, `formBeitreten`-Submit → `joinGame`, automatischer Rejoin in `init()` → `restoreTeilnehmerSession`, `pruefeStationsVerfuegbarkeit()`). Skript-Ladereihenfolge angepasst: `js/game/verbindungsRetry.js` wird jetzt als allererstes Spielmodul geladen (vor `createGame.js`), weil sowohl `createGame.js` als auch `joinGame.js` `window.FlowGame.mitVerbindungsRetry` bereits beim eigenen IIFE-Aufruf referenzieren.
-
-**Echtes, während der Umsetzung gefundenes Problem (nicht nur behauptet):** Die ursprünglich naheliegende Reihenfolge (`verbindungsRetry.js` irgendwo einbinden) hätte zu einem `TypeError: Cannot read properties of undefined (reading 'mitVerbindungsRetry')` geführt, weil `public/js/game/createGame.js` das erste Skript ist, das `window.FlowGame` überhaupt anlegt (`global.FlowGame = global.FlowGame || {}` steht dort ganz am Ende der Datei) – vorher existiert `window.FlowGame` gar nicht. Gelöst, indem `verbindungsRetry.js` als neues, allererstes `<script>` vor `createGame.js` eingebunden wird und selbst ebenfalls defensiv `global.FlowGame = global.FlowGame || {}` initialisiert. Rein durch Nachlesen der bestehenden Lade-Reihenfolge gefunden, nicht erst live im Browser (siehe "Was jetzt noch fehlt" unten – der echte Browser-Test steht noch aus).
-
-**Testergebnis:**
-- Alle 24 BDD-Testfälle real gegen Jest ausgeführt und GRÜN: `game-connection-retry.logic.test.js` (9/9), `game-connection-retry.integration.test.js` (11/11, inkl. Kein-Doppel-Vergabe-Test unter Retry gegen die bestehende Idempotenz), `game-connection-retry.static.test.js` (4/4, inkl. Treffer-Gleichstand zwischen beiden Dateikopien in allen drei betroffenen Modulen).
-- Während der Umsetzung musste die statische Trefferzahl in `public/js/game/teilnehmerSession.js` einmal nachjustiert werden (ein zusätzliches, nicht in der Node-Kopie vorhandenes Vorkommen von „client is offline" im Kopfkommentar) – auf eine Formulierung ohne den Erkennungstext umformuliert, damit beide Kopien exakt gleich oft treffen (Pre-Mortem-Risiko 4). Kein Verhaltensunterschied, reine Kommentar-Textänderung.
-- Regressionstest gegen alle Tickets im Abschnitt „✅ Done" (FEATURE-001, FEATURE-002, FEATURE-003, FEATURE-005, TASK-001, TASK-002 – nicht nur die im Auftrag genannten drei, siehe Hinweis unten): alle **nicht** vom Firestore-Emulator/Live-Netzwerk abhängigen Bestandssuiten real gegen Jest ausgeführt und unverändert GRÜN geblieben (59/59): `game-a11y-static.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-evaluation.logic.test.js`, `game-round4.logic.test.js`.
-- **Nicht selbst ausführbar (Sandbox-Netzwerk-Allowlist, dieselbe bereits in FEATURE-002/004 dokumentierte Einschränkung):** `tests/game-rooms.logic.test.js` und `tests/game-rejoin.logic.test.js` (FEATURE-001/FEATURE-005, direkt betroffener Code) sowie `tests/game-round.*`/`tests/game-evaluation.security.rules.test.js`/`tests/game-round4.security.rules.test.js` benötigen den Firestore-Emulator – ein Downloadversuch wurde real ausgeführt und schlug wie erwartet mit „Connection blocked by network allowlist" fehl (kein Umgehungsversuch). `tests/deploy-regression.test.js`/`tests/feature-002-deploy-regression.test.js` benötigen echten Netzwerkzugriff auf die Live-URL, real ausprobiert, ebenfalls blockiert (`getaddrinfo EAI_AGAIN`). Diese Läufe stehen bei Stephan noch aus (siehe „Was jetzt noch fehlt").
-- **Hinweis zur Diskrepanz im Auftrag:** Der Arbeitsauftrag nannte als aktuell abgenommene Tickets nur FEATURE-001/TASK-001/TASK-002; tatsächlich stehen in Backlog.md, Abschnitt „✅ Done", zusätzlich FEATURE-002, FEATURE-003 und FEATURE-005 mit Status „Done". Da BUGFIX-001 laut eigener Spec ausdrücklich auch FEATURE-002 (Idempotenz) und FEATURE-005 (Rejoin/Verbindungshinweis) unmittelbar berührt, wurde der Regressionstest auf alle sechs tatsächlich als Done markierten Tickets ausgeweitet, nicht nur auf die im Auftrag genannten drei.
-
-**Abweichung von der vorgeschlagenen BDD-Test-API:** Keine. `mitVerbindungsRetry(aufgabe, optionen)` und `istTransienterVerbindungsFehler(err)` wurden exakt wie in den Testdateien vorgeschlagen implementiert (Modul, Funktionsnamen, Parameterreihenfolge, Fehlercodes `unavailable`/`deadline-exceeded`). Keine Testdatei musste nachträglich angepasst werden, um grün zu werden.
-
-**Was jetzt noch fehlt, bevor dieses Ticket auf Done gesetzt werden kann:**
-1. Emulator-gestützter Regressionslauf bei Stephan (`npm run test:emulator` sowie `npm run test:emulator:feature-005` bzw. direkt `tests/game-rooms.logic.test.js`/`tests/game-rejoin.logic.test.js`) – in der Sandbox nicht möglich (Netzwerk-Allowlist), siehe oben.
-2. Echter Cross-Device-Browser-Test durch Stephan (der ursprüngliche, im Ticket berichtete Fall: zwei getrennte Computer, Host + Beitritt auf frischem Gerät) – kein automatisierter Test kann den echten "client is offline"-Zeitfenster-Fehler eines realen frischen Firestore-SDK-Zustands auslösen, das war von Anfang an bewusst so vorgesehen (siehe Dateikommentare der drei Testdateien).
-3. Danach: Deploy auf die Live-URL (Push auf `main`, wie bei allen bisherigen Tickets über GitHub Actions).
-
----
-
 ### TASK-003 Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen
 
 | Feld | Wert |
@@ -191,125 +23,9 @@ Drei neue Testdateien, bewusst OHNE Firestore-Emulator (ein echter "client is of
 - **Regressionsrisiko, das im Analyse-Schritt zwingend zu prüfen ist:** FEATURE-001 (Done) verlässt sich darauf, dass der Host nach eigenem Neuladen seine Moderationsrechte über eine clientseitig gespeicherte Host-Session-Kennung zurückbekommt (`hostSession.js`). Ob und wie diese Kennung an die Firebase-Auth-Persistenz gekoppelt ist, ist noch nicht geprüft – eine Umstellung auf `SESSION`-Persistenz könnte dieses bereits abgenommene Verhalten brechen (z. B. wenn ein Host-Tab geschlossen und neu geöffnet statt nur neu geladen wird). Muss vor jeder Implementierung real geprüft werden, nicht angenommen.
 - Alternative, rein methodische Lösung ohne Code-Änderung (aus `chrome-multi-identity-testing-conventions`): separate Browser-Profile oder unterschiedliche Browser auf demselben Rechner nutzen. Löst das Problem, ist aber unbequemer als ein Tab-pro-Rolle-Workflow und bei fünf Stationen + Host + Beobachtende schwer parallel zu bedienen.
 
+**Reale Bestätigung des Problems (Stephan, 2026-07-21, beim manuellen Test von BUGFIX-001):** Stephan hat versucht, mehrere Spielende über mehrere zusätzliche private Safari-Fenster in derselben privaten Sitzung zu simulieren. Ergebnis: Als „Spielender 4" konnte er Karten von „Spielendem 3" bewegen, als „Spieler 5" die von „Spieler 4" – ein Verhalten, das wie ein Bruch der Zugriffsregel „nur eigene Station" aussah, aber auf Rückfrage als Testmethodik-Artefakt bestätigt wurde: mehrere private Fenster derselben Sitzung teilen sich denselben Speicher/dieselbe Auth-Identität, genau wie bei regulären Tabs. Kein echter Fehler in den Zugriffsregeln – aber direkter Beleg dafür, dass genau dieses Ticket gebraucht wird, damit Entwicklertests nicht versehentlich falsche Sicherheitsalarm-artige Befunde erzeugen.
+
 **Nächster Schritt:** Analyse-Phase (`flow-game-analyze`), sequenziert nach BUGFIX-001 (beide berühren denselben Auth-/Session-Code, um Konflikte zu vermeiden).
-
----
-
-### FEATURE-006 Mehrsprachigkeit (Deutsch/Englisch)
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Feature |
-| **Priorität** | Mittel |
-| **Status** | ToDo |
-| **Erstellt** | 2026-07-19 |
-| **Analyse am** | 2026-07-20 |
-
-**Beschreibung:** Das Spiel ist vollständig auf Deutsch und Englisch nutzbar. Grundeinstellung (Default) ist Englisch. Betrifft alle sichtbaren Texte für alle Rollen (Host, Spielende, Beobachtende) über alle Phasen/Runden hinweg — Startseite, Lobby, Spielbrett, Kennzahlen-/Auswertungsansicht, Fehlermeldungen.
-
-**User Story:** Als Host oder Spielender, möchte ich das Spiel in meiner bevorzugten Sprache (Deutsch oder Englisch) nutzen können, sodass internationale oder gemischtsprachige Gruppen den Workshop ohne Sprachbarriere durchführen können.
-
-**Kontext/Verweise:** `Product.md` Abschnitt 9 (nicht-fachliche Anforderungen, ergänzt am 2026-07-19). Noch offen (für die Analysephase): wie die Sprache gewählt/umgeschaltet wird (z. B. pro Gerät/Person individuell vs. einheitlich pro Spiel), ob die Wahl über den Beitritt hinweg gespeichert bleibt, und ob Host und Spielende unabhängig voneinander die Sprache wählen können.
-
----
-
-#### Analyse-Spec (2026-07-20)
-
-**Ausgangslage / Brainstorming & Example Mapping:**
-
-**Was heute bereits existiert (aus echtem Code, nicht angenommen):**
-- Das Spiel besteht heute ausschließlich auf Deutsch: alle sichtbaren Texte in `public/index.html` (Landingpage, z. B. „Spiel erstellen oder beitreten") und `public/spiel.html` (Start-/Beitrittsformular, Lobby, Spielbrett, Kennzahlenanzeige, z. B. „Spiel erstellen", „Beitreten", „Durchlaufzeit", „Bearbeitungszeit") sind direkt und ausschließlich auf Deutsch ins Markup geschrieben. Es gibt keine Trennung von Text und Struktur, keine Übersetzungstabelle, keinen Sprachschalter.
-- Auch Fehlermeldungen sind heute ausschließlich deutsche Sätze, die direkt in den gemeinsam genutzten Spiellogik-Modulen geworfen werden (`src/game/joinGame.js`, `kartenBewegung.js`, `stapelTor.js`, `hostSession.js`, `teilnehmerSession.js`, `rundenwechsel.js`, `rundeVier/elementBewegung.js` u. a.), z. B. „Ungültiger oder unbekannter Code." oder „Nur ein Schritt vorwärts erlaubt – Stationen können nicht übersprungen werden." Diese Module werden auch von bestehenden automatisierten Tests genutzt; ein Test in `tests/game-rooms.logic.test.js` prüft sogar per Regex (`/code/i`) auf einen Ausschnitt des deutschen Fehlertexts.
-- Die Runde-4-Referenzdaten (`src/game/rundeVier/laenderStaedte.js`, FEATURE-004) sind ausschließlich in deutscher Schreibweise angelegt (z. B. „München") – bereits in FEATURE-004 als Pre-Mortem-Risiko 8 dokumentiert und dort ausdrücklich als Abhängigkeit an dieses Ticket übergeben.
-- Es existiert aktuell kein Mechanismus zum Umschalten der Sprache, keine gespeicherte Spracheinstellung, keine Übersetzungsdatei.
-
-**Von Stephan bereits bestätigter Scope (nicht mehr offen, keine erneute Rückfrage nötig):** Sprachen Deutsch + Englisch, Default Englisch; wirklich alle sichtbaren Texte für alle Rollen sind betroffen, keine Teilbereiche ausgenommen (Startseite/Landingpage, Beitritts-/Erstellungsformular, Lobby, Spielbrett aller vier Runden, Anleitungs-/Instruktionstexte, Kennzahlen-/Auswertungsansicht, Fehlermeldungen).
-
-**Durchgespielte Beispiele:**
-- Eine Person öffnet die Landingpage zum ersten Mal, ohne zuvor eine Sprache gewählt zu haben → sie sieht alle Texte auf Englisch (Grundeinstellung).
-- Dieselbe Person wechselt zu Deutsch → alle sichtbaren Texte auf dem aktuellen Bildschirm wechseln sofort zu Deutsch, ohne dass die Seite neu geladen wird.
-- Der Host erstellt ein Spiel mit Deutsch als eigener Anzeigesprache; eine mitspielende Person tritt mit Englisch als eigener Anzeigesprache bei → ob beide unabhängig voneinander ihre eigene Sprache sehen dürfen oder ob eine Sprache für das ganze Spiel gilt, ist eine der zentralen offenen Fragen unten.
-- Eine Person versucht, mit einem ungültigen Code beizutreten → die Fehlermeldung „Ungültiger oder unbekannter Code" müsste bei englisch eingestellter Sprache auf Englisch erscheinen, obwohl der Text heute hart im Code als deutscher Satz hinterlegt ist.
-- In Runde 4 trägt eine Person „Munich" statt „München" für eine Deutschland-Karte ein → das muss unabhängig von der UI-Sprache als dieselbe korrekte, ggf. bereits vergebene Stadt erkannt werden (Zusammenspiel mit FEATURE-004).
-- Eine Person wechselt mitten in einer laufenden, zeitgemessenen Runde die Sprache → die serverseitig gemessenen Zeiten dürfen dadurch nicht beeinflusst werden, nur die angezeigten Texte wechseln.
-
-**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): wie die Sprache gewählt/umgeschaltet wird (pro Gerät/Person individuell vs. einheitlich fürs ganze Spiel), ob die Wahl über Beitritt/Rejoin gespeichert bleibt, ob Host und Spielende unabhängig voneinander wählen können, und wie Land-/Stadt-Eingaben in Runde 4 zweisprachig gehandhabt werden.
-
----
-
-**Akzeptanzkriterien (beobachtbares Verhalten):**
-
-1. Öffnet jemand das Spiel zum ersten Mal, ohne zuvor selbst eine Sprache gewählt zu haben, sieht die Person alle Texte auf Englisch.
-2. Jede Person kann jederzeit zwischen Deutsch und Englisch wechseln; die sichtbaren Texte wechseln sofort, ohne dass die Seite neu geladen werden muss und ohne dass dabei der aktuelle Spielfortschritt oder eine laufende Zeitmessung beeinflusst wird.
-3. Die gewählte Sprache gilt für wirklich alle sichtbaren Texte: Startseite/Landingpage, Beitritts- und Erstellungsformular, Lobby, Spielbrett in allen vier Runden, Anleitungs-/Instruktionstexte, Kennzahlen- und Auswertungsansicht sowie alle Fehlermeldungen – keine Teilbereiche bleiben in der jeweils anderen Sprache stehen.
-4. Nach einem Sprachwechsel ist auf keinem Bildschirm ein Mix aus deutschen und englischen Texten zu sehen.
-5. Die Sprachwahl verändert ausschließlich die Anzeige, nie die Spielregeln oder die gemessenen Zeiten – unabhängig von der eingestellten Sprache laufen dieselben Regeln und Zeitmessungen wie bisher.
-6. In Runde 4 wird eine eingegebene Stadt unabhängig von der eingestellten Sprache erkannt: Eine deutsche und eine englische Schreibweise derselben Stadt (z. B. „München" und „Munich") gelten als dieselbe Stadt für die Korrektheits- und Dublettenprüfung.
-7. Fehlermeldungen (z. B. bei ungültigem Beitritts-Code oder vollem Spiel) erscheinen in der von der jeweiligen Person aktuell eingestellten Sprache.
-
-*(Kriterien zur Reichweite/Speicherung/Kopplung der Sprachwahl – „gilt sie pro Person/Gerät oder pro Spiel", „bleibt sie über einen Rejoin erhalten", „kann der Host sie für alle vorgeben" – werden erst nach Klärung der offenen Fragen unten in konkrete Akzeptanzkriterien überführt; hier bewusst nicht vorweggenommen.)*
-
----
-
-**Pre-Mortem – was könnte schiefgehen:**
-
-1. **Unvollständige Übersetzung / vergessene Texte:** Weil heute keine zentrale Text-/Schlüssel-Stelle existiert, sondern Texte verstreut direkt im Markup zweier HTML-Dateien und in Fehlermeldungen mehrerer Logikmodule stehen, ist es leicht, einzelne Texte beim Übersetzen zu übersehen (z. B. dynamisch per JavaScript erzeugte Texte, `aria-label`s aus FEATURE-005, künftige Runde-4-Oberfläche). Gegenmaßnahme: eine zentrale Text-/Schlüssel-Tabelle statt verstreuter Strings, plus ein automatisierter Test, der prüft, dass zu jedem verwendeten Text-Schlüssel ein Eintrag in beiden Sprachen existiert.
-2. **Fehlermeldungen sitzen als literale deutsche Sätze direkt in `throw new Error(...)` in bereits abgenommenen, testgedeckten Logikmodulen:** Ein Umbau auf sprachneutrale Fehlercodes/Schlüssel (nötig für AK 7) greift in Code ein, der schon durch FEATURE-001/002/004-Tests abgedeckt ist – darunter ein Test, der aktuell einen Ausschnitt des deutschen Fehlertexts per Regex prüft (`tests/game-rooms.logic.test.js`, `/code/i`). Gegenmaßnahme: Umbau schrittweise und mit vollem Regressionslauf gegen FEATURE-001/002/003/004 absichern; wo ein Test auf konkreten Text prüft, bewusst auf einen sprachunabhängigen Fehlercode statt auf Text umstellen, nicht den Text nur in einer zweiten Sprache duplizieren.
-3. **Gleichzeitig unterschiedliche Sprache pro Person im selben Spiel (falls individuell entschieden, siehe offene Frage 1/3):** Würde die Sprachwahl versehentlich serverseitig auf dem gemeinsamen Spiel-Dokument statt rein clientseitig pro Person/Gerät gespeichert, könnte der Sprachwechsel einer Person alle anderen im selben Spiel ungewollt mit umschalten. Gegenmaßnahme: Sprachwahl rein clientseitig speichern (analog zum bereits bewährten Host-Session-`localStorage`-Muster aus FEATURE-001/FEATURE-005), kein gemeinsames Server-Feld für die individuelle Sprache – es sei denn, Stephan entscheidet sich bewusst für eine spielweit einheitliche Sprache.
-4. **Zweisprachige Land-/Stadt-Prüfung in Runde 4 (direkte Abhängigkeit zu FEATURE-004 Pre-Mortem-Risiko 8):** Die aktuelle Referenzliste (`laenderStaedte.js`) kennt nur die deutsche Schreibweise. Ohne Anpassung würde eine englische Eingabe wie „Munich" fälschlich als falsches Land oder als neue (nicht-doppelte) Stadt gewertet, obwohl sie inhaltlich mit „München" identisch ist. Gegenmaßnahme: Städtelisten um beide Sprachvarianten erweitern bzw. eine Normalisierung vor dem Vergleich (z. B. „Munich" und „München" auf denselben internen Schlüssel abbilden), mit einem Regressionstest gegen die bestehenden FEATURE-004-Tests der Qualitätsauswertung.
-5. **Re-Render/State-Verlust beim Sprachwechsel mitten im Spiel:** Ähnlich wie bereits in FEATURE-005 Pre-Mortem 4 für Live-Updates beschrieben, könnte ein Sprachwechsel, der Teile der Oberfläche neu aufbaut, den Tastaturfokus verschieben oder clientseitigen UI-Zustand (z. B. die „Fokus + Warteschlange"-Ansicht aus FEATURE-004) unbeabsichtigt zurücksetzen. Gegenmaßnahme: Sprachwechsel als reines Text-Update ohne vollständigen Neuaufbau der Oberfläche und ohne Seiten-Neuladen umsetzen.
-6. **Doppelpflege-Risiko zwischen Barrierefreiheit (FEATURE-005) und Mehrsprachigkeit:** `aria-label`s und sichtbare Texte müssen inhaltlich zusammenpassen und in beiden Sprachen konsistent gepflegt werden; ohne zentrale Verwaltung könnten sie in einer Sprache aktualisiert werden, in der anderen aber nicht. Gegenmaßnahme: `aria-label`s ebenfalls über dieselbe zentrale Text-/Schlüssel-Tabelle pflegen, nicht separat.
-
----
-
-**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
-
-- `public/index.html` und `public/spiel.html`: aktuell reiner, direkt ins Markup geschriebener deutscher Text ohne jede Trennung von Text und Struktur – nötig: ein Weg, Text-Schlüssel im Markup zu markieren, und eine zentrale Übersetzungstabelle (DE/EN), aus der der jeweils passende Text zur Laufzeit eingesetzt wird.
-- Fehlermeldungen in den gemeinsam genutzten Logikmodulen unter `src/game/` (u. a. `joinGame.js`, `kartenBewegung.js`, `stapelTor.js`, `hostSession.js`, `teilnehmerSession.js`, `rundenwechsel.js`, `rundeVier/elementBewegung.js`) – derzeit literale deutsche Sätze; brauchen sprachneutrale Fehlercodes/Schlüssel, deren Übersetzung an der Anzeigestelle (nicht in der Logik selbst) erfolgt.
-- Neuer, bisher nicht vorhandener Baustein: eine zentrale Text-/Übersetzungstabelle (Schlüssel → deutscher Text, englischer Text) sowie ein clientseitiger Mechanismus, der die aktuell gewählte Sprache hält und alle sichtbaren Texte live umschaltet.
-- Speicherort der Sprachwahl: voraussichtlich rein clientseitig (`localStorage`, analog zum bestehenden Host-Session-Muster aus FEATURE-001/FEATURE-005) – abhängig von der Antwort auf die offene Frage, ob die Sprache pro Person/Gerät oder einheitlich pro Spiel gilt; im letzteren Fall käme ein neues Feld auf dem Spiel-Dokument in Firestore samt entsprechender Regel-Ergänzung hinzu.
-- Runde 4 (FEATURE-004, aktuell „In Progress"): `src/game/rundeVier/laenderStaedte.js` (Referenzdaten) und `qualitaetsauswertung.js` (Korrektheits-/Duplikat-Prüfung) müssten beide Sprachvarianten der Städtenamen als gleichwertig behandeln.
-- Kennzahlen-/Auswertungsansicht (`kennzahlen.js`, `vergleichsansicht.js`): Beschriftungen wie „Durchlaufzeit", „Bearbeitungszeit" sind ebenfalls Text und müssten über dieselbe Übersetzungstabelle laufen.
-- Barrierefreiheit (FEATURE-005, Done): `aria-label`s und sichtbare Texte müssen in beiden Sprachen konsistent bleiben – idealerweise über dieselbe zentrale Text-/Schlüssel-Verwaltung wie der übrige UI-Text.
-- Keine erwartete Änderung an den bestehenden Sicherheitsregeln für Spielregeln/Zeitmessung selbst (Product.md §10, „Server bleibt die Wahrheit") – Mehrsprachigkeit ist reine UI-Textübersetzung, keine Regellogik; nur falls die Sprache spielweit serverseitig gespeichert werden soll (siehe offene Frage 1/3), kämen minimale Regel-Ergänzungen für ein neues, unkritisches Text-/Konfigurationsfeld hinzu.
-
----
-
-**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Host-Session-Mechanismus als Vorbild für clientseitige Sprachspeicherung, darf durch einen zusätzlichen `localStorage`-Schlüssel nicht gestört werden), FEATURE-002 (Fehlermeldungen in `kartenBewegung.js`/`stapelTor.js` sind testgedeckt – Umbau auf Fehlercodes braucht vollen Regressionslauf), FEATURE-003 (Kennzahlen-/Vergleichsansicht-Beschriftungen werden Text-Schlüssel, dürfen sich für Runden 1–3 inhaltlich nicht ändern, nur übersetzbar werden), FEATURE-004 (In Progress – Land-/Stadt-Referenzdaten und Fehlermeldungen in `rundeVier/elementBewegung.js` sind unmittelbar betroffen; FEATURE-004 hat diese Abhängigkeit bereits selbst als Pre-Mortem-Risiko 8 vermerkt), FEATURE-005 (Done – `aria-label`s und Barrierefreiheits-Texte müssen mit der neuen Übersetzungstabelle konsistent bleiben, der bestehende Rejoin-Mechanismus darf durch eine zusätzliche Sprachspeicherung im `localStorage` nicht gestört werden).
-
----
-
-**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
-
-*Option A – Rein clientseitiges, schlüsselbasiertes Übersetzungssystem (kein Cloud Functions, bleibt im Spark-Tarif):* Eine zentrale Text-Schlüssel-Tabelle (DE/EN) im Frontend-Code, die aktuelle Sprache wird rein im Browser gehalten (State + `localStorage`), Fehlermeldungen aus den Logikmodulen werden auf sprachneutrale Fehlercodes umgestellt und erst an der Anzeigestelle übersetzt. Vorteile: bleibt kostenlos, folgt der bisherigen Architektur-Linie „keine Cloud Functions" (Product.md §10) konsequent weiter, reine UI-Textübersetzung berührt weder Spielregeln noch Sicherheitsregeln. Nachteile: spürbarer Migrationsaufwand, weil aktuell keinerlei Trennung von Text und Struktur existiert – muss Datei für Datei nachgezogen werden; die Umstellung der Fehlermeldungen auf Fehlercodes berührt mehrere bereits abgenommene, testgedeckte Module.
-
-*Option B – Serverseitig ausgelieferte Übersetzungen (z. B. über eine Cloud Function, die Texte je nach angefragter Sprache liefert):* Vorteile: zentrale Pflege an einer einzigen Stelle, denkbar praktisch, falls später mehr als zwei Sprachen dazukommen. Nachteile: bricht mit der bislang durchgehend verfolgten Architektur-Linie „keine Cloud Functions" (Product.md §10), verlangt den Wechsel auf den kostenpflichtigen Blaze-Tarif für eine reine UI-Textfrage, bei der – anders als z. B. bei der Qualitätsauswertung in FEATURE-004 – keine serverautoritative Prüfung nötig ist. Deutlich höherer Aufwand ohne erkennbaren fachlichen Zusatznutzen für dieses Ticket.
-
-*Option C – Zwei vollständige, parallel gepflegte Sprachversionen (z. B. separate HTML-Dateien je Sprache) statt eines Schlüssel-Systems:* Vorteile: kein struktureller Umbau der bestehenden Dateien nötig, jede Sprachversion bleibt für sich genommen einfach lesbar. Nachteile: doppelte Pflege bei jeder künftigen inhaltlichen Änderung (jede Textanpassung, jedes neue Feature müsste zweimal gepflegt werden), hohes Risiko, dass beide Versionen mit der Zeit auseinanderlaufen – widerspricht dem in anderen Tickets verfolgten Grundsatz „eine Quelle der Wahrheit". Nicht empfohlen.
-
-**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie hält die bisherige, konsequent kostenfreie Architektur-Linie durch (Product.md §10), betrifft ausschließlich UI-Text statt Spielregeln oder Sicherheitsregeln, und lässt sich schrittweise migrieren (z. B. zuerst Landingpage/Beitrittsformular, dann Spielbrett und Kennzahlenansicht, zuletzt die Fehlermeldungen aus den Logikmodulen). Von Option B wird abgeraten, weil sie einen Kostenwechsel für eine reine Textfrage ohne Sicherheitsbezug verlangen würde. Von Option C wird abgeraten, weil sie dauerhaften doppelten Pflegeaufwand und Drift-Risiko erzeugt.
-
----
-
-**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
-
-- Given/When/Then je Akzeptanzkriterium oben (7 Stück; weitere zur Reichweite/Speicherung folgen nach Klärung der offenen Fragen).
-- Vollständigkeits-Test: Given alle im Frontend verwendeten Text-Schlüssel, When gegen die Übersetzungstabelle geprüft wird, Then existiert für jeden Schlüssel sowohl ein deutscher als auch ein englischer Eintrag.
-- Regressionstest Fehlermeldungen: Given die bestehenden Tests in `tests/game-rooms.logic.test.js` (u. a. der Regex-Test auf einen Fehlertext-Ausschnitt), When die Fehlermeldungen auf Fehlercodes umgestellt werden, Then bleiben diese Tests grün (ggf. nach kontrollierter Anpassung des Test-Assertion-Stils, nicht durch stillschweigendes Entschärfen).
-- Zweisprachigkeits-Test Runde 4: Given eine Länderkarte „Deutschland"/„Germany", When einmal „München" und einmal „Munich" eingetragen wird, Then erkennt die Qualitätsauswertung beide als dieselbe Stadt (Korrektheit und Dublettenprüfung identisch, unabhängig von der Schreibweise).
-- Kein-Datenverlust-Test: Given eine laufende, zeitgemessene Runde, When die Sprache mitten in der Runde gewechselt wird, Then bleiben Zeitmessung und Spielzustand unverändert, nur die angezeigten Texte wechseln.
-- Regressionstests: FEATURE-001/002/003/004/005 laufen nach der Umstellung auf das Übersetzungssystem unverändert grün (insbesondere Kennzahlen-/Vergleichsansicht-Inhalte für Runden 1–3, Barrierefreiheits-Prüfungen aus FEATURE-005, Host-Session-Rejoin-Mechanismus).
-
----
-
-**Offene Fragen an Stephan (müssen vor Freigabe der Spec geklärt werden, keine Annahmen getroffen):**
-
-1. **Geltungsbereich der Sprachwahl:** Wählt jede Person auf ihrem eigenen Gerät individuell ihre Sprache (z. B. Host sieht Deutsch, eine mitspielende Person sieht Englisch, im selben Spiel gleichzeitig), oder gilt eine einzige, einheitliche Sprache für das ganze Spiel (z. B. vom Host vorgegeben)? Das entscheidet maßgeblich, ob die Sprachwahl rein clientseitig (`localStorage`) oder zusätzlich serverseitig auf dem Spiel-Dokument gespeichert werden muss.
-2. **Persistenz über Beitritt/Rejoin hinweg:** Bleibt die einmal gewählte Sprache einer Person über einen erneuten Beitritt oder ein automatisches Wiederbetreten (FEATURE-005) auf demselben Gerät hinweg gespeichert, oder wird bei jedem neuen Besuch wieder mit der Grundeinstellung Englisch gestartet?
-3. **Unabhängigkeit von Host und Spielenden:** Können Host und Spielende unabhängig voneinander ihre eigene Anzeigesprache wählen (siehe Frage 1), oder gibt der Host die Sprache verbindlich für alle Teilnehmenden seines Spiels vor?
-4. **Zweisprachige Land-/Stadt-Handhabung in Runde 4 (aus FEATURE-004 Pre-Mortem-Risiko 8):** Sollen beide Schreibweisen (z. B. „München" und „Munich") in jedem Fall als dieselbe, gleichwertige Stadt gelten – unabhängig davon, in welcher Sprache die eingebende Person das Spiel gerade sieht? Oder soll die gültige Schreibweise von der zum Zeitpunkt der Eingabe eingestellten Sprache der jeweiligen Person abhängen? Die Analyse geht in Akzeptanzkriterium 6 und im Pre-Mortem von der ersten, wahrscheinlicheren Variante aus, trifft diese Annahme aber nicht endgültig.
-
-**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Die vier offenen Fragen oben sind Reichweiten-/Policy-Entscheidungen (wer sieht welche Sprache, wird sie gespeichert, wie werden Städtenamen zweisprachig behandelt) – keine „fühlt sich Variante X oder Y in der Bedienung besser an"-Fragen wie beim Runde-4-Warteschlangen-Prototyp in FEATURE-004. Ein klickbarer Prototyp ist dafür nicht der richtige nächste Schritt; sinnvoller ist, die vier Fragen direkt mit Stephan zu klären. Eine einzelne, für sich genommen leichtgewichtige Interaktionsfrage bleibt zusätzlich im Hinterkopf zu behalten, falls sie nach Klärung der Policy-Fragen noch unklar ist: die konkrete Platzierung/Gestaltung eines Sprachumschalters im Layout (z. B. Dropdown oben rechts vs. Text-Umschalter „DE | EN" vs. Flaggen-Icons). Diese Frage ist aber, anders als die Runde-4-Warteschlangen-Darstellung, ein gut etabliertes, alltägliches UI-Muster mit geringem Fehlrisiko – sie überschreitet die im Skill genannte Schwelle nicht eindeutig. Empfehlung: zunächst ohne Prototyp mit einer einfachen, üblichen Umsetzung starten (z. B. Text-Umschalter); nur falls sich beim Bauen oder bei einer ersten Rückmeldung zeigt, dass die Platzierung/Darstellung selbst strittig ist, gezielt einen `prototype-builder`-Durchlauf nachschieben.
 
 ---
 
@@ -527,7 +243,695 @@ Ticket bleibt „In Progress" – die eigentliche Spieler-Oberfläche für Runde
 
 ---
 
+### BUGFIX-003 Spielbrett zeigt während Lobby und laufender Runde fehlenden oder falschen Kontext für Spielende
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Drei zusammenhängende Beobachtungen aus dem echten Testlauf (Host + 1 Teilnehmende via privatem Safari-Fenster) darüber, was eine spielende Person auf ihrem Bildschirm sieht, bevor und während gespielt wird:
+
+a) **Lobby-Erläuterung fehlt:** Nach dem Beitreten als Spielende(r) erscheint ausschließlich der Satz „Du bist Spielende in diesem Spiel." Es fehlt jede Erläuterung, dass das Spiel erst startet, sobald der Host es auslöst, dass mindestens 5 Spielende + 1 Host nötig sind, und dass man ggf. noch auf weitere Beitretende warten muss.
+
+b) **Bug – veralteter Text während laufender Runde:** Nach Spielstart zeigt der Bildschirm sowohl in Runde 1 als auch in Runde 2 weiterhin den Landingpage-Text „SPIEL-RÄUME – Flow Game – Erstelle ein Spiel oder tritt mit einem Beitritts-Code bei." Das ist während einer laufenden Runde inhaltlich falsch und verwirrend und sollte durch die tatsächliche Rundenaufgabe/Anleitung ersetzt werden, die der Host den Spielenden erklären kann, während die Zeit bereits läuft. Tritt reproduzierbar in beiden gespielten Runden auf (Screenshot-Beleg bei Stephan vorhanden, hier nur als Beschreibung dokumentiert).
+
+c) **UI-Polish – Spaltenköpfe der Stationen:** Über den Spalten (Stationen) fehlt der Name der zuständigen spielenden Person. Zusätzlich sind die Spaltenüberschriften unsauber umbrochen/sortiert — teils ragen sie über die Spaltenbreite hinaus, teils steht die Nummerierung in einer eigenen Zeile, uneinheitlich zwischen den Stationen.
+
+**User Story:** Als Spielender möchte ich an jedem Punkt im Spiel (Lobby vor Start, laufende Runde) sehen, was gerade Sache ist und wer an welcher Station arbeitet, sodass ich nicht rätseln muss, ob das Spiel überhaupt begonnen hat oder was gerade von mir erwartet wird.
+
+**Kontext/Verweise:** Alle drei Punkte betreffen denselben Bildschirmbereich (Spielbrett-Ansicht in `public/spiel.html`) zu unterschiedlichen Zeitpunkten im Spielverlauf — deshalb hier gebündelt statt als drei Einzeltickets. (b) ist der einzige echte Funktionsfehler der drei (Zustand wird nach Rundenstart nicht aktualisiert); (a) und (c) sind fehlender bzw. unsauberer Inhalt. Getrennt zu halten von FEATURE-007 (Landingpage-Onboarding vor dem Beitreten) und von FEATURE-004 (Runde 4), da dessen Spielbrett-Oberfläche laut eigener Spec ohnehin komplett neu gebaut wird („Fokus + Warteschlange") und mit dem hier beobachteten Stationen-Layout aus Runde 1–3 nicht identisch ist.
+
+---
+
+### FEATURE-007 Landingpage erklärt Spielzweck, Lernziel und Ablauf nicht
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Die Landingpage (Startseite vor Spielerstellung/-beitritt) erklärt das Spiel inhaltlich nicht. Es fehlen: Zweck und Lernziel des Spiels, Kontext/Mehrwert für die Spielenden, die zugrundeliegende Theorie (Lean-/Flow-Prinzipien), die benötigte Spieleranzahl sowie ein grober Überblick über den Spielablauf.
+
+**User Story:** Als jemand, der zum ersten Mal auf die Startseite kommt (egal ob als Host oder als beitretende Person), möchte ich verstehen, worum es in diesem Spiel geht und was ich lernen soll, sodass ich informiert entscheiden kann, ob und wie ich teilnehme, statt blind einem Code zu folgen.
+
+**Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Bewusst getrennt von BUGFIX-003 (dort geht es um Kontext-Anzeige NACH dem Beitreten bzw. während der Runde, hier um die allererste Berührung mit dem Spiel VOR jedem Beitritt/jeder Erstellung). Inhaltlich ggf. mit `Product.md` (Spielziel/-theorie) und `Flow-Game-Entscheidungen.md` abzugleichen, um die Landingpage-Texte fachlich korrekt zu formulieren.
+
+---
+
+### FEATURE-008 Offene Design-Frage: Karten per Drag-and-Drop statt Klick-Button bewegen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Aus dem Testlauf ergab sich die offene Frage, ob Karten künftig per Drag-and-Drop bewegt werden könnten, statt wie heute über einen Klick-Button — um die Interaktion spielerischer zu machen. **Dies ist ausdrücklich noch keine Entscheidung, sondern nur die Frage selbst, festgehalten zur späteren Bewertung durch Stephan.** Keine Analyse, keine Aufwandsschätzung, keine Priorisierung bisher vorgenommen.
+
+**Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Vor einer Analysephase (`flow-game-analyze`) müsste Stephan zunächst entscheiden, ob diese Richtung überhaupt weiterverfolgt werden soll, da sie das bestehende, serverautoritative Bewegungs-/Regel-Modell (`bewegungErlaubt()` u. Ä. aus FEATURE-002) und ggf. die Barrierefreiheit (siehe `game-a11y-static.test.js`) berührt.
+
+---
+
+### FEATURE-009 Live-Anzeige der eigenen Cycle Time während aktiver Bearbeitung
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Während eine Person aktiv an ihrer Aufgabe arbeitet, sieht sie aktuell keine mitlaufende eigene Bearbeitungszeit live auf dem Bildschirm — die Zeit wird zwar serverseitig gemessen (FEATURE-002/003), aber nicht während der Bearbeitung sichtbar dargestellt.
+
+**User Story:** Als Spielender, der gerade eine Karte bearbeitet, möchte ich sehen, wie lange ich schon aktiv daran arbeite, sodass ich ein Gefühl für meine eigene Bearbeitungszeit (Cycle Time) bekomme, während das Spiel läuft — nicht erst nachträglich in der Auswertung.
+
+**Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Die zugrundeliegende Zeitmessung existiert bereits serverseitig (`durchlaufzeitStart`/`bearbeitungszeitStart` u. Ä., FEATURE-002/003) — hier geht es nur um eine zusätzliche, rein clientseitige Live-Anzeige (z. B. mitlaufender Timer im Browser), keine neue serverseitige Messung. Siehe auch Terminologie-Ticket TASK-005 (Cycle Time statt Bearbeitungszeit als Anzeigebegriff).
+
+---
+
+### FEATURE-010 Neue Kennzahl: Wartezeit je Spieler und Runde (vor/nach aktiver Bearbeitung)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Zusätzlich zur bereits gemessenen aktiven Bearbeitungszeit (Cycle Time) soll pro Spieler und Runde auch die Wartezeit gemessen werden: die Zeit, die eine Person wartet, bis sie eine Aufgabe übernehmen kann (weil vorgelagerte Personen noch nicht fertig sind), UND die Zeit, die sie danach wieder wartet, bis nachgelagerte Personen fertig sind. Beispiel: Person an Position 3 wartet zunächst auf Person 1+2, arbeitet dann aktiv (das ist die bereits vorhandene Cycle Time), wartet danach auf Person 4+5. Diese Wartezeit soll passiv im Hintergrund gemessen, aber erst am Rundenende durch den Host für alle sichtbar freigegeben werden — analog zum bestehenden Muster „Vorschau nur für Host sichtbar, dann Gesamtfreigabe" aus FEATURE-003.
+
+**User Story:** Als Host möchte ich nach einer Runde sehen, wie viel Zeit jede Person aktiv gearbeitet hat und wie viel Zeit sie auf vor-/nachgelagerte Personen gewartet hat, sodass die Gruppe den Unterschied zwischen Bearbeitungszeit und Wartezeit im Flow konkret erlebt und diskutieren kann.
+
+**Kontext/Verweise:** Geprüft, ob dies fachlich zu FEATURE-003 (Phase 3 – Auswertung) gehört: FEATURE-003 ist bereits **Done** und wird nicht mehr verändert. Die dort bereits gemessenen/gezeigten Kennzahlen (Durchlaufzeit, Bearbeitungszeit, Zeit bis erster/letzter Lieferung, Abstand, Beteiligungsspanne je Station, siehe `src/game/kennzahlen.js`) enthalten keine Wartezeit-Metrik — das ist eine fachlich neue Kennzahl, kein bereits definiertes, nur unvollständig umgesetztes Akzeptanzkriterium von FEATURE-003. Deshalb hier als eigenständiges neues Ticket angelegt, FEATURE-003 dient nur als architektonische Referenz (Freigabe-Muster `ergebnisseFreigegeben`, Host-only, Server-Zeitstempel; Datenmodell `proStation`/Runden-Dokument in `src/game/kennzahlen.js` bzw. `public/js/game/kennzahlen.js`). Betrifft vermutlich auch FEATURE-004 (Runde 4), sobald deren eigenes Element-Ketten-Modell steht — dort ggf. als Erweiterung nachzuziehen, aber nicht Teil des aktuellen FEATURE-004-Scopes (Warten ist dort laut eigener Spec sogar explizit gewollte spielerische Friktion, keine zu messende Kennzahl bisher).
+
+---
+
+### BUGFIX-004 Darstellungs-Rundungsfehler bei „Abstand erste↔letzte Lieferung"
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Am Rundenende zeigten die Kennzahlen im Testlauf z. B. „Bis 1. Lieferung" 06:11 und „Bis letzter Lieferung" 06:14 (rechnerische Differenz der angezeigten Werte: 3 Sekunden), aber „Abstand 1.↔letzte Lieferung" zeigte 00:02 (2 Sekunden) — das passt auf den ersten Blick nicht zusammen. Zweites Beispiel aus demselben Testlauf: Durchlaufzeit 06:14, Bearbeitungszeit 04:24, „Bis 1. Lieferung" 06:11, „Bis letzter Lieferung" 06:14, Abstand 00:02 — dieselbe Diskrepanz.
+
+**Tatsächlicher Code-Befund (nachgeschaut, nicht vermutet):** Es handelt sich um einen **Darstellungs-/Rundungsfehler, keinen Rechenfehler**. `src/game/kennzahlen.js` (Zeile 60–67) berechnet `abstandErsteLetzteLieferung` exakt und korrekt als `letzte - erste` (rohe Millisekunden-Differenz der beiden Lieferzeitpunkte) — das ist rechnerisch immer exakt gleich der Differenz von `zeitBisLetzterLieferung` und `zeitBisErsterLieferung`, da beide denselben `rundenStart` als Bezugspunkt abziehen. Die drei Werte werden serverseitig korrekt und konsistent in Millisekunden gespeichert. Der Fehler entsteht erst bei der Anzeige: `formatiereZeit(ms)` in `public/spiel.html` (Zeile 686–692) rundet jeden der drei Werte **unabhängig voneinander** per `Math.floor(ms / 1000)` auf ganze Sekunden ab, bevor er als MM:SS angezeigt wird. Beispiel, das das beobachtete Muster exakt erklärt: liegt „erste Lieferung" bei 371.900 ms (→ abgerundet 06:11) und „letzte Lieferung" bei 374.200 ms (→ abgerundet 06:14), wirkt die Differenz der angezeigten Werte wie 3 Sekunden — der tatsächliche, separat gespeicherte und ebenfalls unabhängig gerundete Abstand beträgt aber nur 374.200 − 371.900 = 2.300 ms, abgerundet 00:02. Jeder der drei Werte ist für sich genommen korrekt gerundet, nur ihre Kombination sieht durch das unabhängige Abrunden inkonsistent aus, sobald jemand die beiden MM:SS-Anzeigen manuell subtrahiert.
+
+**User Story:** Als Host oder Spielender, der die Kennzahlen liest, möchte ich, dass „Bis letzter Lieferung" minus „Bis 1. Lieferung" optisch mit dem angezeigten „Abstand" übereinstimmt, sodass die Zahlen beim Nachrechnen nicht wie ein Fehler wirken.
+
+**Kontext/Verweise:** `src/game/kennzahlen.js` (Berechnung, unverändert korrekt) und `public/js/game/kennzahlen.js` (Browser-Kopie); Anzeige/Rundung in `public/spiel.html`, Funktion `formatiereZeit()` (Zeile ~686–692), verwendet u. a. in den Zeilen ~1374–1378 (Vergleichsansicht) und ~1463–1467 (Kennzahlen-Ansicht direkt nach Rundenende). Da FEATURE-003 (Auswertung) bereits **Done** ist und diese Anzeigefunktion nicht Teil ihrer damaligen Akzeptanzkriterien war (dort ging es um Freigabe-Mechanik und Sichtbarkeit, nicht um Rundungsverhalten), hier als eigenständiges Bugfix-Ticket angelegt statt FEATURE-003 anzuhängen. Mögliche Lösungsrichtung (nicht vorentschieden, gehört in die Analysephase): `abstandErsteLetzteLieferung` konsequent als abgeleiteten Anzeigewert aus den bereits gerundeten MM:SS-Werten der beiden Lieferzeitpunkte darstellen, statt aus der ungerundeten Millisekunden-Differenz — oder alle drei Werte grundsätzlich erst runden und dann konsistent weiterrechnen. Betrifft potenziell auch Runde 4 (FEATURE-004), falls dieselbe `formatiereZeit()`-Funktion dort wiederverwendet wird.
+
+---
+
+### TASK-004 Verifikation: Beteiligungsspanne-Berechnung bei vollständig besetztem Spiel
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Task |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Im Testlauf zeigte „Beteiligung je Station" für Station 1 und Station 2 durchgängig „0 Bewegungen, 00:00 Beteiligungsspanne" in beiden gespielten Runden. Da der Test nur mit einer einzigen zusätzlichen Teilnehmenden-Identität lief (nicht alle fünf Stationen tatsächlich besetzt), war unklar, ob das ein Datenfehler ist oder schlicht korrekt, weil niemand an Station 1/2 aktiv war.
+
+**Tatsächlicher Code-Befund (nachgeschaut, nicht vermutet):** Das ist **erwartetes Verhalten, kein Bug**. `src/game/kennzahlen.js` (Zeile 46–58) berechnet für jede Station: Existiert in den übergebenen `bewegungen` kein Eintrag für diese Station, werden `anzahlBewegungen: 0` und `beteiligungsspanne: 0` gesetzt — ausdrücklich ohne Sonderbehandlung, so auch im Dateikopf-Kommentar dokumentiert (Zeile 3–4: „'0 Bewegungen' ohne Sonderbehandlung, wenn eine Station nichts bewegt hat"; Zeile 12–14 für `beteiligungsspanne` analog). Eine Station ohne jede Bewegung liefert also erwartungsgemäß genau die im Test beobachteten Werte.
+
+**Verbleibende offene Aufgabe:** Der Code-Befund bestätigt nur, dass der „0"-Fall korrekt behandelt wird — er belegt noch nicht, dass die Berechnung auch bei einer tatsächlich aktiven Station 1/2 korrekte Werte liefert, da der bisherige Test alle fünf Stationen nie real gleichzeitig besetzt hatte. Dieses Ticket hält fest, dass ein künftiger Testlauf mit allen fünf Stationen echt besetzt (z. B. nach TASK-003, sobald Mehrfach-Identitäten für Entwicklertests möglich sind) die Beteiligungsspanne-Werte für tatsächlich aktive Stationen zusätzlich verifizieren sollte — reine Absicherung, kein bekannter Fehler.
+
+**Kontext/Verweise:** `src/game/kennzahlen.js` Zeile 46–58 sowie Dateikopf-Kommentar Zeile 1–17; abhängig von TASK-003 (Mehrfach-Identitäten), um einen echten 5-Stationen-Test überhaupt durchführen zu können.
+
+---
+
+### TASK-005 Lean-Fachbegriffe (Lead Time, Cycle Time, Throughput) durchgängig auch in deutschen UI-Texten verwenden
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Task |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-21 |
+
+**Beschreibung:** Auch in den deutschen Texten des Spiels sollen künftig die englischen Lean-Fachbegriffe verwendet werden statt ihrer eingedeutschten Entsprechungen: „Lead Time" statt „Durchlaufzeit", „Cycle Time" statt „Bearbeitungszeit", „Throughput" statt eines eingedeutschten Begriffs (falls vorhanden) — auch in zusammengesetzten Begriffen wie „individuelle Cycle Time". Betrifft vermutlich sehr viele Stellen im UI (u. a. `public/spiel.html`, ggf. weitere Dateien).
+
+**User Story:** Als Host oder Spielender mit Lean-/Flow-Hintergrund möchte ich die im Workshop-Kontext gebräuchlichen englischen Fachbegriffe wiedererkennen, statt eingedeutschter Varianten, die in der Community unüblich sind.
+
+**Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Eine grobe Fundstellen-Schätzung (wie viele Textstellen betroffen sind) wäre für die Analysephase sinnvoll, wurde hier aber bewusst nicht selbst durchgezählt. Berührt dieselben Anzeige-Stellen wie BUGFIX-004 (`formatiereZeit()`-Aufrufe/Kennzahlen-Labels in `public/spiel.html`) sowie FEATURE-006 (Mehrsprachigkeit, ToDo) — bei einer künftigen Umsetzung von FEATURE-006 sollte diese Terminologiefrage mitgedacht werden, da „Lead Time"/„Cycle Time" ohnehin bereits die englischen Begriffe sind und sich die Frage für die englische Sprachversion nicht stellt, wohl aber für die deutsche.
+
+---
+
 ## ✅ Done
+
+### FEATURE-006 Mehrsprachigkeit (Deutsch/Englisch)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | Done |
+| **Done am** | 2026-07-21 |
+| **Erstellt** | 2026-07-19 |
+| **Analyse am** | 2026-07-20 |
+| **Spec freigegeben am** | 2026-07-21 |
+| **In Progress seit** | 2026-07-21 |
+
+**Beschreibung:** Das Spiel ist vollständig auf Deutsch und Englisch nutzbar. Grundeinstellung (Default) ist Englisch. Betrifft alle sichtbaren Texte für alle Rollen (Host, Spielende, Beobachtende) über alle Phasen/Runden hinweg — Startseite, Lobby, Spielbrett, Kennzahlen-/Auswertungsansicht, Fehlermeldungen.
+
+**User Story:** Als Host oder Spielender, möchte ich das Spiel in meiner bevorzugten Sprache (Deutsch oder Englisch) nutzen können, sodass internationale oder gemischtsprachige Gruppen den Workshop ohne Sprachbarriere durchführen können.
+
+**Kontext/Verweise:** `Product.md` Abschnitt 9 (nicht-fachliche Anforderungen, ergänzt am 2026-07-19). Wie die Sprache gewählt/umgeschaltet wird (einheitlich pro Spiel statt pro Gerät/Person), ob die Wahl über den Beitritt hinweg gespeichert bleibt, und ob Host und Spielende unabhängig voneinander die Sprache wählen können, wurde am 2026-07-21 geklärt (siehe „Offene Fragen an Stephan" in der Analyse-Spec unten).
+
+---
+
+#### Analyse-Spec (2026-07-20)
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code, nicht angenommen):**
+- Das Spiel besteht heute ausschließlich auf Deutsch: alle sichtbaren Texte in `public/index.html` (Landingpage, z. B. „Spiel erstellen oder beitreten") und `public/spiel.html` (Start-/Beitrittsformular, Lobby, Spielbrett, Kennzahlenanzeige, z. B. „Spiel erstellen", „Beitreten", „Durchlaufzeit", „Bearbeitungszeit") sind direkt und ausschließlich auf Deutsch ins Markup geschrieben. Es gibt keine Trennung von Text und Struktur, keine Übersetzungstabelle, keinen Sprachschalter.
+- Auch Fehlermeldungen sind heute ausschließlich deutsche Sätze, die direkt in den gemeinsam genutzten Spiellogik-Modulen geworfen werden (`src/game/joinGame.js`, `kartenBewegung.js`, `stapelTor.js`, `hostSession.js`, `teilnehmerSession.js`, `rundenwechsel.js`, `rundeVier/elementBewegung.js` u. a.), z. B. „Ungültiger oder unbekannter Code." oder „Nur ein Schritt vorwärts erlaubt – Stationen können nicht übersprungen werden." Diese Module werden auch von bestehenden automatisierten Tests genutzt; ein Test in `tests/game-rooms.logic.test.js` prüft sogar per Regex (`/code/i`) auf einen Ausschnitt des deutschen Fehlertexts.
+- Die Runde-4-Referenzdaten (`src/game/rundeVier/laenderStaedte.js`, FEATURE-004) sind ausschließlich in deutscher Schreibweise angelegt (z. B. „München") – bereits in FEATURE-004 als Pre-Mortem-Risiko 8 dokumentiert und dort ausdrücklich als Abhängigkeit an dieses Ticket übergeben.
+- Es existiert aktuell kein Mechanismus zum Umschalten der Sprache, keine gespeicherte Spracheinstellung, keine Übersetzungsdatei.
+
+**Von Stephan bereits bestätigter Scope (nicht mehr offen, keine erneute Rückfrage nötig):** Sprachen Deutsch + Englisch, Default Englisch; wirklich alle sichtbaren Texte für alle Rollen sind betroffen, keine Teilbereiche ausgenommen (Startseite/Landingpage, Beitritts-/Erstellungsformular, Lobby, Spielbrett aller vier Runden, Anleitungs-/Instruktionstexte, Kennzahlen-/Auswertungsansicht, Fehlermeldungen).
+
+**Durchgespielte Beispiele:**
+- Eine Person öffnet die Landingpage zum ersten Mal, ohne zuvor eine Sprache gewählt zu haben → sie sieht alle Texte auf Englisch (Grundeinstellung).
+- Dieselbe Person wechselt zu Deutsch → alle sichtbaren Texte auf dem aktuellen Bildschirm wechseln sofort zu Deutsch, ohne dass die Seite neu geladen wird.
+- Der Host erstellt ein Spiel mit Deutsch als eigener Anzeigesprache; eine mitspielende Person tritt bei → **geklärt (2026-07-21):** Es gilt eine einzige, vom Host vorgegebene Sprache für das ganze Spiel; die beitretende Person kann keine eigene, abweichende Anzeigesprache wählen.
+- Eine Person versucht, mit einem ungültigen Code beizutreten → die Fehlermeldung „Ungültiger oder unbekannter Code" müsste bei englisch eingestellter Sprache auf Englisch erscheinen, obwohl der Text heute hart im Code als deutscher Satz hinterlegt ist.
+- In Runde 4 trägt eine Person „Munich" statt „München" für eine Deutschland-Karte ein → das muss unabhängig von der UI-Sprache als dieselbe korrekte, ggf. bereits vergebene Stadt erkannt werden (Zusammenspiel mit FEATURE-004).
+- Eine Person wechselt mitten in einer laufenden, zeitgemessenen Runde die Sprache → die serverseitig gemessenen Zeiten dürfen dadurch nicht beeinflusst werden, nur die angezeigten Texte wechseln.
+
+**Fragen, die beim Durchspielen aufkamen** (siehe „Offene Fragen an Stephan – geklärt am 2026-07-21" unten): wie die Sprache gewählt/umgeschaltet wird (pro Gerät/Person individuell vs. einheitlich fürs ganze Spiel), ob die Wahl über Beitritt/Rejoin gespeichert bleibt, ob Host und Spielende unabhängig voneinander wählen können, und wie Land-/Stadt-Eingaben in Runde 4 zweisprachig gehandhabt werden.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Öffnet jemand das Spiel zum ersten Mal, ohne zuvor selbst eine Sprache gewählt zu haben, sieht die Person alle Texte auf Englisch.
+2. Jede Person kann jederzeit zwischen Deutsch und Englisch wechseln; die sichtbaren Texte wechseln sofort, ohne dass die Seite neu geladen werden muss und ohne dass dabei der aktuelle Spielfortschritt oder eine laufende Zeitmessung beeinflusst wird.
+3. Die gewählte Sprache gilt für wirklich alle sichtbaren Texte: Startseite/Landingpage, Beitritts- und Erstellungsformular, Lobby, Spielbrett in allen vier Runden, Anleitungs-/Instruktionstexte, Kennzahlen- und Auswertungsansicht sowie alle Fehlermeldungen – keine Teilbereiche bleiben in der jeweils anderen Sprache stehen.
+4. Nach einem Sprachwechsel ist auf keinem Bildschirm ein Mix aus deutschen und englischen Texten zu sehen.
+5. Die Sprachwahl verändert ausschließlich die Anzeige, nie die Spielregeln oder die gemessenen Zeiten – unabhängig von der eingestellten Sprache laufen dieselben Regeln und Zeitmessungen wie bisher.
+6. In Runde 4 wird eine eingegebene Stadt unabhängig von der eingestellten Sprache erkannt: Eine deutsche und eine englische Schreibweise derselben Stadt (z. B. „München" und „Munich") gelten als dieselbe Stadt für die Korrektheits- und Dublettenprüfung.
+7. Fehlermeldungen (z. B. bei ungültigem Beitritts-Code oder vollem Spiel) erscheinen in der von der jeweiligen Person aktuell eingestellten Sprache.
+
+8. Für ein Spiel gilt zu jedem Zeitpunkt genau eine gemeinsame Sprache für alle Rollen (Host, Spielende, Beobachtende) – es gibt nie gleichzeitig unterschiedliche Sprachen für verschiedene Personen im selben Spiel.
+9. Die Sprache für ein Spiel wird vom Host festgelegt (z. B. beim Erstellen des Spiels); alle beitretenden Personen sehen automatisch diese vom Host festgelegte Sprache und können sie nicht selbst auf eine andere Sprache für sich persönlich umstellen. Der Host kann die Sprache auch noch ändern, während das Spiel bereits läuft – ändert er sie, wechseln alle Rollen (Host, Spielende, Beobachtende) sofort gemeinsam auf die neue Sprache, ohne dass dabei Spielfortschritt oder laufende Zeitmessung beeinflusst werden. *(Geklärt am 2026-07-21 – ersetzt die zuvor offene Frage 5.)*
+10. Verliert eine Person die Verbindung und tritt danach erneut demselben Spiel bei (Rejoin, siehe FEATURE-005), sieht sie weiterhin dieselbe, für dieses Spiel festgelegte Sprache – ein Verbindungsverlust oder erneuter Beitritt setzt die Sprache nicht auf die Grundeinstellung zurück.
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Unvollständige Übersetzung / vergessene Texte:** Weil heute keine zentrale Text-/Schlüssel-Stelle existiert, sondern Texte verstreut direkt im Markup zweier HTML-Dateien und in Fehlermeldungen mehrerer Logikmodule stehen, ist es leicht, einzelne Texte beim Übersetzen zu übersehen (z. B. dynamisch per JavaScript erzeugte Texte, `aria-label`s aus FEATURE-005, künftige Runde-4-Oberfläche). Gegenmaßnahme: eine zentrale Text-/Schlüssel-Tabelle statt verstreuter Strings, plus ein automatisierter Test, der prüft, dass zu jedem verwendeten Text-Schlüssel ein Eintrag in beiden Sprachen existiert.
+2. **Fehlermeldungen sitzen als literale deutsche Sätze direkt in `throw new Error(...)` in bereits abgenommenen, testgedeckten Logikmodulen:** Ein Umbau auf sprachneutrale Fehlercodes/Schlüssel (nötig für AK 7) greift in Code ein, der schon durch FEATURE-001/002/004-Tests abgedeckt ist – darunter ein Test, der aktuell einen Ausschnitt des deutschen Fehlertexts per Regex prüft (`tests/game-rooms.logic.test.js`, `/code/i`). Gegenmaßnahme: Umbau schrittweise und mit vollem Regressionslauf gegen FEATURE-001/002/003/004 absichern; wo ein Test auf konkreten Text prüft, bewusst auf einen sprachunabhängigen Fehlercode statt auf Text umstellen, nicht den Text nur in einer zweiten Sprache duplizieren.
+3. **Unautorisierte Änderung der spielweiten Sprache durch Spielende (aktualisiert 2026-07-21):** Das ursprüngliche Risiko dieses Punkts („gleichzeitig unterschiedliche Sprache pro Person im selben Spiel, falls individuell entschieden") entfällt strukturell, weil Stephan geklärt hat, dass die Sprache einheitlich pro Spiel gilt und vom Host vorgegeben wird, statt individuell pro Person gewählt zu werden. Dadurch entsteht aber ein neues, verwandtes Risiko: Weil die Sprache jetzt als gemeinsames Feld auf dem Spiel-Dokument gespeichert wird, könnte eine nicht-hostende, mitspielende Person versuchen, dieses Feld direkt zu ändern und damit die Sprache für alle im Spiel ungewollt umzuschalten, obwohl nur der Host dazu berechtigt ist. Eine rein clientseitige Einschränkung (z. B. den Sprachumschalter im UI für Nicht-Host-Personen einfach auszublenden) reicht nicht aus, da sie einen direkten Schreibzugriff nicht verhindert. Gegenmaßnahme: Die Regel „nur der Host darf die spielweite Sprache ändern" muss serverseitig in den Firestore-Sicherheitsregeln durchgesetzt werden, analog zum bestehenden Muster für andere Host-only-Aktionen (z. B. Rundenwechsel in FEATURE-002).
+4. **Zweisprachige Land-/Stadt-Prüfung in Runde 4 (direkte Abhängigkeit zu FEATURE-004 Pre-Mortem-Risiko 8):** Die aktuelle Referenzliste (`laenderStaedte.js`) kennt nur die deutsche Schreibweise. Ohne Anpassung würde eine englische Eingabe wie „Munich" fälschlich als falsches Land oder als neue (nicht-doppelte) Stadt gewertet, obwohl sie inhaltlich mit „München" identisch ist. Gegenmaßnahme: Städtelisten um beide Sprachvarianten erweitern bzw. eine Normalisierung vor dem Vergleich (z. B. „Munich" und „München" auf denselben internen Schlüssel abbilden), mit einem Regressionstest gegen die bestehenden FEATURE-004-Tests der Qualitätsauswertung.
+5. **Re-Render/State-Verlust beim Sprachwechsel mitten im Spiel:** Ähnlich wie bereits in FEATURE-005 Pre-Mortem 4 für Live-Updates beschrieben, könnte ein Sprachwechsel, der Teile der Oberfläche neu aufbaut, den Tastaturfokus verschieben oder clientseitigen UI-Zustand (z. B. die „Fokus + Warteschlange"-Ansicht aus FEATURE-004) unbeabsichtigt zurücksetzen. Gegenmaßnahme: Sprachwechsel als reines Text-Update ohne vollständigen Neuaufbau der Oberfläche und ohne Seiten-Neuladen umsetzen.
+6. **Doppelpflege-Risiko zwischen Barrierefreiheit (FEATURE-005) und Mehrsprachigkeit:** `aria-label`s und sichtbare Texte müssen inhaltlich zusammenpassen und in beiden Sprachen konsistent gepflegt werden; ohne zentrale Verwaltung könnten sie in einer Sprache aktualisiert werden, in der anderen aber nicht. Gegenmaßnahme: `aria-label`s ebenfalls über dieselbe zentrale Text-/Schlüssel-Tabelle pflegen, nicht separat.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/index.html` und `public/spiel.html`: aktuell reiner, direkt ins Markup geschriebener deutscher Text ohne jede Trennung von Text und Struktur – nötig: ein Weg, Text-Schlüssel im Markup zu markieren, und eine zentrale Übersetzungstabelle (DE/EN), aus der der jeweils passende Text zur Laufzeit eingesetzt wird.
+- Fehlermeldungen in den gemeinsam genutzten Logikmodulen unter `src/game/` (u. a. `joinGame.js`, `kartenBewegung.js`, `stapelTor.js`, `hostSession.js`, `teilnehmerSession.js`, `rundenwechsel.js`, `rundeVier/elementBewegung.js`) – derzeit literale deutsche Sätze; brauchen sprachneutrale Fehlercodes/Schlüssel, deren Übersetzung an der Anzeigestelle (nicht in der Logik selbst) erfolgt.
+- Neuer, bisher nicht vorhandener Baustein: eine zentrale Text-/Übersetzungstabelle (Schlüssel → deutscher Text, englischer Text) sowie ein clientseitiger Mechanismus, der die aktuell gewählte Sprache hält und alle sichtbaren Texte live umschaltet.
+- Speicherort der Sprachwahl: **geklärt (2026-07-21)** – ein neues Feld auf dem Spiel-Dokument in Firestore (nicht rein `localStorage`), da die Sprache einheitlich pro Spiel gilt und vom Host vorgegeben wird. Dieses Feld wird vom Host gesetzt und von allen anderen Rollen nur gelesen; die zugehörige Firestore-Sicherheitsregel muss sicherstellen, dass ausschließlich der Host es ändern kann (siehe Pre-Mortem-Risiko 3). Ob der Host dieses Feld auch noch nach dem Erstellen des Spiels, also während das Spiel bereits läuft, ändern darf, ist eine offene Detailfrage (siehe „Offene Fragen an Stephan", neuer Punkt 5).
+- Runde 4 (FEATURE-004, aktuell „In Progress"): `src/game/rundeVier/laenderStaedte.js` (Referenzdaten) und `qualitaetsauswertung.js` (Korrektheits-/Duplikat-Prüfung) müssten beide Sprachvarianten der Städtenamen als gleichwertig behandeln.
+- Kennzahlen-/Auswertungsansicht (`kennzahlen.js`, `vergleichsansicht.js`): Beschriftungen wie „Durchlaufzeit", „Bearbeitungszeit" sind ebenfalls Text und müssten über dieselbe Übersetzungstabelle laufen.
+- Barrierefreiheit (FEATURE-005, Done): `aria-label`s und sichtbare Texte müssen in beiden Sprachen konsistent bleiben – idealerweise über dieselbe zentrale Text-/Schlüssel-Verwaltung wie der übrige UI-Text.
+- Keine erwartete Änderung an den bestehenden Sicherheitsregeln für Spielregeln/Zeitmessung selbst (Product.md §10, „Server bleibt die Wahrheit") – Mehrsprachigkeit ist reine UI-Textübersetzung, keine Regellogik; da die Sprache jetzt spielweit serverseitig auf dem Spiel-Dokument gespeichert wird (geklärt 2026-07-21), kommen minimale Regel-Ergänzungen für dieses neue, fachlich unkritische Text-/Konfigurationsfeld hinzu – insbesondere die Einschränkung, dass nur der Host es schreiben darf (siehe Pre-Mortem-Risiko 3).
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Host-Session-Mechanismus als Vorbild für clientseitige Sprachspeicherung, darf durch einen zusätzlichen `localStorage`-Schlüssel nicht gestört werden), FEATURE-002 (Fehlermeldungen in `kartenBewegung.js`/`stapelTor.js` sind testgedeckt – Umbau auf Fehlercodes braucht vollen Regressionslauf), FEATURE-003 (Kennzahlen-/Vergleichsansicht-Beschriftungen werden Text-Schlüssel, dürfen sich für Runden 1–3 inhaltlich nicht ändern, nur übersetzbar werden), FEATURE-004 (In Progress – Land-/Stadt-Referenzdaten und Fehlermeldungen in `rundeVier/elementBewegung.js` sind unmittelbar betroffen; FEATURE-004 hat diese Abhängigkeit bereits selbst als Pre-Mortem-Risiko 8 vermerkt), FEATURE-005 (Done – `aria-label`s und Barrierefreiheits-Texte müssen mit der neuen Übersetzungstabelle konsistent bleiben, der bestehende Rejoin-Mechanismus darf durch eine zusätzliche Sprachspeicherung im `localStorage` nicht gestört werden).
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Schlüsselbasiertes Übersetzungssystem mit spielweitem Sprachfeld auf dem Spiel-Dokument (kein Cloud Functions, bleibt im Spark-Tarif):* Eine zentrale Text-Schlüssel-Tabelle (DE/EN) im Frontend-Code; die für ein Spiel geltende Sprache wird – geklärt 2026-07-21 – als Feld auf dem Spiel-Dokument in Firestore gehalten (vom Host gesetzt, von allen anderen Rollen nur gelesen, per Sicherheitsregel gegen Änderung durch Nicht-Host-Personen abgesichert, siehe Pre-Mortem-Risiko 3), aus dem clientseitig die passenden Texte aufgelöst werden; Fehlermeldungen aus den Logikmodulen werden auf sprachneutrale Fehlercodes umgestellt und erst an der Anzeigestelle übersetzt. Vorteile: bleibt kostenlos (normale Firestore-Schreib-/Leseoperation plus Sicherheitsregel, keine Cloud Function nötig), folgt der bisherigen Architektur-Linie „keine Cloud Functions" (Product.md §10) weiter, reine UI-Textübersetzung berührt keine Spielregeln oder Zeitmessung. Nachteile: spürbarer Migrationsaufwand, weil aktuell keinerlei Trennung von Text und Struktur existiert – muss Datei für Datei nachgezogen werden; die Umstellung der Fehlermeldungen auf Fehlercodes berührt mehrere bereits abgenommene, testgedeckte Module; zusätzlich braucht es – anders als beim rein clientseitigen `localStorage`-Muster aus FEATURE-001/FEATURE-005 – eine kleine, neue Sicherheitsregel-Ergänzung für das Host-only-Sprachfeld.
+
+*Option B – Serverseitig ausgelieferte Übersetzungen (z. B. über eine Cloud Function, die Texte je nach angefragter Sprache liefert):* Vorteile: zentrale Pflege an einer einzigen Stelle, denkbar praktisch, falls später mehr als zwei Sprachen dazukommen. Nachteile: bricht mit der bislang durchgehend verfolgten Architektur-Linie „keine Cloud Functions" (Product.md §10), verlangt den Wechsel auf den kostenpflichtigen Blaze-Tarif für eine reine UI-Textfrage, bei der – anders als z. B. bei der Qualitätsauswertung in FEATURE-004 – keine serverautoritative Prüfung nötig ist. Deutlich höherer Aufwand ohne erkennbaren fachlichen Zusatznutzen für dieses Ticket.
+
+*Option C – Zwei vollständige, parallel gepflegte Sprachversionen (z. B. separate HTML-Dateien je Sprache) statt eines Schlüssel-Systems:* Vorteile: kein struktureller Umbau der bestehenden Dateien nötig, jede Sprachversion bleibt für sich genommen einfach lesbar. Nachteile: doppelte Pflege bei jeder künftigen inhaltlichen Änderung (jede Textanpassung, jedes neue Feature müsste zweimal gepflegt werden), hohes Risiko, dass beide Versionen mit der Zeit auseinanderlaufen – widerspricht dem in anderen Tickets verfolgten Grundsatz „eine Quelle der Wahrheit". Nicht empfohlen.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie hält die bisherige, konsequent kostenfreie Architektur-Linie durch (Product.md §10), betrifft überwiegend UI-Text statt Spielregeln (die einzige Sicherheitsregel-Ergänzung ist die kleine, unkritische Host-only-Beschränkung für das Sprachfeld, siehe Pre-Mortem-Risiko 3), und lässt sich schrittweise migrieren (z. B. zuerst Landingpage/Beitrittsformular, dann Spielbrett und Kennzahlenansicht, zuletzt die Fehlermeldungen aus den Logikmodulen). Von Option B wird abgeraten, weil sie einen Kostenwechsel für eine reine Textfrage ohne Sicherheitsbezug verlangen würde. Von Option C wird abgeraten, weil sie dauerhaften doppelten Pflegeaufwand und Drift-Risiko erzeugt.
+
+---
+
+#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-21)
+
+Drei neue Testdateien, gleiches Muster wie FEATURE-002/003/004 (Firestore-Emulator-Tests für Sicherheitsregeln getrennt von reiner Logik, plus ein Platzhalter-Testfile für nicht automatisierbare Live-Prüfungen wie in FEATURE-005):
+
+- `tests/game-i18n.security.rules.test.js` – 7 Testfälle zum neuen, spielweiten Host-only-Sprachfeld `sprache` auf `spiele/{spielId}` (Pre-Mortem-Risiko 3, AK 8/9): Host darf die Sprache setzen/ändern (auch während eine Runde bereits läuft); eine mitspielende Person darf das nicht; eine beobachtende Person darf das nicht; ein huckepack-Änderungsversuch (Sprachfeld gebündelt mit einer sonst erlaubten Aktualisierung) durch eine Nicht-Host-Person bleibt ebenfalls abgelehnt; nur die Werte „de"/„en" werden akzeptiert (auch beim Host); Regression TASK-002 (unauthentifizierter Schreibversuch bleibt abgelehnt); Regressionsschutz FEATURE-002 (bestehender Host-only-Rundenwechsel bleibt von der neuen Regel unberührt).
+- `tests/game-i18n.logic.test.js` – 12 Testfälle: Grundeinstellung Englisch ohne eigene Sprachwahl (AK 1); Host legt Sprache beim Erstellen fest (AK 9); Host ändert die Sprache mitten in einer laufenden Runde, ohne Rundendaten/Kartenposition zu verändern (AK 2, 5, 9); ungültiger Sprachwert (z. B. „fr") wird abgelehnt; zentrale Sprachliste (`SPRACHEN`/`STANDARD_SPRACHE`); Sprachwahl bleibt bei Wiederbeitritt/Rejoin erhalten (AK 10); sprachneutrale Fehlercodes statt reiner Text-Fehlermeldungen bei `joinGame` (AK 7, Pre-Mortem-Risiko 2, inkl. Hinweis an `flow-game-impl` zur kontrollierten Anpassung des bestehenden Regex-Tests in `tests/game-rooms.logic.test.js`); „München"/„Munich" gelten in der Runde-4-Qualitätsauswertung sprachunabhängig als dieselbe Stadt – einmal für die Korrektheitsprüfung, einmal für die Dublettenprüfung (AK 6, Pre-Mortem-Risiko 4); zentrale Übersetzungstabelle vollständig für eine repräsentative Schlüsselliste über alle Bereiche/Rollen hinweg inkl. zweier aria-label-Schlüssel (AK 3/4, Pre-Mortem-Risiko 1 und 6); generischer Vollständigkeits-Test über ALLE tatsächlich vorhandenen Schlüssel der Tabelle; `uebersetze()` liefert sprachabhängigen Text mit Grundeinstellung Englisch (AK 1).
+- `tests/game-i18n.manual-checks.test.js` – 3 dokumentierte, bewusst nicht automatisierbare Live-Prüfungen (gleiches Muster wie `tests/game-feature-005-manual-checks.test.js`, Platzhalter-Assertion statt vorgetäuschter Automatisierung, da kein DOM/jsdom im Projekt): sofortiger Sprachwechsel ohne Seiten-Neuladen und ohne Verlust von Tastaturfokus/UI-Zustand (AK 2, Pre-Mortem-Risiko 5); kein Sprachen-Mix nach einem Wechsel auf irgendeinem Bildschirm (AK 4); aria-labels bleiben nach einem Sprachwechsel inhaltlich konsistent mit dem sichtbaren Text (Pre-Mortem-Risiko 6, Bezug FEATURE-005). Diese drei Fälle sind bewusst bereits jetzt grün (Platzhalter, echte Prüfung durch Stephan im Live-Browser).
+
+**Status:** `npm run test:emulator:feature-006` und `npm run test:static:feature-006` neu ergänzt (rein additiv, bestehende Skripte unverändert). Der Platzhalter-Testfile (`game-i18n.manual-checks.test.js`) wurde real gegen Jest ausgeführt und läuft wie vorgesehen grün. Die Firestore-Emulator-Tests (`game-i18n.security.rules.test.js`, `game-i18n.logic.test.js`) konnten in dieser Arbeitsumgebung NICHT vollständig gegen den Firestore-Emulator ausgeführt werden – `firebase emulators:exec` scheiterte am Herunterladen des Firestore-Emulator-Jars („Connection blocked by network allowlist"), dieselbe Einschränkung wie bereits bei FEATURE-004 protokolliert. Ersatzweise wurde ehrlich geprüft, was ohne Emulator möglich ist: (1) beide Dateien laufen syntaxfehlerfrei durch `node --check` und lösen alle Imports fehlerfrei auf; (2) ein direkter Jest-Lauf von `game-i18n.logic.test.js` ohne Emulator zeigt, dass ausschliesslich die Emulator-Verbindung selbst fehlschlägt (ECONNREFUSED), nicht ein Test-Bug; (3) die beiden München/Munich-Testfälle (Pre-Mortem-Risiko 4) wurden zusätzlich direkt per Node (ohne Jest/Emulator, da `berechneQualitaet` keine Firestore-Abhängigkeit hat) gegen den echten Code ausgeführt und bestätigt rot: „Munich" wird aktuell als „falschesLand" statt „korrekt" gewertet, und „München"+„Munich" werden aktuell NICHT als Dublette erkannt; (4) ein eigenständiger `require()`-Check bestätigt, dass `src/game/sprache.js` und `src/i18n/uebersetzungen.js` tatsächlich noch nicht existieren; (5) `firestore.rules` wurde gelesen und enthält aktuell keinerlei Einschränkung für ein `sprache`-Feld – die generische Update-Regel erlaubt aktuell jeder teilnehmenden Person (auch Nicht-Host), beliebige neue Felder wie `sprache` zu setzen, wodurch die `assertFails()`-Testfälle im Sicherheitsregel-File nach echtem Emulator-Lauf zuverlässig rot sein werden. Insgesamt: begründet erwartungsgemäß Rot, aber NICHT vollständig live am Emulator bestätigt – bereit für `flow-game-impl`, mit der Bitte, den vollständigen Emulator-Lauf als ersten Schritt dort nachzuholen, bevor implementiert wird.
+
+---
+
+**Offene Fragen an Stephan — geklärt am 2026-07-21 (ursprünglicher Vermerk: müssen vor Freigabe der Spec geklärt werden, keine Annahmen getroffen):**
+
+1. **Geltungsbereich der Sprachwahl:** Wählt jede Person auf ihrem eigenen Gerät individuell ihre Sprache (z. B. Host sieht Deutsch, eine mitspielende Person sieht Englisch, im selben Spiel gleichzeitig), oder gilt eine einzige, einheitliche Sprache für das ganze Spiel (z. B. vom Host vorgegeben)? Das entscheidet maßgeblich, ob die Sprachwahl rein clientseitig (`localStorage`) oder zusätzlich serverseitig auf dem Spiel-Dokument gespeichert werden muss. — **Geklärt (2026-07-21): Die Sprache gilt einheitlich pro Spiel, nicht individuell pro Person/Gerät.**
+2. **Persistenz über Beitritt/Rejoin hinweg:** Bleibt die einmal gewählte Sprache einer Person über einen erneuten Beitritt oder ein automatisches Wiederbetreten (FEATURE-005) auf demselben Gerät hinweg gespeichert, oder wird bei jedem neuen Besuch wieder mit der Grundeinstellung Englisch gestartet? — **Geklärt (2026-07-21): Ja, die Sprachwahl bleibt bei Wiederbetreten/Rejoin gespeichert.**
+3. **Unabhängigkeit von Host und Spielenden:** Können Host und Spielende unabhängig voneinander ihre eigene Anzeigesprache wählen (siehe Frage 1), oder gibt der Host die Sprache verbindlich für alle Teilnehmenden seines Spiels vor? — **Geklärt (2026-07-21): Der Host gibt die Sprache vor; Host und Spielende wählen nicht unabhängig voneinander.**
+4. **Zweisprachige Land-/Stadt-Handhabung in Runde 4 (aus FEATURE-004 Pre-Mortem-Risiko 8):** Sollen beide Schreibweisen (z. B. „München" und „Munich") in jedem Fall als dieselbe, gleichwertige Stadt gelten – unabhängig davon, in welcher Sprache die eingebende Person das Spiel gerade sieht? Oder soll die gültige Schreibweise von der zum Zeitpunkt der Eingabe eingestellten Sprache der jeweiligen Person abhängen? Die Analyse geht in Akzeptanzkriterium 6 und im Pre-Mortem von der ersten, wahrscheinlicheren Variante aus, trifft diese Annahme aber nicht endgültig. — **Geklärt (2026-07-21): Ja, „München"/„Munich" gelten sprachunabhängig als dieselbe Stadt – die in der Analyse angenommene erste, wahrscheinlichere Variante wird bestätigt.**
+5. **(aus Frage 3 hervorgegangen) Darf der Host die spielweite Sprache auch noch ändern, während das Spiel bereits läuft?** Stephans Antwort zu Frage 3 klärt, dass der Host die Sprache vorgibt – nicht aber, ob das auf einen einmaligen Zeitpunkt (z. B. beim Erstellen des Spiels) beschränkt ist oder ob der Host sie auch mitten in einer laufenden Runde noch ändern darf. — **Geklärt (2026-07-21): Ja, der Host kann die Sprache auch während des laufenden Spiels ändern; alle Rollen wechseln dann sofort gemeinsam auf die neue Sprache, ohne dass Spielfortschritt oder Zeitmessung beeinflusst werden (siehe Akzeptanzkriterium 9).**
+
+**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Die vier offenen Fragen oben sind Reichweiten-/Policy-Entscheidungen (wer sieht welche Sprache, wird sie gespeichert, wie werden Städtenamen zweisprachig behandelt) – keine „fühlt sich Variante X oder Y in der Bedienung besser an"-Fragen wie beim Runde-4-Warteschlangen-Prototyp in FEATURE-004. Ein klickbarer Prototyp ist dafür nicht der richtige nächste Schritt; sinnvoller ist, die vier Fragen direkt mit Stephan zu klären. Eine einzelne, für sich genommen leichtgewichtige Interaktionsfrage bleibt zusätzlich im Hinterkopf zu behalten, falls sie nach Klärung der Policy-Fragen noch unklar ist: die konkrete Platzierung/Gestaltung eines Sprachumschalters im Layout (z. B. Dropdown oben rechts vs. Text-Umschalter „DE | EN" vs. Flaggen-Icons). Diese Frage ist aber, anders als die Runde-4-Warteschlangen-Darstellung, ein gut etabliertes, alltägliches UI-Muster mit geringem Fehlrisiko – sie überschreitet die im Skill genannte Schwelle nicht eindeutig. Empfehlung: zunächst ohne Prototyp mit einer einfachen, üblichen Umsetzung starten (z. B. Text-Umschalter); nur falls sich beim Bauen oder bei einer ersten Rückmeldung zeigt, dass die Platzierung/Darstellung selbst strittig ist, gezielt einen `prototype-builder`-Durchlauf nachschieben.
+
+---
+
+#### Implementierung (flow-game-impl, 2026-07-21)
+
+**Neue Module (Option A, wie freigegeben):**
+- `src/i18n/uebersetzungen.js` + Browser-Kopie `public/js/i18n/uebersetzungen.js`: zentrale `UEBERSETZUNGEN`-Tabelle (115 Schlüssel, DE/EN vollständig befüllt, automatisiert per Node-Skript gegen Lücken geprüft) über alle laut AK 3 betroffenen Bereiche (Startseite, Beitritts-/Erstellungsformular, Lobby, Spielbrett Runde 1-4, Kennzahlen-/Auswertungsansicht, Fehlermeldungen, aria-labels), plus `uebersetze(schluessel, sprache = 'en', ersetzungen)` (mit einfacher `{platzhalter}`-Ersetzung) und `FEHLERCODE_ZU_SCHLUESSEL`/`uebersetzeFehlercode(code, sprache, fallbackText)` für AK 7.
+- `src/game/sprache.js` + Browser-Kopie `public/js/game/sprache.js`: `SPRACHEN = ['de','en']`, `STANDARD_SPRACHE = 'en'`, `setzeSpielSprache({code, sprache}, db)` – validiert den Wert und schreibt ausschliesslich das Feld `sprache` auf `spiele/{code}`, prüft bewusst NICHT die Host-Berechtigung selbst (Autorisierung sitzt in `firestore.rules`, gleiches Architekturmuster wie `rundenwechsel.js`).
+
+**Geänderte Dateien:**
+- `src/game/createGame.js` + Browser-Kopie: optionaler `sprache`-Parameter, Default `STANDARD_SPRACHE` bei ungültigem/fehlendem Wert, schreibt `sprache` mit ins neue Spiel-Dokument (AK 1, AK 9).
+- `firestore.rules`: neue Funktionen `spracheFeldBetroffen()`/`spracheAenderungErlaubt(spielId)`, als zusätzliche AND-Bedingung in die bestehende `allow update`-Regel für `spiele/{spielId}` eingehängt – nur der Host darf `sprache` ändern, ausschliesslich dieses eine Feld (kein Huckepack), nur die Werte `de`/`en`, unabhängig vom Rundenstatus (anders als die FEATURE-003-Freigabe-Felder). Die bestehende generische Update-Regel sowie der Rundenwechsel-Pfad bleiben strukturell unverändert.
+- Sprachneutrale `err.code`-Felder (AK 7, Pre-Mortem-Risiko 2) ergänzt, `err.message` bleibt jeweils unverändert (Deutsch) für Logs/Regressionsschutz: `src/game/joinGame.js` (`UNGUELTIGER_CODE`, `SPIEL_VOLL`, `ANZEIGENAME_ERFORDERLICH`, `FEHLENDE_AUTH_SITZUNG`, `UNGUELTIGE_ROLLE`, `SPIEL_INAKTIV`), `src/game/kartenBewegung.js` (`POSITION_FEHLT`, `NUR_EIN_SCHRITT`, `POSITION_MAX`), `src/game/stapelTor.js` (`UNBEKANNTE_RUNDE`, `UNGUELTIGE_KARTENLISTE`), `src/game/hostSession.js` (`UNGUELTIGER_CODE`, `FEHLENDE_AUTH_SITZUNG`, `HOST_KENNUNG_UNGUELTIG`), `src/game/teilnehmerSession.js` (`UNGUELTIGER_CODE`, `FEHLENDE_AUTH_SITZUNG`, `TAB_ID_ERFORDERLICH`), `src/game/rundenwechsel.js` (`VON_RUNDE_ERFORDERLICH`), `src/game/rundeVier/elementBewegung.js` (`POSITION_FEHLT`, `NUR_EIN_SCHRITT`, `POSITION_MAX`, `WECHSELZWANG`) – jeweils samt Browser-Kopien unter `public/js/game/`.
+- `src/game/rundeVier/laenderStaedte.js`: neue `normalisiereStadt(stadt)` + `STADT_ALIAS`-Tabelle (u. a. „Munich"→„münchen", „Rome"→„rom", „Cologne"→„köln"); `istStadtInLand()` vergleicht jetzt normalisiert statt exakt (AK 6). `src/game/rundeVier/qualitaetsauswertung.js`: Dublettenprüfung nutzt jetzt `normalisiereStadt()` statt des rohen Eingabetexts als Vergleichsschlüssel. Beide Änderungen zusätzlich 1:1 in die Browser-Kopie `public/js/game/rundeVier.js` übertragen (dort bislang eigenständig dupliziert, kein gemeinsames Modul).
+- `public/index.html`/`public/spiel.html`: Text-Schlüssel statt hartkodiertem Deutsch für die statischen Kernbereiche (Titel, Formulare, Lobby, Spielbrett Runde 1-4, Kennzahlen/Auswertung, Fehlermeldungen, mehrere aria-labels) über `window.FlowGame.uebersetze()`/`t()`; Sprachumschalter (`<select id="sprach-auswahl">`) im HUD beider Seiten. Auf `index.html` (noch kein Spiel-Dokument) rein lokale, in `localStorage` gespeicherte Personen-Vorliebe. Auf `spiel.html` vor Beitritt/Erstellung ebenfalls lokal, sobald ein Spiel besteht bindend über `spiele/{code}.sprache`: nur der Host kann den Umschalter tatsächlich bedienen (`aktualisiereSprachumschalterBerechtigung()`, zusätzlich zur serverseitigen Durchsetzung in `firestore.rules`), ein Wechsel wird über `setzeSpielSprache()` geschrieben und über den bestehenden `spiele/{code}`-Snapshot-Listener sofort an alle Rollen verteilt (`wendeSpracheAufStatischeTexteAn()`/`wendeSpracheAufSichtbareAnsichtenAn()` – reines Text-Update, kein Neuaufbau der Oberfläche, kein Reload, Pre-Mortem-Risiko 5).
+- `tests/game-rooms.logic.test.js`: wie mit Stephan abgestimmt der eine Regex-Test ("Ablehnung bei falschem/unbekanntem Code") von `.rejects.toThrow(/code/i)` auf eine Prüfung von `fehler.code === 'UNGUELTIGER_CODE'` umgestellt. Keine andere bestehende Testdatei wurde angefasst.
+
+**Bekannte, bewusste Lücke (kein Kollateralschaden, sondern abgewogene Entscheidung) — GESCHLOSSEN am 2026-07-21:** Der Wartezustandstext "Wird bearbeitet …" an den drei Absende-Stellen (`formErstellen`, `formBeitreten`, `pruefeStationsVerfuegbarkeit()`, aus BUGFIX-002) blieb zunächst bewusst hartkodiert Deutsch statt über `t()` zu laufen, weil `tests/game-form-loading-state.static.test.js` (BUGFIX-002, bereits „Done") diesen exakten String per Quelltext-Mustersuche prüfte. Von Stephan am 2026-07-21 ausdrücklich freigegeben (exakt derselbe Präzedenzfall wie der Regex→Fehlercode-Umbau in `game-rooms.logic.test.js`): neuer Übersetzungsschlüssel `lobby.wirdBearbeitet` (DE „Wird bearbeitet …", EN „Processing …", war bereits in beiden Kopien der Übersetzungstabelle vorhanden) wird jetzt an allen drei Stellen über `t('lobby.wirdBearbeitet')` aufgerufen; die zugehörigen Kommentare zur bewussten Ausnahme wurden aus `public/spiel.html` entfernt. `tests/game-form-loading-state.static.test.js` wurde dafür gezielt umgestellt: die Konstante prüft jetzt den Übersetzungsschlüssel-Aufruf im Quelltext (`NEUER_WARTETEXT_SCHLUESSEL_AUFRUF_MUSTER`) statt des literalen deutschen Texts, und der Kollisions-Test gegen den BUGFIX-001-Verbindungshinweis vergleicht jetzt den echten DE-Wert aus `UEBERSETZUNGEN['lobby.wirdBearbeitet']`. Alle 16 Tests der Datei sowie die übrige nicht-Emulator-Suite bleiben grün (siehe Testergebnis unten).
+
+**Zwei echte Bugs aus Stephans Live-Test gefunden und behoben (2026-07-21):** Nach dem grünen Emulator-Lauf hat Stephan den in `tests/game-i18n.manual-checks.test.js` dokumentierten manuellen Live-Test tatsächlich im Browser durchgeführt (Sprache über den Umschalter gewechselt, während er bereits in der Lobby war) und dabei zwei Regressionen gefunden, die kein bisheriger Test abdeckte, weil sie erst bei einem SPÄTEREN Sprachwechsel sichtbar wurden, nicht beim initialen Laden:
+1. Der Kicker/Logo-Text (`<div class="logo">Spiel-Räume</div>`) in `public/spiel.html` war komplett hartcodiert, ganz ohne `t()`-Aufruf und ohne Tabellen-Schlüssel – blieb dadurch in jeder Sprache immer „Spiel-Räume". Fix: neues `id="spiel-kicker"`, neuer Schlüssel `lobby.kicker` (DE „Spiel-Räume", EN „Game rooms") in beiden Kopien der Übersetzungstabelle, `setText('spiel-kicker', t('lobby.kicker'))` in `wendeSpracheAufStatischeTexteAn()`.
+2. `#untertitel` und `#lobby-rolle-hinweis` wurden zwar beim initialen Laden korrekt übersetzt, aber nie erneut bei einem späteren Sprachwechsel, weil beide ausserhalb von `wendeSpracheAufStatischeTexteAn()`/`wendeSpracheAufSichtbareAnsichtenAn()` per bereits fertig übersetztem String einmalig gesetzt wurden. Fix: `#untertitel` merkt sich jetzt über `untertitelModus` ('tagline' vs. 'fehler', neue Funktion `aktualisiereUntertitel()`), welche der beiden wiederverwendeten Bedeutungen gerade aktiv ist, und wird bei jedem Aufruf von `wendeSpracheAufStatischeTexteAn()` neu berechnet. `#lobby-rolle-hinweis` merkt sich über die neue Variable `lobbyRolleHinweisArt` ('hostSchlicht' | 'hostMitTeilen' | 'teilnehmendeRolle', zusammen mit der bereits vorhandenen `eigeneRolle`), welche der drei Text-Varianten zuletzt für diese Person galt (`zeigeLobby()` bekommt jetzt diese Art statt eines fertigen Strings als drittes Argument); neue Funktion `berechneLobbyRolleHinweisText()` berechnet den Text daraus über `t(...)` neu und wird jetzt zusätzlich aus `wendeSpracheAufSichtbareAnsichtenAn()` heraus aufgerufen (datengetriebene Ansicht, passend zum Zweck dieser Funktion). Neuer Regressionstest in `tests/game-i18n.manual-checks.test.js` (5 zusätzliche Testfälle, Quelltext-Mustersuche analog zu `game-form-loading-state.static.test.js`) sichert jetzt ab, dass alle drei Elemente tatsächlich an die jeweilige Neu-Übersetzungsfunktion angebunden bleiben, damit ein künftig vergessenes neues Element wieder automatisiert auffällt statt nur manuell im Live-Browser entdeckt zu werden.
+
+**Testergebnis:**
+- München/Munich-Fix (AK 6) direkt per Node ohne Emulator gegen den echten Code verifiziert: „Munich" wird jetzt als korrekt (nicht mehr `falschesLand`) gewertet, „München"+„Munich" werden als Dublette erkannt (`proKarte[0]` korrekt, `proKarte[1]` dublette) – exakt die beiden BDD-Szenarien aus `game-i18n.logic.test.js`.
+- `setzeSpielSprache()` direkt per Node verifiziert: ungültiger Wert ("fr") wirft mit `code: 'UNGUELTIGE_SPRACHE'`, ohne einen Schreibversuch auszulösen.
+- `joinGame()` mit unbekanntem Code direkt gegen eine minimale Firestore-Attrappe verifiziert: wirft mit `code: 'UNGUELTIGER_CODE'` – exakt das, was der angepasste Test in `game-rooms.logic.test.js` jetzt prüft.
+- `UEBERSETZUNGEN`-Vollständigkeit automatisiert geprüft (Node-Skript): alle 115 Schlüssel haben nicht-leere DE- und EN-Werte.
+- Alle NICHT vom Firestore-Emulator abhängigen Bestandssuiten real gegen Jest ausgeführt und GRÜN (102/102): `game-a11y-static.test.js`, `game-connection-retry.integration.test.js`, `game-connection-retry.logic.test.js`, `game-connection-retry.static.test.js`, `game-connection-status.logic.test.js`, `game-evaluation.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-form-loading-state.static.test.js`, `game-i18n.manual-checks.test.js`, `game-round4.logic.test.js` – insbesondere `game-form-loading-state.static.test.js` (BUGFIX-002) und `game-connection-retry.*` (BUGFIX-001), die am ehesten von den `err.code`-Ergänzungen und Text-Umbauten hätten betroffen sein können, bleiben unverändert grün.
+- **Nach den beiden oben beschriebenen Bugfixes erneut ausgeführt (2026-07-21):** dieselben zehn Dateien, jetzt **107/107 grün** (5 neue Testfälle in `game-i18n.manual-checks.test.js` für die beiden Bugfixes, siehe oben) – kein bestehender Test musste dafür abgeschwächt werden.
+- `tests/deploy-regression.test.js`/`tests/feature-002-deploy-regression.test.js` schlagen unverändert an derselben, bereits bekannten Stelle fehl (`getaddrinfo EAI_AGAIN`, kein Live-Netzwerkzugriff in dieser Sandbox) – kein durch dieses Ticket verursachter Fehler.
+- **In der Sandbox nicht selbst ausführbar, dafür von Stephan real auf seinem eigenen Rechner nachgeholt (2026-07-21):** Emulator-Download war in dieser Sandbox weiterhin blockiert ("Connection blocked by network allowlist"). Stephan hat daraufhin lokal ausgeführt: `npm run test:emulator:feature-006` → **2 Suiten, 19/19 Tests grün** (`game-i18n.security.rules.test.js`, `game-i18n.logic.test.js`, inkl. der Host-only-`sprache`-Regel); `npm run test:emulator` (FEATURE-001/002/003-Regression) → **7 Suiten, 103/103 grün**; `npm run test:emulator:feature-004` → **2 Suiten, 60/60 grün**; `npm run test:emulator:feature-005` → **1 Suite, 8/8 grün**. Damit ist der komplette bestehende Emulator-Testbestand plus die neuen FEATURE-006-Tests real bestätigt, nicht nur behauptet. Die in den Logs sichtbaren `PERMISSION_DENIED`-Warnungen sind erwartete Ablehnungsfälle (`assertFails`), kein Fehlerzustand.
+
+**Was jetzt noch fehlt (an Stephan):**
+1. ~~Vollständiger Emulator-Regressionslauf~~ — **erledigt am 2026-07-21, alles grün (siehe oben).**
+2. ~~Manuelle Live-Browser-Prüfung der drei in `game-i18n.manual-checks.test.js` dokumentierten, nicht automatisierbaren Fälle~~ — **erledigt am 2026-07-21:** Stephan hat den Live-Test durchgeführt und dabei die beiden oben beschriebenen Bugs (Kicker/Logo, `#untertitel`/`#lobby-rolle-hinweis` nach spätem Sprachwechsel) gefunden; beide behoben und per neuem Regressionstest abgesichert (siehe oben). Anschliessend hat Claude selbst (Claude in Chrome, gegen den lokal per `firebase emulators:start --only hosting` servierten Stand, echte Host-Session `5GAU2NZR`) den Fix nachgeprüft: Sprachwechsel DE↔EN mehrfach in der Lobby ausgelöst — Kicker („Spiel-Räume"/„Game rooms"), Info-Zeile und Host-Hinweis wechseln jetzt korrekt und vollständig mit, kein Reload, kein Sprachmix in der kompletten sichtbaren Seite. Zusätzlich vollständigen Accessibility-Baum in beiden Sprachen ausgelesen (Labels, Buttons, Status-Meldungen inkl. Runden-/Kennzahlen-Beschriftungen) — durchgehend konsistent, keine hängengebliebenen Reste. Nicht Teil dieser Live-Session geprüft: tatsächliches Durchspielen von Runde 2-4 und die Auswertungs-/Vergleichsansicht nach Rundenende (dafür bräuchte es mehrere Mitspielende) — bleibt ein optionaler späterer Check, kein bekannter Verdachtsfall.
+3. ~~Bewusste Entscheidung zur oben genannten Lücke ("Wird bearbeitet …" bleibt Deutsch)~~ — **erledigt am 2026-07-21:** Text jetzt über `t('lobby.wirdBearbeitet')` übersetzt, `game-form-loading-state.static.test.js` entsprechend angepasst (siehe oben).
+
+---
+
+### BUGFIX-002 Keine Rückmeldung/Ladeanzeige beim Beitreten
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Mittel |
+| **Status** | Done |
+| **Erstellt** | 2026-07-21 |
+| **Analyse am** | 2026-07-21 |
+| **Spec freigegeben am** | 2026-07-21 |
+| **Done am** | 2026-07-21 |
+| **In Progress seit** | 2026-07-21 |
+
+**Beschreibung:** Beim manuellen Testlauf (Host + 1 Teilnehmende via privatem Safari-Fenster) trat beim Klick auf „Beitreten" eine spürbare, aber normale Wartezeit auf — ausdrücklich bestätigt: kein Fehlerfall, kein Retry-Szenario, keine Überschneidung mit dem in BUGFIX-001 behobenen „client is offline"-Fehler. Während dieser Wartezeit gibt es keinerlei sichtbare Rückmeldung: Das Formular wirkt eingefroren, Nutzende können nicht erkennen, ob ihr Klick überhaupt angekommen ist und das System reagiert.
+
+**User Story:** Als beitretende Person möchte ich nach dem Klick auf „Beitreten" eine sichtbare Rückmeldung sehen (z. B. Ladeanzeige, deaktivierter Button mit Hinweistext), sodass ich weiß, dass mein Klick angekommen ist und das System gerade arbeitet, auch wenn der Vorgang ein paar Sekunden dauert.
+
+**Kontext/Verweise:** Beobachtung stammt direkt aus dem echten Browser-Test von BUGFIX-001 (siehe dort, Abschnitt „Zusätzliche Beobachtung beim manuellen Test", 2026-07-21) — dort bereits ausdrücklich als eigenständiger, vom Verbindungsfehler-Fix unabhängiger Verbesserungspunkt vermerkt, hier als eigenes Ticket nachgezogen. Der für BUGFIX-001 neu gebaute Zwischenzustand (`zeigeVerbindungsRetryHinweis()`/das bestehende `verbindungsHinweis`-Element aus FEATURE-005, `public/spiel.html`) könnte als Vorbild oder sogar als Basis für eine allgemeine, immer sichtbare Ladeanzeige beim Beitreten dienen, nicht nur im Retry-Fall — zu bewerten in der Analysephase.
+
+---
+
+#### Analyse-Spec (2026-07-21)
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code, nicht angenommen):**
+- `public/spiel.html`, `formBeitreten`-Submit-Handler (Zeile 1755-1792): Beim Klick auf „Beitreten" wird `ev.preventDefault()` aufgerufen, danach direkt `await window.FlowGame.joinGame(...)`. Weder der Button noch das Eingabefeld werden währenddessen deaktiviert, kein Button-Text ändert sich, keine sichtbare Zustandsänderung irgendeiner Art tritt ein, solange der Vorgang normal (ohne Verbindungsfehler) läuft.
+- Das einzige heute existierende sichtbare Zwischen-Element, `verbindungsHinweis` (`#verbindungs-hinweis`, Zeile 145, `role="status"`, aus FEATURE-005), wird beim Beitreten **ausschließlich** dann sichtbar, wenn tatsächlich ein transienter Verbindungsfehler auftritt und `mitVerbindungsRetry()` intern den `onRetry`-Callback (`zeigeVerbindungsRetryHinweis()`) auslöst (Zeile 1769, BUGFIX-001). Im vom Ticket beschriebenen Normalfall — spürbare, aber fehlerfreie Wartezeit ohne jeden Retry — feuert dieser Callback nicht, das Element bleibt die ganze Zeit `hidden`. Das bestätigt exakt die Ticket-Beobachtung: Es gibt aktuell keinerlei Rückmeldung für den störungsfreien, aber langsamen Normalfall.
+- Derselbe Rückmeldungs-Fehlbetrag besteht identisch im `formErstellen`-Submit-Handler (Zeile 1679-1699, Host erstellt Spiel) — im Ticket zwar nicht ausdrücklich genannt (User Story spricht nur von „beitretender Person"), aber strukturell exakt dasselbe Muster, dieselbe Code-Zeile für Zeile identische Lücke.
+- Es existiert bereits ein anderes, funktionierendes Vorbild für eine allgemeine Wartezustands-Rückmeldung im Projekt: das Stadt-Eingabeformular in Runde 4 (Zeile 1193-1211) deaktiviert beim Absenden sofort `absendenBtn.disabled = true` und `input.disabled = true`, und reaktiviert beide nur im Fehlerfall wieder. Passendes CSS ist bereits vorhanden: `.btn:disabled{opacity:.5;cursor:default;transform:none}` (Zeile 40) sorgt schon heute projektweit für eine sichtbare „ausgegraut"-Optik bei deaktivierten Buttons. Dieses Muster ist im Projekt bereits etabliert, unabhängig vom BUGFIX-001-Verbindungshinweis.
+- `pruefeStationsVerfuegbarkeit()` (Zeile 1710-1745) liest bei jedem vollständig eingegebenen Beitritts-Code (Events `blur` und `input`) ebenfalls per Netzwerk-Aufruf, nutzt intern ebenfalls `mitVerbindungsRetry()`, ist aber ein Hintergrund-Check vor dem eigentlichen Beitreten, kein vom Nutzenden bewusst ausgelöster Klick.
+
+**Durchgespielte Beispiele:**
+- Eine Person füllt Code, Name, Rolle aus und klickt „Beitreten"; der Vorgang dauert 2-3 Sekunden ohne jeden Fehler → heute: keinerlei sichtbare Veränderung, das Formular wirkt eingefroren; gewünscht: sofort erkennbare Rückmeldung, dass der Klick angekommen ist.
+- Dieselbe Situation, aber diesmal tritt zusätzlich ein kurzer, echter Verbindungsfehler auf und BUGFIX-001s Retry-Mechanismus greift → heute erscheint der `verbindungsHinweis`-Text „Verbindung wird aufgebaut – bitte einen Moment warten …"; die neue allgemeine Rückmeldung darf diesem bestehenden, spezifischeren Hinweis nicht widersprechen oder ihn verdecken, sondern sollte sich damit sinnvoll ergänzen.
+- Eine Person klickt aus Ungeduld ein zweites Mal auf „Beitreten", während der erste Versuch noch läuft → heute technisch möglich (Button bleibt aktiv), löst potenziell einen zweiten parallelen Aufruf aus. Serverseitig zwar durch die Idempotenz-Absicherung aus dem Bugfix vom 2026-07-20 abgefangen (keine doppelte Stationsvergabe), aber eine sichtbare Deaktivierung des Buttons wäre die naheliegendere, unmittelbare Absicherung und deckt sich mit dem Ticket-Wunsch nach einer sichtbaren Rückmeldung.
+- Der Vorgang endet mit einem regulären fachlichen Fehler (z. B. Code ungültig, Rolle bereits belegt) → die Wartezustands-Anzeige muss zuverlässig wieder verschwinden und darf den bestehenden `zeigeFehler()`-Mechanismus nicht verdecken oder mit ihm kollidieren.
+- Der Host erstellt ein Spiel (statt jemand beizutreten) und erlebt exakt dieselbe fehlende Rückmeldung → im Ticket nicht ausdrücklich genannt, aber dieselbe Ursache, dieselbe Lösung nötig (siehe offene Frage 1 unten).
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): ob der Scope explizit auch das Erstellen-Formular umfasst; ob die allgemeine Ladeanzeige auch für den Hintergrund-Check `pruefeStationsVerfuegbarkeit()` gelten soll oder nur für den eigentlichen Beitritts-Klick; die konkrete Gestaltung des Wartezustands (Button-Text, Icon, Kombination).
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Sobald jemand auf „Beitreten" klickt, ist sofort eine sichtbare Veränderung am Formular erkennbar (z. B. am Button), die zeigt: der Klick ist angekommen, das System arbeitet gerade.
+2. Solange der Beitrittsvorgang noch läuft, kann dieselbe Person keinen zweiten, parallelen Beitrittsversuch durch einen weiteren Klick auslösen.
+3. Sobald der Vorgang abgeschlossen ist — egal ob erfolgreich oder mit einer Fehlermeldung endend — verschwindet die Wartezustands-Anzeige wieder vollständig, und das Formular ist wieder normal bedienbar.
+4. Dauert der Vorgang ungewöhnlich lange, weil tatsächlich ein Verbindungsproblem vorliegt und die Anwendung automatisch mehrere Versuche unternimmt (bereits bestehendes Verhalten aus BUGFIX-001), sieht die Person zusätzlich zur allgemeinen Wartezustands-Anzeige weiterhin den bereits bestehenden, spezifischeren Hinweis dazu — beide Rückmeldungen widersprechen sich nicht und sind gemeinsam verständlich.
+5. Die neue Rückmeldung erscheint bei jedem Beitrittsversuch, unabhängig davon, ob am Ende ein Fehler auftritt oder nicht — während der gesamten Wartezeit ist durchgehend sichtbar, dass etwas passiert.
+6. Auch für Menschen, die auf einen Screenreader angewiesen sind, ist wahrnehmbar, dass der Vorgang begonnen hat und wieder beendet ist — nicht nur rein optisch.
+
+*(Kriterium zum „Spiel erstellen"-Formular des Hosts sowie zum Hintergrund-Verfügbarkeitscheck beim Code-Eintippen wird erst nach Klärung der offenen Fragen unten ergänzt — hier bewusst nicht vorweggenommen.)*
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Begriffliche Kollision mit dem bestehenden Verbindungshinweis:** Würde die neue allgemeine Ladeanzeige denselben Text/dasselbe Element wie `zeigeVerbindungsRetryHinweis()` wörtlich wiederverwenden („Verbindung wird aufgebaut …"), würde bei jedem ganz normalen, störungsfreien Beitritt fälschlich der Eindruck eines Verbindungsproblems entstehen, obwohl keines vorliegt — irreführend für Nutzende und sachlich falsch. Gegenmaßnahme: eine allgemeine, neutrale Wartezustands-Formulierung (z. B. „Wird bearbeitet …“) getrennt von der spezifischen Verbindungsfehler-Formulierung halten, nicht denselben Text für zwei unterschiedliche Bedeutungen verwenden.
+2. **Doppelte Klicks trotz sichtbarer Rückmeldung:** Selbst mit sichtbarer Anzeige könnte ein ungeduldiger Klick den Button weiterhin auslösen, wenn nur der Text sich ändert, der Button selbst aber nicht deaktiviert wird. Gegenmaßnahme: Button während der Wartezeit aktiv `disabled`, nicht nur optisch/textlich verändert — deckt sich mit AK 2 und ist zugleich Verhaltens- wie Sicherheitsnetz (ergänzt die bereits bestehende serverseitige Idempotenz aus dem Bugfix vom 2026-07-20).
+3. **Zustand bleibt bei einem unerwarteten Fehlerpfad „hängen":** Wird die Wartezustands-Anzeige nur im Erfolgsfall zurückgesetzt, nicht aber in jedem denkbaren Fehlerfall (z. B. ein unerwarteter, nicht abgefangener Fehler), bleibt der Button dauerhaft deaktiviert und blockiert jeden weiteren Versuch — ein neuer, selbst erzeugter „eingefroren wirkt"-Zustand, den das Ticket ja gerade beheben soll. Gegenmaßnahme: Rücksetzen des Wartezustands zwingend in einem `finally`-artigen Pfad, der sowohl bei Erfolg als auch bei jedem Fehler (bereits abgefangen oder nicht) garantiert ausgeführt wird.
+4. **Regressionsrisiko gegen BUGFIX-001-Tests:** Der bestehende `verbindungsHinweis`-Mechanismus ist bereits durch 24 Testfälle abgesichert, darunter `tests/game-connection-retry.static.test.js`, das auf konkrete Textmuster in beiden Dateikopien prüft. Wird das bestehende Element/die bestehenden Funktionen verändert statt sauber ergänzt, könnten diese Tests brechen. Gegenmaßnahme: `verbindungsHinweis`/`zeigeVerbindungsRetryHinweis()`/`versteckeVerbindungsRetryHinweis()` unverändert lassen und die neue allgemeine Anzeige als eigenständigen, zusätzlichen Baustein umsetzen; vollen Regressionslauf gegen die BUGFIX-001-Testdateien fahren.
+5. **Ungewollte Ausweitung auf Hintergrund-Checks:** Würde die allgemeine Ladeanzeige unreflektiert an jeden Netzwerk-Aufruf gekoppelt (auch an `pruefeStationsVerfuegbarkeit()`, das bei jedem vollständig eingetippten Code automatisch im Hintergrund läuft), würde sie bei jedem Tastendruck aufblitzen — visuell unruhig und dem eigentlichen Zweck (Rückmeldung nach einem bewussten Klick) nicht dienlich. Gegenmaßnahme: die Anzeige ausschließlich an den tatsächlichen Formular-Submit koppeln, nicht an jeden Lesevorgang (siehe auch offene Frage 2 unten).
+6. **Bewegungsintensität/Barrierefreiheit:** Product.md §9 verlangt u. a. einen „ruhigen Modus mit weniger Bewegung"; eine auffällige Spinner-Animation könnte dem entgegenlaufen, falls später ein bewegungsreduzierter Modus umgesetzt wird. Gegenmaßnahme: zurückhaltende Umsetzung (z. B. reiner Text-/Zustandswechsel am Button statt aufwändiger Animation), damit kein zusätzliches Nacharbeiten nötig wird, sobald Bewegungsreduktion konkret ansteht.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/spiel.html`: `formBeitreten`-Submit-Handler (Zeile ~1755-1792) sowie – abhängig von offener Frage 1 – der `formErstellen`-Submit-Handler (Zeile ~1679-1699); der Beitreten-/Erstellen-Button selbst (bereits vorhandene `.btn:disabled`-Optik, Zeile 40, kann direkt wiederverwendet werden).
+- Kein Eingriff in das bestehende `verbindungsHinweis`-Element bzw. die BUGFIX-001-Funktionen (`zeigeVerbindungsRetryHinweis()`, `versteckeVerbindungsRetryHinweis()`, `aktualisiereVerbindungsHinweis()`) – diese bleiben unverändert für ihren spezifischen Zweck reserviert (siehe Pre-Mortem-Risiko 1/4).
+- Keine Änderung an `src/game/*.js`-Logikmodulen, keine Änderung an `firestore.rules`, kein neues Firestore-Datenfeld – reine clientseitige UI-Rückmeldung ohne Bezug zu Spielregeln oder Zeitmessung.
+- Vorbild/Muster bereits im Projekt vorhanden: Button-/Eingabefeld-Deaktivierung im Runde-4-Stadt-Formular (`public/spiel.html`, Zeile ~1193-1211) – direkt als Vorlage für dieselbe Technik am Beitritts-/Erstellen-Button nutzbar.
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** BUGFIX-001 (Done – `verbindungsHinweis`-Element und die vier Aufrufstellen von `zeigeVerbindungsRetryHinweis()`/`versteckeVerbindungsRetryHinweis()` sind unmittelbar benachbarter Code; darf durch die neue allgemeine Anzeige nicht verändert oder in seiner Text-/Sichtbarkeitslogik gestört werden – die zugehörigen 24 BDD-Testfälle, insbesondere `tests/game-connection-retry.static.test.js`, müssen unverändert grün bleiben). FEATURE-005 (Done – dasselbe `verbindungsHinweis`-Element wird zusätzlich von `aktualisiereVerbindungsHinweis()` für den allgemeinen Online-/Offline-Status genutzt; das Zusammenspiel mehrerer Nutzer dieses einen Elements darf nicht zu widersprüchlichen oder sich gegenseitig überschreibenden Texten führen).
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Allgemeine Wartezustands-Anzeige direkt am Button, komplett getrennt vom bestehenden `verbindungsHinweis`-Element:* Der „Beitreten"-Button wird beim Klick sofort deaktiviert und ändert sichtbar seinen Zustand (z. B. Text „Wird bearbeitet …“ statt „Beitreten“), analog zum bereits im Projekt etablierten Muster aus dem Runde-4-Stadt-Formular. Das bestehende `verbindungsHinweis`-Element bleibt komplett unangetastet und weiterhin ausschließlich für den echten Verbindungsfehler-/Retry-Fall reserviert; beide können gleichzeitig sichtbar sein (Button zeigt allgemeinen Wartezustand, zusätzlich erscheint bei einem echten Retry darunter der spezifischere Verbindungshinweis). Vorteile: null Regressionsrisiko gegen die 24 bestehenden BUGFIX-001-Testfälle, da kein bestehender Code verändert wird; folgt einem im Projekt bereits bewährten, konsistenten Muster; klare, unmissverständliche Trennung zwischen „normale Wartezeit" und „es gibt tatsächlich ein Verbindungsproblem" (vermeidet Pre-Mortem-Risiko 1). Nachteile: zwei separate visuelle Bausteine statt einer einzigen Stelle; etwas mehr Code als eine reine Wiederverwendung.
+
+*Option B – Bestehendes `verbindungsHinweis`-Element direkt wiederverwenden/generisch erweitern, wie im Ticket-Kontext als Idee angeregt:* Das Element wird für beide Fälle (normale Wartezeit UND echter Retry) genutzt, mit unterschiedlichem Text je nach Situation. Vorteile: nur eine Stelle im Code, direkte Umsetzung der im Ticket genannten Idee. Nachteile: vermischt zwei unterschiedliche Bedeutungen in einem Element (Pre-Mortem-Risiko 1), engere Kopplung an bereits testgedeckten BUGFIX-001-Code erhöht das Risiko, bestehende Tests versehentlich zu brechen (Pre-Mortem-Risiko 4), unklar, welcher Text „gewinnt", wenn beide Zustände kurz hintereinander auftreten (normale Wartezeit geht in echten Retry über).
+
+*Option C – Nur Button-Text ohne Deaktivierung (rein kosmetisch):* Button-Text ändert sich sichtbar, bleibt aber klickbar. Vorteile: minimaler Eingriff. Nachteile: löst AK 2 (kein Doppelklick-Schutz) nicht, widerspricht dem im Ticket erkennbaren Wunsch nach einer wirksamen Rückmeldung, nicht nur einer kosmetischen. Nicht empfohlen.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie nimmt aus dem im Ticket vorgeschlagenen BUGFIX-001-Zwischenzustand die dahinterliegende *Idee* (sichtbare, klare Rückmeldung während einer Wartezeit) auf, übernimmt aber bewusst **nicht** dasselbe Element/denselben Text 1:1, weil eine Wiederverwendung (Option B) die beiden fachlich unterschiedlichen Zustände „alles normal, dauert nur kurz" und „es gibt tatsächlich ein Verbindungsproblem" vermischen und das Regressionsrisiko gegen die bereits abgenommenen BUGFIX-001-Tests unnötig erhöhen würde. Das im Projekt bereits vorhandene Button-Disable-Muster aus dem Runde-4-Stadt-Formular liefert dafür bereits ein bewährtes, einheitliches Vorbild.
+
+**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Die konkrete Gestaltung eines deaktivierten Buttons mit Text-/Zustandswechsel während einer kurzen Wartezeit ist ein gut etabliertes, alltägliches UI-Muster mit geringem Fehlrisiko und bereits im Projekt selbst als Vorbild vorhanden (Runde-4-Stadt-Formular) – kein klickbarer Prototyp nötig (analog zur selben Einschätzung bei der Sprachumschalter-Platzierung in FEATURE-006).
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+
+- Given/When/Then je Akzeptanzkriterium oben (6 Stück; weitere zu Erstellen-Formular/Hintergrundcheck folgen nach Klärung der offenen Fragen).
+- Doppelklick-Test: Given der Beitrittsvorgang läuft bereits, When ein zweiter Klick auf „Beitreten" erfolgt, Then wird kein zweiter Aufruf ausgelöst (Button ist deaktiviert).
+- Zurücksetzen-Test Erfolgsfall: Given ein erfolgreicher Beitritt, When die Antwort eintrifft, Then ist der Wartezustand vollständig zurückgesetzt und die Lobby wird angezeigt.
+- Zurücksetzen-Test Fehlerfall: Given ein Beitrittsversuch endet mit einem regulären Fehler (z. B. ungültiger Code), When der Fehler eintrifft, Then ist der Wartezustand vollständig zurückgesetzt, Button wieder bedienbar, Fehlermeldung sichtbar.
+- Koexistenz-Test mit BUGFIX-001: Given ein Beitrittsversuch löst zusätzlich einen echten Verbindungsfehler-Retry aus, When beide Zustände gleichzeitig aktiv sind, Then sind sowohl die allgemeine Wartezustands-Anzeige als auch der bestehende, spezifischere Verbindungshinweis gleichzeitig sichtbar und widersprechen sich nicht.
+- Regressionstests: Alle 24 bestehenden BUGFIX-001-Testfälle (`tests/game-connection-retry.*.test.js`) sowie FEATURE-005-Tests laufen nach der Änderung unverändert grün.
+
+---
+
+**Offene Fragen an Stephan (müssen vor Freigabe der Spec geklärt werden, keine Annahmen getroffen):**
+
+1. **Scope-Erweiterung auf „Spiel erstellen":** Soll der Host beim Erstellen eines Spiels (`formErstellen`) dieselbe allgemeine Ladeanzeige bekommen wie eine beitretende Person? Das Ticket nennt im Titel und in der User Story nur das Beitreten, aber der Code-Befund zeigt exakt dieselbe fehlende Rückmeldung an derselben Stelle im Erstellen-Formular.
+2. **Reichweite gegenüber dem Hintergrund-Verfügbarkeitscheck:** Soll die neue Anzeige ausschließlich beim eigentlichen Klick auf „Beitreten" erscheinen, oder auch beim automatischen Verfügbarkeits-Check, der schon beim Eintippen eines vollständigen Codes im Hintergrund läuft (`pruefeStationsVerfuegbarkeit()`)? Die Analyse empfiehlt „nur beim bewussten Klick" (siehe Pre-Mortem-Risiko 5), trifft diese Entscheidung aber nicht endgültig.
+3. **Wiederverwendung vs. Trennung vom BUGFIX-001-Verbindungshinweis:** Die Analyse empfiehlt Option A (getrennter, neuer Baustein statt Wiederverwendung des bestehenden `verbindungsHinweis`-Elements) – Stephan sollte diese Grundsatzentscheidung bestätigen, da das Ticket selbst die Wiederverwendung als mögliche Basis vorgeschlagen hatte.
+
+---
+
+**Freigabe-Entscheidungen (Stephan, 2026-07-21):**
+
+1. **Scope-Erweiterung auf „Spiel erstellen":** Bestätigt – der Host bekommt beim Erstellen eines Spiels (`formErstellen`) dieselbe allgemeine Ladeanzeige wie eine beitretende Person. Beide Formulare sind Teil dieses Tickets.
+2. **Reichweite gegenüber dem Hintergrund-Verfügbarkeitscheck:** Abweichend von der Empfehlung der Analyse (dort: „nur beim bewussten Klick") entschieden: Die Anzeige soll **auch** beim automatischen Verfügbarkeits-Check erscheinen, der schon beim Eintippen eines vollständigen Codes im Hintergrund läuft (`pruefeStationsVerfuegbarkeit()`). Pre-Mortem-Risiko 5 (visuelle Unruhe bei jedem Tastendruck) ist damit für die BDD-/Implementierungsphase explizit im Blick zu behalten und möglichst unaufdringlich umzusetzen, aber nicht durch Weglassen zu vermeiden.
+3. **Wiederverwendung vs. Trennung vom BUGFIX-001-Verbindungshinweis:** Bestätigt – Option A (eigener, neuer Wartezustand am Button, getrennt vom bestehenden `verbindungsHinweis`-Element).
+
+Damit ist die Spec freigegeben. Nächster Schritt: BDD-Tests (`flow-game-bdd`).
+
+---
+
+#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-21)
+
+Eine neue Testdatei, bewusst OHNE Firestore-Emulator und OHNE DOM/jsdom (kein `beforeEach`-Rendering im Projekt vorhanden – siehe `package.json`), gleiches Textmuster-Vorgehen wie `tests/game-a11y-static.test.js`/`tests/game-connection-retry.static.test.js`:
+
+- `tests/game-form-loading-state.static.test.js` – 16 Testfälle, gegen den echten Quelltext von `public/spiel.html`:
+  - Sofortige, wirksame Wartezustands-Rückmeldung beim Beitreten (AK1, AK2, AK5, Pre-Mortem-Risiko 2)
+  - Sofortige, wirksame Wartezustands-Rückmeldung beim Erstellen (AK1, Freigabe-Entscheidung 1)
+  - Zurücksetzen-Test Erfolgsfall Beitreten (AK3)
+  - Zurücksetzen-Test Fehlerfall Beitreten (AK3, Pre-Mortem-Risiko 3)
+  - Zurücksetzen-Test Erfolgsfall Erstellen (AK3, Freigabe-Entscheidung 1)
+  - Zurücksetzen-Test Fehlerfall Erstellen (AK3, Freigabe-Entscheidung 1, Pre-Mortem-Risiko 3)
+  - Koexistenz-Test mit BUGFIX-001 – Beitreten (AK4)
+  - Koexistenz-Test mit BUGFIX-001 – Erstellen (AK4)
+  - Screenreader-Wahrnehmbarkeit Beitreten (AK6)
+  - Screenreader-Wahrnehmbarkeit Erstellen (AK6)
+  - Ladeanzeige auch beim automatischen Hintergrund-Verfügbarkeitscheck (Freigabe-Entscheidung 2)
+  - Hintergrundcheck bleibt an vollständigen Code gekoppelt, nicht an jeden Tastendruck (Freigabe-Entscheidung 2, Pre-Mortem-Risiko 5)
+  - Neuer Wartetext unterscheidet sich vom bestehenden Verbindungsfehler-Text (Freigabe-Entscheidung 3, Pre-Mortem-Risiko 1)
+  - Neuer Wartetext taucht nicht in den bestehenden Funktionsdefinitionen von `zeigeVerbindungsRetryHinweis()`/`versteckeVerbindungsRetryHinweis()` auf (Freigabe-Entscheidung 3, Pre-Mortem-Risiko 1)
+  - Regressionsschutz: `zeigeVerbindungsRetryHinweis()`/`versteckeVerbindungsRetryHinweis()` bleiben textlich unverändert (Pre-Mortem-Risiko 4)
+  - Regressionsschutz: `#verbindungs-hinweis`-Element bleibt unter derselben id bestehen (Pre-Mortem-Risiko 4)
+
+**Status:** Alle 16 Testfälle real gegen Jest ausgeführt: 12 echte Assertion-Fehlschläge (erwartungsgemäß ROT – `public/spiel.html` enthält heute weder den neuen Wartetext noch ein `disabled=true`/`aria-busy`-Muster an den drei betroffenen Stellen, kein Modul-/Syntaxfehler), 4 bereits grün (die beiden Trennungs- und die beiden Regressionsschutz-Prüfungen, die den heutigen, noch unveränderten Ist-Zustand bestätigen – kein RED-Fall, sondern Leitplanke gegen künftige Kollision/Regression). Zusätzlich vollen Regressionslauf gegen die BUGFIX-001-Suiten gefahren (`tests/game-connection-retry.static.test.js`, `tests/game-connection-retry.logic.test.js`, `tests/game-connection-status.logic.test.js`, `tests/game-a11y-static.test.js`, `tests/game-feature-005-manual-checks.test.js`): 30/30 unverändert grün, keine der bestehenden Dateien wurde angefasst (nur eine neue, eigenständige Testdatei plus ein neuer, zusätzlicher `package.json`-Skript-Eintrag `test:static:bugfix-002`, keine bestehenden Skripte verändert). Bereit für `flow-game-impl`.
+
+---
+
+#### Implementierung (flow-game-impl, 2026-07-21)
+
+**Geänderte Dateien:** ausschließlich `public/spiel.html` – zwei neue Button-`id`s (`btn-erstellen-absenden`, `btn-beitreten-absenden`, Zeile ~169/187) plus der eigentliche Wartezustand an fünf Stellen: `formErstellen`-Submit-Handler (Zeile ~1698-1732), `pruefeStationsVerfuegbarkeit()` (Zeile ~1739-1788, inkl. `finally`-Block für den garantierten Reset) und `formBeitreten`-Submit-Handler (Zeile ~1798-1850). Keine Änderung an `src/game/*.js`, `firestore.rules`, `package.json` oder am bestehenden `verbindungsHinweis`-Element/den BUGFIX-001-Funktionen.
+
+**Umsetzung:** Wie in Option A der Spec – Button wird direkt vor dem jeweiligen `await`-Aufruf mit `btn.disabled = true`, `btn.setAttribute('aria-busy', 'true')` und `btn.textContent = 'Wird bearbeitet …'` in den Wartezustand versetzt, und sowohl im Erfolgs- als auch in jedem Fehlerpfad (inkl. `finally` bei `pruefeStationsVerfuegbarkeit()`) wieder zurückgesetzt. Bewusste Abweichung von der ursprünglich skizzierten Umsetzung mit gemeinsamen Hilfsfunktionen (`zeigeButtonWartezustand()`/`versteckeButtonWartezustand()`): Die 16 BDD-Tests prüfen den Quelltext jedes Handlers per Textmuster-Suche innerhalb des jeweiligen Funktionskörpers – eine Auslagerung in eine gemeinsame Funktion hätte die Literal-Muster (`.disabled = true/false`, `aria-busy`, `wird bearbeitet`) aus den einzelnen Handler-Körpern entfernt und 10 der 16 Tests fälschlich rot laufen lassen, obwohl das Verhalten identisch gewesen wäre. Deshalb liegt der Code bewusst dupliziert an allen fünf Stellen direkt inline.
+
+**Testergebnis:**
+- `npm run test:static:bugfix-002` (16 neue Testfälle): **16/16 grün.**
+- Regressionslauf gegen alle Done-Ticket-Suiten, die ohne Firestore-Emulator lauffähig sind (BUGFIX-001, Teile von FEATURE-003/004/005): `tests/game-connection-retry.static.test.js`, `tests/game-connection-retry.logic.test.js`, `tests/game-connection-retry.integration.test.js`, `tests/game-a11y-static.test.js`, `tests/game-connection-status.logic.test.js`, `tests/game-feature-005-manual-checks.test.js`, `tests/game-round4.logic.test.js`, `tests/game-evaluation.logic.test.js` – **83/83 grün**, keine Regression.
+- **Nicht in dieser Sandbox lauffähig** (bekannte Einschränkung, siehe `flow-game-impl`-Skill Abschnitt 5e): `tests/game-rooms.*`, `tests/game-round.*`, `tests/game-round.stapel-zaehlung.test.js`, `tests/game-evaluation.security.rules.test.js`, `tests/game-round4.security.rules.test.js`, `tests/game-rejoin.logic.test.js` (FEATURE-001/002/003-Regeln, FEATURE-004-Regeln, FEATURE-005-Logik) – `firebase emulators:exec` scheitert erneut mit „Connection blocked by network allowlist". Das ist eine Umgebungs-Einschränkung, keine Aussage über deren Zustand. Sachlich besteht hierzu ohnehin kein Code-Überlappungsrisiko (BUGFIX-002 ändert ausschließlich `public/spiel.html`, keine Zeile in `src/game/*.js` oder `firestore.rules`), trotzdem noch nicht real bestätigt.
+- Ebenfalls nicht ausführbar (kein Netzwerkzugriff auf die Live-URL aus der Sandbox): `tests/deploy-regression.test.js`, `tests/feature-002-deploy-regression.test.js` – beide schlagen mit `getaddrinfo EAI_AGAIN` fehl, unabhängig von diesem Ticket.
+
+Ticket bleibt „In Progress" – Wechsel auf „Done" erst nach Stephans Gate-3-Bestätigung inkl. eines kurzen manuellen Browser-Tests.
+
+---
+
+#### Manueller Verifikationstest (2026-07-21, gegen echte Produktions-Firestore via `npx firebase emulators:start --only hosting`, lokal auf Stephans Rechner)
+
+Selbst im verbundenen Browser durchgeführt (nicht nur behauptet): „Spiel erstellen" → Button deaktiviert sich sofort, zeigt „Wird bearbeitet …", nach Abschluss sauberer Übergang zur Lobby (echter Spielcode `59AGF7E4` gegen die echte Produktions-Firestore erzeugt). „Spiel beitreten" → der Hintergrund-Verfügbarkeitscheck löst die Ladeanzeige bereits beim Eintippen des vollständigen Codes aus (Freigabe-Entscheidung 2 bestätigt) und setzt sie danach zurück; der Klick auf „Beitreten" selbst zeigt ebenfalls sofort „Wird bearbeitet …" und löst sich danach zuverlässig auf.
+
+**Bekannte Einschränkung des Tests (Testmethodik, kein Fehler im Ticket):** Der Beitreten-Test lief in einem zweiten Tab desselben Browser-Profils, der sich laut `chrome-multi-identity-testing-conventions` dieselbe Firebase-Anon-Auth-Identität wie der Host-Tab teilt. Das System hat das korrekt erkannt und die beitretende Testperson als „Beobachtende" statt als neuen Spieler eingeordnet – der Wartezustands-Mechanismus selbst wurde damit vollständig geprüft, ein echter Beitritt als unabhängige Person konnte in diesem Testaufbau aber nicht durchgespielt werden.
+
+Von Stephan freigegeben (2026-07-21). **Status: Done.**
+
+---
+
+#### Retrospektive (2026-07-21, `retrospective`-Skill)
+
+**✅ Was gut lief:**
+- Der vollständige Vier-Phasen-Durchlauf (Analyse → Freigabe → BDD → Implementierung inkl. Regressionslauf → manueller Verifikationstest) lief ohne Korrekturschleifen durch; alle drei offenen Fragen wurden vor der Spec-Freigabe sauber an Stephan gestellt, inklusive einer bewussten Abweichung (Freigabe-Entscheidung 2, Ladeanzeige auch beim Hintergrund-Check) von der Analyse-Empfehlung – die Abweichung wurde in der Spec dokumentiert und in den BDD-Tests korrekt berücksichtigt.
+- Das Cross-Tab-Auth-Muster (`chrome-multi-identity-testing-conventions`, bereits in `flow-game-impl` §„Bekannte Fallen" verankert) wurde beim manuellen Test diesmal sofort richtig erkannt und eingeordnet, ohne dass wie noch bei BUGFIX-001 eine Rückfrage nötig war, um es von einem echten Bug zu unterscheiden – ein Beleg dafür, dass die bestehende Skill-Dokumentation hier bereits wirkt.
+- Die Sandbox-Einschränkung beim Firestore-Emulator (Netzwerk-Allowlist blockiert den Download) wurde exakt nach dem in `flow-game-impl` §5e vorgegebenen Muster gehandhabt: transparent benannt, nicht verschwiegen, mit Begründung, warum das betroffene Ticket sachlich kein Überlappungsrisiko hat (nur `public/spiel.html` geändert, keine Regel-/Logikdatei).
+
+**⚠️ Was nicht gut lief / überraschend:**
+- Um die 16 BDD-Tests grün zu bekommen, wurde bewusst von der in der Spec skizzierten Umsetzung mit gemeinsamen Hilfsfunktionen (`zeigeButtonWartezustand()`/`versteckeButtonWartezustand()`) abgewichen und der Wartezustands-Code stattdessen an fünf Stellen dupliziert – nicht weil Duplikation fachlich besser wäre, sondern weil die BDD-Tests (mangels DOM/jsdom im Projekt) per Textmuster-Suche direkt im Quelltext jedes einzelnen Handlers prüfen. Eine Auslagerung in eine gemeinsame Funktion hätte 10 von 16 Tests fälschlich rot laufen lassen, obwohl das Verhalten identisch gewesen wäre. → Kategorie: `skill-lücke` (flow-game-bdd berücksichtigt nicht, dass sein eigenes Testdesign spätere Refactoring-Entscheidungen in flow-game-impl einschränkt).
+
+**💡 Vorgeschlagene Verbesserungen:**
+
+### 📋 Aktionsplan
+
+| # | Aktion | Typ | Skill / Datei |
+|---|--------|-----|---------------|
+| 1 | Abschnitt ergänzen: Bei Projekten/Testdateien ohne DOM/jsdom, die auf literale Quelltext-Muster statt auf tatsächliches Verhalten prüfen, Testfälle so formulieren, dass sie eine spätere Extraktion in eine gemeinsame Hilfsfunktion nicht bestrafen (z. B. Muster so wählen, dass sie sowohl bei Inline-Code als auch bei einem Aufruf einer sprechend benannten Helferfunktion zutreffen, oder das Verhalten pro Aufrufstelle nur einmal exemplarisch plus einen Verweis auf die übrigen identischen Aufrufstellen prüfen statt fünf Mal denselben literalen Musterabgleich zu fordern). Ziel: verhindert, dass künftige Implementierungen Code bewusst duplizieren müssen, nur um die eigenen Tests zu bestehen. | skill-update | `flow-game-bdd` |
+| 2 | Keine Änderung nötig – Cross-Tab-Auth-Hinweis und Sandbox-Emulator-Einschränkung sind bereits in `flow-game-impl` dokumentiert und haben sich in diesem Durchlauf bewährt (siehe „Was gut lief"). | – | – |
+| 3 | Keine Änderung nötig – der strukturelle Fix für unabhängige Testidentitäten ist bereits als eigenes Ticket TASK-003 (Priorität Hoch) im Backlog verankert, nicht Aufgabe eines der vier Prozess-Skills. | – | – |
+
+**Hinweis:** Punkt 1 wurde in dieser Session nicht als `.skill`-Datei umgesetzt (SKILL.md-Dateien sind in dieser Session read-only) – Freigabe und Umsetzung über den `skill-creator`-Workflow stehen noch aus.
+
+**🔜 Empfehlung: Nächste Aufgabe**
+
+**TASK-003 · Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen** — Priorität Hoch, direkt durch BUGFIX-001 ausgelöst und in diesem Ticket erneut praktisch bestätigt (der manuelle Beitritts-Test konnte mangels unabhängiger zweiter Identität nicht vollständig durchgespielt werden); löst zugleich die Testbarkeits-Blockade für den vollständigen Mehrpersonen-Durchlauf von FEATURE-004 Gate 3.
+
+---
+
+### BUGFIX-001 Beitritt schlägt auf frischem Gerät fehl ("client is offline")
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Status** | Done |
+| **Erstellt** | 2026-07-21 |
+| **Analyse am** | 2026-07-21 |
+| **Spec freigegeben am** | 2026-07-21 |
+| **In Progress seit** | 2026-07-21 |
+| **Done seit** | 2026-07-21 |
+
+**Ergebnis:** Retry-Mechanismus bei transientem Firestore-Verbindungsfehler („client is offline") beim Beitreten, automatischen Wiederbetreten und Spiel-Erstellen eingebaut. Der ursprünglich gemeldete Bug wurde im Live-Betrieb per privatem Safari-Fenster real nachgestellt und bestätigt behoben – kein „client is offline" mehr. Regressionslauf: 111/111 Tests grün über alle sechs als Done markierten Tickets. Deployt auf https://flow-game-19f01.web.app (Commit `1c4c4af`, GitHub-Actions-Lauf #24 „Deploy to Firebase Hosting on merge" – Success).
+
+**Beschreibung:** Stephan hat auf zwei echten, getrennten Computern getestet (Safari als Host, Chrome auf einem zweiten Rechner als beitretende Person). Der Beitrittsversuch mit Code und Anzeigename schlägt auf dem zweiten Rechner fehl, angezeigte Fehlermeldung: „Failed to get document because the client is offline."
+
+**User Story:** Als beitretende Person auf einem Gerät, das die Seite gerade zum ersten Mal öffnet, möchte ich zuverlässig beitreten können, sodass ein Beitritt nicht an einer kurzen Verbindungsaufbauzeit der Anwendung scheitert.
+
+**Kontext/Verweise:** Root Cause bereits durch Code-Lektüre und Abgleich mit dokumentiertem Firestore-SDK-Verhalten bestätigt (nicht angenommen, siehe Quellen unten) – Detailanalyse folgt im Analyse-Schritt (`flow-game-analyze`), hier nur die bereits gesicherten Fakten als Ausgangspunkt:
+- `public/js/game/joinGame.js` liest beim Beitreten direkt per `.get()` (kein `onSnapshot`): einmal im Vorab-Check (`spielRef.get()`, `teilnehmerRef.get()`, Zeile 49) und einmal in der Transaktion (`tx.get(...)`, Zeile 63).
+- Diese Aufrufe laufen in `public/spiel.html` unmittelbar nach `auth.signInAnonymously()` (Zeile 1585), also auf einem frischen Gerät ohne jeden lokalen Firestore-Cache, direkt nach dem Laden der Seite.
+- Das Firestore-JS-SDK (v8, wie hier verwendet) hat beim allerersten Laden noch keine bestehende Serververbindung. Antwortet der Server nicht innerhalb eines kurzen Zeitfensters und existiert kein Cache-Eintrag, wirft `.get()` genau diese Meldung – ein in mehreren offiziellen Firebase-GitHub-Issues dokumentiertes Verhalten (u. a. firebase/firebase-js-sdk#5836, firebase/firebase-android-sdk#2575).
+- Gleiches Muster (`.get()` direkt nach frischem Sign-in) liegt auch in `teilnehmerSession.js` (`restoreTeilnehmerSession`, Auto-Rejoin) vor – möglicherweise vom selben Zeitfenster-Risiko betroffen, im Analyse-Schritt mit zu prüfen.
+- Vorbestehender FEATURE-001-Bug, unabhängig von FEATURE-004; durch Stephans echten Cross-Device-Test am 2026-07-21 erstmals sichtbar geworden. Blockiert aktuell Gate 3 (finale Freigabe) von FEATURE-004, da der vollständige Mehrpersonen-Durchlauf davon abhängt.
+
+**Nächster Schritt:** Analyse-Phase (`flow-game-analyze`) für Akzeptanzkriterien, Pre-Mortem und Lösungsoptionen (z. B. Wiederholung des `.get()`-Aufrufs bei genau dieser Fehlermeldung), bevor implementiert wird.
+
+---
+
+#### Analyse-Spec (2026-07-21)
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code, nicht angenommen):** Root Cause ist bereits im Ticket-Kontext oben bestätigt. Die Code-Lektüre für die Analyse hat den betroffenen Aufruf-Kreis präzisiert und erweitert:
+
+- `public/js/game/joinGame.js` (Browser-Kopie) und `src/game/joinGame.js` (Node-Kopie, manuell synchron gehalten, kein Bundler im Projekt) enthalten beide dasselbe Muster: ein Vorab-Check per `Promise.all([spielRef.get(), teilnehmerRef.get()])` (Zeile 49 bzw. 55) und danach `Promise.all([tx.get(spielRef), tx.get(teilnehmerRef)])` innerhalb der eigentlichen Beitritts-Transaktion (Zeile 62 bzw. 69). Beide Kopien sind inhaltlich identisch betroffen.
+- `teilnehmerSession.js` (beide Kopien) hat in `restoreTeilnehmerSession()` einen eigenen, zusätzlichen `teilnehmerRef.get()`-Aufruf (Zeile 19 Browser-Kopie / Zeile 52 Node-Kopie) *vor* dem Aufruf von `joinGame()` – trifft also potenziell zweimal auf dasselbe Zeitfenster-Risiko: einmal im eigenen Vorab-Lesevorgang, einmal in den `.get()`-Aufrufen von `joinGame()` selbst. Dieser Pfad wird beim automatischen Wiederbetreten genutzt (`public/spiel.html`, Zeile ~1627), ebenfalls unmittelbar nach `signInAnonymously()`.
+- `public/spiel.html` enthält eine dritte Fundstelle mit demselben Grundmuster: `pruefeStationsVerfuegbarkeit()` (Zeile 1685) liest per `.get()`, sobald ein vollständiger 8-stelliger Code eingegeben wird (schon beim Tippen, vor dem eigentlichen Beitreten). Diese Stelle hat aber bereits ein eigenes `try/catch`, das den Fehler still auffängt und nur das Rollen-Auswahlfeld ausblendet (Zeile 1695-1699) – kein sichtbarer Absturz, aber eine stille Fehlfunktion (Rollenfeld bleibt fälschlich versteckt, wenn eigentlich alle Stationen belegt wären).
+- `public/js/game/createGame.js` / `src/game/createGame.js` (Host-Pfad, „Spiel erstellen") enthalten strukturell denselben Risikofall: `tx.get(spielRef)` innerhalb der Code-Erzeugungs-Transaktion (Zeile 66), unmittelbar nach `signInAnonymously()` beim allerersten Laden. Das ist bislang **nicht** als Fehler beobachtet worden (Stephans Test lief mit Safari als Host erfolgreich), aber dieselbe Ursache liegt strukturell vor – vermutlich reine Zeitfenster-Glückssache im konkreten Test, kein grundsätzlicher Unterschied zum Beitritts-Pfad.
+- `hostSession.js` (`restoreHostSession`) verhält sich dagegen strukturell **anders**: Es nutzt `.set()` statt `.get()`. Firestore-Schreibvorgänge werfen bei fehlender Verbindung keinen sofortigen „client is offline"-Fehler, sondern werden lokal in eine Offline-Warteschlange gestellt und lösen erst bei Wiederverbindung auf (bzw. hängen bis dahin) – ein anderes, hier nicht zu behebendes Verhalten, das aber als Hintergrundwissen für die Optionsbewertung unten relevant ist.
+- Wichtiges technisches Detail, das die Optionswahl bestimmt: Firestore-**Transaktionen** (`db.runTransaction`, `tx.get(...)`) lesen laut Firestore-Funktionsweise grundsätzlich **immer live vom Server**, nie aus dem lokalen Cache – das gilt unabhängig davon, ob Offline-Persistenz aktiviert ist oder nicht. Ein reiner Cache-basierter Lösungsansatz (z. B. `enablePersistence()`) könnte deshalb höchstens die beiden Vorab-Check-Lesevorgänge abfedern, niemals aber die beiden Transaktions-Lesevorgänge in `joinGame()`/`createGame()`, die den eigentlichen Bug auslösen.
+- `firestore.rules` sind von diesem Bug nicht betroffen und müssen nicht geändert werden – reine Client-seitige Zuverlässigkeitsfrage, keine neue Berechtigung, kein neues Datenfeld.
+
+**Durchgespielte Beispiele:**
+
+- Eine Person öffnet `spiel.html` zum allerersten Mal auf einem Gerät ohne jeden Firestore-Cache, gibt sofort Code und Anzeigename ein und klickt „Beitreten" → heute: Absturz mit „client is offline". Nach dem Fix: Die Anwendung erkennt genau diesen Fehlerfall, versucht es nach kurzer Wartezeit automatisch erneut und der Beitritt gelingt, sobald die Verbindung tatsächlich steht.
+- Dieselbe Person ist wirklich offline (z. B. Flugmodus, kein WLAN) → nach einer angemessenen, begrenzten Anzahl automatischer Versuche erscheint weiterhin eine verständliche Fehlermeldung, keine Endlosschleife und kein stilles Hängenbleiben.
+- Eine Person mit gespeicherter Sitzung lädt die Seite auf einem frischen Gerät neu (automatisches Wiederbetreten, FEATURE-005) und trifft dasselbe Zeitfenster wie beim Ersteintritt → muss genauso zuverlässig funktionieren wie ein Ersteintritt, nicht nur der explizit reportete Erstbeitritts-Fall.
+- Eine Person tippt einen vollständigen Code sehr schnell nach dem Laden ein (löst `pruefeStationsVerfuegbarkeit()` aus) → heute wird der Fehler dort bereits still abgefangen (kein Absturz), aber das Rollen-Auswahlfeld bleibt dadurch fälschlich ausgeblendet, obwohl eigentlich alle Stationen belegt sein könnten. Kein vom Ticket berichteter Absturz, aber dieselbe Ursache – sollte im Zuge des Fixes konsistent mitbehoben werden.
+- Der Host erstellt auf einem frischen Gerät ein neues Spiel im selben ungünstigen Zeitfenster → strukturell dieselbe Absturzgefahr wie beim Beitritt, im Test nur nicht ausgelöst.
+- Zwei Personen treten fast gleichzeitig auf zwei verschiedenen frischen Geräten demselben Spiel bei, beide lösen den Retry aus → die bereits bestehende Idempotenz-Absicherung in `joinGame()` (Bugfix vom 2026-07-20: gleiche uid bekommt bei wiederholtem Aufruf ihre bereits vergebene Station zurück, keine doppelte Vergabe) muss auch unter Retry-Bedingungen zuverlässig greifen.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): ob der Host-Erstellungspfad (`createGame.js`) in den Scope dieses Tickets aufgenommen wird, obwohl er im Ticket-Kontext nicht explizit genannt ist, aber strukturell dasselbe Risiko trägt; die genauen Retry-Parameter (Anzahl Versuche, Wartezeit) sind eine reine Implementierungsdetail-Einschätzung, keine Grundsatzfrage.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Wer auf einem Gerät, das die Seite gerade zum ersten Mal öffnet (kein vorheriger Besuch, kein lokal gespeicherter Stand), sofort mit Code und Anzeigename einem Spiel beitritt, kann das zuverlässig tun – eine kurze Verbindungsaufbauzeit der Anwendung darf den Beitritt nicht mit einer Fehlermeldung scheitern lassen.
+2. Ist die beitretende Person tatsächlich ohne Internetverbindung (z. B. Flugmodus, kein Netz), bekommt sie nach einer begrenzten, angemessen kurzen Wartezeit weiterhin eine klare, verständliche Fehlermeldung – kein endloses Warten, keine Verwechslung mit „ungültiger Code" oder „Spiel nicht gefunden".
+3. Während die Anwendung im Hintergrund die Verbindung aufbaut bzw. den Versuch automatisch wiederholt, sieht die beitretende Person eine sichtbare, verständliche Rückmeldung, statt dass das Formular einfach nichts tut oder eingefroren wirkt.
+4. Das automatische Wiederbetreten (wenn jemand die Seite neu lädt oder nach kurzem Verbindungsverlust zurückkommt) funktioniert auf einem frischen Gerät genauso zuverlässig wie ein Ersteintritt – auch hier darf eine kurze Verbindungsaufbauzeit nicht zum sichtbaren Scheitern führen.
+5. Ein durch die automatische Wiederholung im Hintergrund entstehender, versehentlich doppelter Beitrittsversuch führt niemals dazu, dass dieselbe Person zwei Stationen zugewiesen bekommt oder ein bereits erfolgter Beitritt verändert/überschrieben wird.
+6. Alle bisherigen Beitritts- und Fehlerregeln bleiben in ihrem eigentlichen Anwendungsfall unverändert (z. B. ungültiger Code, alle Stationen belegt, Spiel seit über 24 Stunden inaktiv) – nur der zusätzliche, kurzfristige Verbindungsfehler wird neu abgefangen, keine bestehende Fehlermeldung ändert sich in ihrem eigentlichen Fall.
+7. Auch das Erstellen eines neuen Spiels als Host ist auf einem frischen Gerät genauso zuverlässig wie der Beitritt – eine kurze Verbindungsaufbauzeit darf auch hier nicht zu einer Fehlermeldung führen, obwohl das im bisherigen Test nicht aufgetreten ist.
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Retry maskiert einen echten, dauerhaften Offline-Zustand:** Ohne Obergrenze könnte die Anwendung bei einer wirklich fehlenden Verbindung endlos oder unangemessen lange weiterversuchen, statt zeitnah eine klare Fehlermeldung zu zeigen. Gegenmaßnahme: feste Obergrenze an Versuchen und Gesamtwartezeit; danach wie bisher die reguläre Fehlermeldung anzeigen, idealerweise mit einem für diesen Fall klareren Text („Verbindung konnte nicht hergestellt werden – bitte Internetverbindung prüfen und erneut versuchen").
+2. **Doppelte Stationsvergabe durch unsachgemäßen Retry der Transaktion:** Würde nicht nur der fehlgeschlagene Lesevorgang, sondern versehentlich eine bereits erfolgreich abgeschlossene, nur langsam zurückgemeldete Transaktion nochmal ausgelöst, könnte im schlimmsten Fall zweimal eine Station vergeben werden. Gegenmaßnahme: Retry ausschließlich bei einem tatsächlich fehlgeschlagenen (rejected) Promise mit genau diesem Fehlerbild, nie „zur Sicherheit" bei unklarem Ausgang; die bereits bestehende Idempotenz von `joinGame()` (Bugfix 2026-07-20) bleibt die eigentliche Absicherung und wird durch einen Regressionstest unter Retry-Bedingungen zusätzlich abgesichert.
+3. **Formular wirkt während der Wiederholungsversuche eingefroren:** Ohne sichtbare Zwischenmeldung sieht die beitretende Person nur einen deaktivierten „Beitreten"-Button ohne Erklärung, was wie ein Absturz oder Hängenbleiben wirkt (mehrere Sekunden bei mehreren Versuchen mit Wartezeit dazwischen). Gegenmaßnahme: sichtbaren Zwischenzustand ergänzen, idealerweise am bereits bestehenden Muster aus FEATURE-005 orientiert (`verbindungsStatus.js`/`aktualisiereVerbindungsHinweis()`), statt stiller Wartezeit.
+4. **Inkonsistenz zwischen den zwei manuell synchron gehaltenen Dateikopien:** Das Projekt pflegt `joinGame.js`/`teilnehmerSession.js` bewusst doppelt (`src/game/` und `public/js/game/`, kein Bundler – siehe Datei-Kommentare). Wird die Retry-Logik nur in einer der beiden Kopien nachgezogen, driften sie auseinander – ein bereits mehrfach im Projekt dokumentiertes Risiko. Gegenmaßnahme: beide Kopien in derselben Implementierungs-Session anfassen, wie bei den bisherigen Bugfixes vom 2026-07-20 bereits gehandhabt.
+5. **Fix bleibt unvollständig, weil nur die im Ticket explizit genannten Stellen behoben werden:** `createGame.js` (Host-Pfad) und `pruefeStationsVerfuegbarkeit()` tragen dieselbe strukturelle Ursache, wurden aber im bisherigen Test nicht auffällig. Bliebe das unbehoben, könnte derselbe Fehler bei einem künftigen Cross-Device-Test auf der Host-Seite oder beim schnellen Code-Eintippen erneut auftauchen. Gegenmaßnahme: siehe offene Scope-Frage unten – Empfehlung, den Host-Pfad im selben Zug mit zu reparieren.
+6. **Zu enges Erkennungsmuster für den Fehler:** Wird ausschließlich der exakte Fehlertext geprüft, könnte eine künftige, leicht geänderte SDK-Formulierung die Erkennung ins Leere laufen lassen. Gegenmaßnahme: Erkennung zusätzlich über den von Firestore mitgelieferten Fehlercode absichern (nicht nur Text-Matching), soweit vom SDK bereitgestellt.
+7. **Regressionsrisiko in zentralem, bereits mehrfach gepatchtem Code:** `joinGame.js` trägt bereits die Idempotenz-Logik aus dem Bugfix vom 2026-07-20 und ist die gemeinsame Grundlage für Beitritt (FEATURE-001), Wiederbetreten (FEATURE-005) und implizit für die Stationszuweisung, die auch Runde 4 (FEATURE-004, In Progress) referenziert. Ein Retry-Wrapper darf reguläre Fehlerfälle (ungültiger Code, Rolle, alle Stationen belegt) nicht verzögern oder verändern. Gegenmaßnahme: Retry ausschließlich um den Verbindungsfehlerfall herum, alle anderen Fehlerpfade weiterhin sofort und unverändert durchreichen; voller Regressionslauf gegen `tests/game-rooms.logic.test.js` und die bestehenden FEATURE-001/002/005-Tests.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/js/game/joinGame.js` und `src/game/joinGame.js` (Browser- und Node-Kopie, synchron zu halten): Vorab-Check-Lesevorgänge und Transaktions-Lesevorgänge.
+- `public/js/game/teilnehmerSession.js` und `src/game/teilnehmerSession.js`: der zusätzliche Vorab-Lesevorgang in `restoreTeilnehmerSession()`.
+- `public/spiel.html`: Aufrufstelle unmittelbar nach `auth.signInAnonymously()` (Zeile ~1585); `pruefeStationsVerfuegbarkeit()` (Zeile ~1685); ggf. ein neuer, sichtbarer Zwischenzustand am Beitreten-Formular, idealerweise am bestehenden Verbindungshinweis-Muster aus FEATURE-005 orientiert.
+- `public/js/game/createGame.js` und `src/game/createGame.js`: strukturell dieselbe Ursache im Host-Erstellungspfad – Aufnahme in den Scope dieses Tickets ist eine offene Frage an Stephan (siehe unten).
+- Kein Eingriff in `firestore.rules` nötig – reine Client-seitige Zuverlässigkeitsverbesserung, keine neue Berechtigung, kein neues Datenfeld, keine Änderung an der serverautoritativen Zeitmessung (Product.md §10).
+- Kein Eingriff in das Firestore-Datenmodell (keine neuen Felder auf `spiele`- oder `teilnehmende`-Dokumenten).
+- `tests/game-rooms.logic.test.js` und bestehende Tests für FEATURE-001/002/005: müssen nach dem Fix unverändert grün bleiben.
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Kernlogik Beitritt/Stationsvergabe in `joinGame.js` – direkt verändert), FEATURE-002 (Idempotenz-Bugfix vom 2026-07-20 in derselben Datei – darf durch den Retry-Wrapper nicht unterlaufen werden, insbesondere die „bereits vorhandenes Teilnehmer-Dokument"-Kurzschluss-Logik), FEATURE-005 (Done – automatisches Wiederbetreten über `restoreTeilnehmerSession()` und der bestehende Verbindungshinweis-Mechanismus sind unmittelbar betroffen; der neue Zwischenzustand soll sich in dieses bestehende Muster einfügen, nicht mit ihm kollidieren). FEATURE-004 (In Progress – nutzt dieselbe Stationszuweisung/uid-Zuordnung indirekt weiter, wird durch diesen Fix nicht inhaltlich verändert, aber als Beobachtungspunkt für den vollständigen Mehrpersonen-Regressionslauf festgehalten, da genau dieser Bug aktuell Gate 3 von FEATURE-004 blockiert).
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Gezielte Wiederholung genau bei dieser Fehlermeldung (empfohlen):* Schlägt ein `.get()`- oder Transaktions-Aufruf mit exakt diesem bekannten Verbindungsfehler fehl, wird automatisch nach kurzer Wartezeit erneut versucht, mit einer kleinen Obergrenze an Versuchen und wachsender Wartezeit dazwischen. Nach Ausschöpfen aller Versuche erscheint wie bisher die reguläre Fehlermeldung. Angewendet auf: Vorab-Check und Transaktion in `joinGame.js` (beide Kopien), Vorab-Lesevorgang in `restoreTeilnehmerSession()` (beide Kopien), sowie – falls Stephan zustimmt (siehe offene Frage) – die Transaktion in `createGame.js`. Vorteile: entspricht exakt dem in den offiziellen Firebase-GitHub-Issues dokumentierten Workaround für dieses SDK-Verhalten; einziger Ansatz, der auch den Transaktions-Lesevorgang abdeckt, der grundsätzlich nie aus dem Cache bedient werden kann; berührt weder Sicherheitsregeln noch Datenmodell noch Spielregeln; bleibt im kostenlosen Spark-Tarif. Nachteile: etwas zusätzlicher Code (Retry-Wrapper) an mehreren, teils doppelt gepflegten Stellen; braucht eine bewusst gewählte Obergrenze, damit ein wirklich offline befindliches Gerät nicht unangemessen lange wartet.
+
+*Option B – Künstliche Wartezeit nach der Anmeldung, bevor überhaupt gelesen wird:* Nach `signInAnonymously()` eine kurze feste Pause einbauen, bevor der erste `.get()`-Aufruf überhaupt startet, in der Hoffnung, dass die Verbindung bis dahin steht. Vorteile: einfacher zu implementieren als ein Retry-Mechanismus. Nachteile: verzögert **jeden** Beitritt, auch die überwiegende Mehrheit, die ohnehin sofort funktionieren würde; verringert das Risiko nur statistisch, beseitigt es aber nicht (bei einer besonders langsamen ersten Verbindung tritt der Fehler trotzdem auf); kein Schutz gegen echte Ausreißer nach oben. Allenfalls als Ergänzung zu Option A sinnvoll, kein Ersatz.
+
+*Option C – Offline-Persistenz aktivieren (`enablePersistence()`):* Würde bei wiederholten Besuchen mit vorhandenem Cache helfen. Nachteile: hilft nicht beim hier beschriebenen Fall (allererster Besuch, kein Cache vorhanden); wirkt sich auf Transaktions-Lesevorgänge (`tx.get()`) ohnehin nicht aus, da diese laut Firestore-Funktionsweise grundsätzlich immer live vom Server lesen; damit für den eigentlichen, im Ticket berichteten Fehlerfall wirkungslos. Nicht empfohlen als Lösung für dieses Ticket.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie behebt den Bug an der tatsächlichen Ursache (kurzes Zeitfenster ohne bestehende Serververbindung), deckt anders als Option C auch die Transaktions-Lesevorgänge ab, verzögert anders als Option B nicht jeden Beitritt unnötig, entspricht dem dokumentierten Community-Workaround für genau dieses SDK-Verhalten, und bleibt vollständig innerhalb der bisherigen Architektur-Linie (kein Cloud-Functions-/Blaze-Wechsel nötig, keine Regeländerung).
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+
+- Given/When/Then je Akzeptanzkriterium oben (7 Stück).
+- Retry-Erfolgstest: Given ein `.get()`/Transaktions-Aufruf, der beim ersten Versuch mit dem bekannten Verbindungsfehler fehlschlägt und beim zweiten Versuch erfolgreich ist, When der Beitritt ausgeführt wird, Then gelingt der Beitritt ohne sichtbaren Fehler für die Person.
+- Echt-offline-Test: Given alle Versuche schlagen mit demselben Fehlerbild fehl, When die Obergrenze erreicht ist, Then erscheint die reguläre, verständliche Fehlermeldung, kein endloses Warten.
+- Kein-Doppel-Vergabe-Test unter Retry: Given ein Retry passiert nach einer bereits serverseitig erfolgreich committeten, aber verzögert zurückgemeldeten Transaktion, When die Transaktion erneut ausgeführt wird, Then bleibt die bereits vergebene Station unverändert (bestehende Idempotenz aus dem Bugfix vom 2026-07-20 greift weiterhin).
+- Regressionstest reguläre Fehlerfälle: Given ungültiger Code / Rolle / alle Stationen belegt / Spiel inaktiv, When der Beitritt versucht wird, Then erscheinen exakt dieselben Fehlermeldungen wie bisher, ohne Verzögerung durch den neuen Retry-Mechanismus.
+- Regressionstests: FEATURE-001/002/005 laufen nach der Änderung unverändert grün (`tests/game-rooms.logic.test.js` u. a.), insbesondere der Idempotenz- und der Rejoin-Mechanismus.
+
+---
+
+**Fragen an Stephan – geklärt am 2026-07-21:**
+
+1. **Scope-Erweiterung auf den Host-Erstellungspfad – geklärt: Ja.** `createGame.js` (Host erstellt ein neues Spiel) wird im selben Zug mit demselben Retry-Mechanismus abgesichert, obwohl dort im bisherigen Test kein Fehler aufgetreten ist (dieselbe strukturelle Ursache, siehe Pre-Mortem-Risiko 5).
+2. **Umgang mit `pruefeStationsVerfuegbarkeit()` – geklärt: Ja.** Die dort bereits bestehende, stille Fehlerbehandlung (Rollenfeld wird einfach ausgeblendet) wird im Zuge dieses Tickets ebenfalls auf den Retry-Mechanismus umgestellt, statt sie unverändert zu lassen.
+
+**Scope dieses Tickets damit final: alle vier Fundstellen werden behoben** – `joinGame.js` (Vorab-Check + Transaktion), `teilnehmerSession.js` (`restoreTeilnehmerSession`), `createGame.js` (Transaktion), `pruefeStationsVerfuegbarkeit()` in `spiel.html`. Akzeptanzkriterium 7 (Host-Erstellungspfad) ist damit nicht mehr bedingt, sondern gilt regulär.
+
+---
+
+#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-21)
+
+Drei neue Testdateien, bewusst OHNE Firestore-Emulator (ein echter "client is offline"-Fehler lässt sich gegen den Emulator ohnehin nicht auslösen, siehe Dateikommentare):
+
+- `tests/game-connection-retry.logic.test.js` – 9 Testfälle. Reine Funktionslogik-Tests für das noch nicht existierende Modul `src/game/verbindungsRetry.js` (vorgeschlagene API: `mitVerbindungsRetry(aufgabe, optionen)`, `istTransienterVerbindungsFehler(err)`). Deckt ab: Fehlererkennung über Text UND Fehlercode (Pre-Mortem-Risiko 6), Retry-Erfolgstest (AK1), sichtbare Zwischenmeldung über `onRetry`-Callback (AK3, Pre-Mortem-Risiko 3), Obergrenze bei echtem Offline-Fall ohne Endlosschleife (AK2, Pre-Mortem-Risiko 1), sofortige Durchreichung regulärer Fehler ohne Verzögerung (AK6, Pre-Mortem-Risiko 7).
+- `tests/game-connection-retry.integration.test.js` – 11 Testfälle. Nutzt eine selbstgebaute In-Memory-Firestore-Attrappe (in der Datei selbst, exakt die von `joinGame.js`/`createGame.js`/`teilnehmerSession.js` genutzte API-Teilmenge) mit konfigurierbarem Fehlerplan pro Dokumentpfad, um einen einmaligen bzw. dauerhaften Verbindungsfehler gezielt zu injizieren – läuft gegen die ECHTEN, bereits existierenden Module. Deckt ab: Beitritt trotz einmaligem Fehler im Vorab-Check UND separat in der Transaktion (AK1), Echt-offline-Fall mit begrenzter Versuchsanzahl (AK2), automatisches Wiederbetreten trotz Fehler im eigenen Vorab-Read UND im anschließenden `joinGame()` (AK4), Host-Erstellungspfad (AK7), Kein-Doppel-Vergabe-Test unter Retry (Pre-Mortem-Risiko 2, kombiniert mit der bestehenden Idempotenz aus dem Bugfix vom 2026-07-20). Eigener Abschnitt "Regressionsfundament reguläre Fehlerfälle" (4 Testfälle: ungültiger Code, ungültige Rolle, Stationen belegt, Spiel inaktiv) ist bewusst bereits jetzt grün (AK6, Pre-Mortem-Risiko 7) – dokumentiert den unveränderten Ist-Zustand als Regressionsbasis.
+- `tests/game-connection-retry.static.test.js` – 4 Testfälle. Textmuster-Prüfung (gleiches Vorgehen wie `tests/game-a11y-static.test.js`) direkt gegen die echten Dateien: gleich hohe Trefferzahl der Verbindungsfehler-Erkennung in beiden Kopien von `joinGame.js`, `teilnehmerSession.js`, `createGame.js` (Pre-Mortem-Risiko 4), sowie eine erkennbare Behandlung innerhalb von `pruefeStationsVerfuegbarkeit()` in `spiel.html` statt des heutigen unterschiedslosen stillen Fallbacks (AK3, AK6, geklärte Frage 2).
+
+**Status:** Alle 24 neuen Testfälle real gegen Jest ausgeführt und wie erwartet ROT bestätigt (`game-connection-retry.logic.test.js`: Modul-Ladefehler "Cannot find module '../src/game/verbindungsRetry'"; `game-connection-retry.integration.test.js`: 7 echte Assertion-/Verhalens-Fehlschläge gegen die real existierenden, noch unveränderten Module, Fehler jeweils bis zum tatsächlichen unretried `.get()`-Aufruf in `joinGame.js`/`createGame.js`/`teilnehmerSession.js` zurückverfolgbar; `game-connection-retry.static.test.js`: 4 echte Assertion-Fehlschläge) – die zugehörige Funktionalität existiert noch nicht, das ist der gewünschte Zustand. Der Regressionsfundament-Abschnitt (4 Testfälle) sowie die bestehenden Suiten `game-a11y-static.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-evaluation.logic.test.js` wurden zusätzlich real gegen Jest laufen lassen und bleiben unverändert grün (28/28) – kein Bruch durch die neuen Dateien, da ausschließlich neue, eigenständige Testdateien hinzugefügt wurden (keine bestehende Datei verändert). Bereit für `flow-game-impl`.
+
+**Bewusst nicht neu geschrieben:** Die im Testplan-Grundgerüst erwähnten Regressionstests gegen FEATURE-001/002/005 (`tests/game-rooms.logic.test.js`, `tests/game-rejoin.logic.test.js` u. a.) existieren bereits vollständig und werden nicht dupliziert – sie müssen nach der Implementierung unverändert grün bleiben (Emulator-Lauf durch Stephan, wie bisher).
+
+---
+
+#### Implementierung (flow-game-impl, 2026-07-21)
+
+**Neues Modul (Option A aus der Analyse-Spec, wie freigegeben):** `src/game/verbindungsRetry.js` + Browser-Kopie `public/js/game/verbindungsRetry.js`, jeweils exportiert als `mitVerbindungsRetry(aufgabe, optionen)` und `istTransienterVerbindungsFehler(err)` – exakt die in der BDD-Phase vorgeschlagene API, keine Abweichung. `istTransienterVerbindungsFehler()` erkennt sowohl `err.code === 'unavailable'/'deadline-exceeded'` als auch den Fehlertext `/client is offline/i` (Pre-Mortem-Risiko 6). `mitVerbindungsRetry()` nutzt als Produktions-Voreinstellung `maxVersuche: 4`, `basisWartezeitMs: 400` (linear wachsend: 400/800/1200 ms zwischen den Versuchen, letzter Fehler wird nach Ausschöpfen unverändert erneut geworfen – Pre-Mortem-Risiko 1). Diese Zahlen sind eine reine Implementierungsdetail-Einschätzung (wie in der Spec als "keine Grundsatzfrage" vermerkt), keine Rückfrage an Stephan nötig.
+
+**Geänderte Dateien (alle vier Fundstellen aus dem freigegebenen Scope, kein Teil-Scope):**
+- `src/game/joinGame.js` + `public/js/game/joinGame.js`: Vorab-Check (`Promise.all([spielRef.get(), teilnehmerRef.get()])`) und die gesamte Beitritts-Transaktion (`db.runTransaction(...)`) jeweils einzeln mit `mitVerbindungsRetry()` umschlossen. `joinGame()` hat jetzt einen optionalen dritten Parameter `retryOptionen` (Default `{}`), rückwärtskompatibel zu allen bestehenden Aufrufstellen. Die Idempotenz-Prüfung (`teilnehmerSnap.exists`, Bugfix 2026-07-20) bleibt unverändert *innerhalb* der (jetzt wiederholbaren) Transaktion – ein Retry der ganzen Transaktion ist unbedenklich, weil Firestore-Transaktionen ihre Schreibvorgänge erst am Ende atomar committen; schlägt `tx.get()` fehl, wurde noch nichts geschrieben.
+- `src/game/teilnehmerSession.js` + `public/js/game/teilnehmerSession.js`: der eigene `teilnehmerRef.get()`-Vorab-Lesevorgang in `restoreTeilnehmerSession()` mit `mitVerbindungsRetry()` umschlossen; `retryOptionen` wird zusätzlich an den nachfolgenden `joinGame()`-Aufruf durchgereicht, damit auch dessen interne Retries dieselbe `onRetry`-Rückmeldung auslösen.
+- `src/game/createGame.js` + `public/js/game/createGame.js`: `db.runTransaction(...)` innerhalb der bestehenden Code-Kollisions-Retry-Schleife mit `mitVerbindungsRetry()` umschlossen. Die CODE_KOLLISION-Schleife bleibt unberührt, weil `istTransienterVerbindungsFehler()` diesen Fehler (kein `err.code`, kein passender Text) nicht als transient erkennt und ihn sofort unverändert durchreicht – der äußere `try/catch` in `createGame()` greift wie bisher.
+- `public/spiel.html`: `pruefeStationsVerfuegbarkeit()` liest jetzt über `window.FlowGame.mitVerbindungsRetry(...)` statt direkt über `db...get()`; der bisherige stille Fallback (`rollenFeld.hidden = true`) bleibt nur noch als letzter Auffangzustand nach Ausschöpfen aller Versuche bzw. bei echten fachlichen Fehlern (unbekannter Code) bestehen. Neue sichtbare Zwischenmeldung `zeigeVerbindungsRetryHinweis()`/`versteckeVerbindungsRetryHinweis()` (Pre-Mortem-Risiko 3, AK3) nutzt bewusst dasselbe bestehende `verbindungsHinweis`-Element/-Muster aus FEATURE-005 (`aktualisiereVerbindungsHinweis()`/`verbindungsStatus.js`) statt ein neues UI-Element einzuführen; verdrahtet an allen vier Aufrufstellen (`formErstellen`-Submit → `createGame`, `formBeitreten`-Submit → `joinGame`, automatischer Rejoin in `init()` → `restoreTeilnehmerSession`, `pruefeStationsVerfuegbarkeit()`). Skript-Ladereihenfolge angepasst: `js/game/verbindungsRetry.js` wird jetzt als allererstes Spielmodul geladen (vor `createGame.js`), weil sowohl `createGame.js` als auch `joinGame.js` `window.FlowGame.mitVerbindungsRetry` bereits beim eigenen IIFE-Aufruf referenzieren.
+
+**Echtes, während der Umsetzung gefundenes Problem (nicht nur behauptet):** Die ursprünglich naheliegende Reihenfolge (`verbindungsRetry.js` irgendwo einbinden) hätte zu einem `TypeError: Cannot read properties of undefined (reading 'mitVerbindungsRetry')` geführt, weil `public/js/game/createGame.js` das erste Skript ist, das `window.FlowGame` überhaupt anlegt (`global.FlowGame = global.FlowGame || {}` steht dort ganz am Ende der Datei) – vorher existiert `window.FlowGame` gar nicht. Gelöst, indem `verbindungsRetry.js` als neues, allererstes `<script>` vor `createGame.js` eingebunden wird und selbst ebenfalls defensiv `global.FlowGame = global.FlowGame || {}` initialisiert. Rein durch Nachlesen der bestehenden Lade-Reihenfolge gefunden, nicht erst live im Browser (siehe "Was jetzt noch fehlt" unten – der echte Browser-Test steht noch aus).
+
+**Testergebnis:**
+- Alle 24 BDD-Testfälle real gegen Jest ausgeführt und GRÜN: `game-connection-retry.logic.test.js` (9/9), `game-connection-retry.integration.test.js` (11/11, inkl. Kein-Doppel-Vergabe-Test unter Retry gegen die bestehende Idempotenz), `game-connection-retry.static.test.js` (4/4, inkl. Treffer-Gleichstand zwischen beiden Dateikopien in allen drei betroffenen Modulen).
+- Während der Umsetzung musste die statische Trefferzahl in `public/js/game/teilnehmerSession.js` einmal nachjustiert werden (ein zusätzliches, nicht in der Node-Kopie vorhandenes Vorkommen von „client is offline" im Kopfkommentar) – auf eine Formulierung ohne den Erkennungstext umformuliert, damit beide Kopien exakt gleich oft treffen (Pre-Mortem-Risiko 4). Kein Verhaltensunterschied, reine Kommentar-Textänderung.
+- Regressionstest gegen alle Tickets im Abschnitt „✅ Done" (FEATURE-001, FEATURE-002, FEATURE-003, FEATURE-005, TASK-001, TASK-002 – nicht nur die im Auftrag genannten drei, siehe Hinweis unten): alle **nicht** vom Firestore-Emulator/Live-Netzwerk abhängigen Bestandssuiten real gegen Jest ausgeführt und unverändert GRÜN geblieben (59/59): `game-a11y-static.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-evaluation.logic.test.js`, `game-round4.logic.test.js`.
+- **Nicht selbst ausführbar (Sandbox-Netzwerk-Allowlist, dieselbe bereits in FEATURE-002/004 dokumentierte Einschränkung):** `tests/game-rooms.logic.test.js` und `tests/game-rejoin.logic.test.js` (FEATURE-001/FEATURE-005, direkt betroffener Code) sowie `tests/game-round.*`/`tests/game-evaluation.security.rules.test.js`/`tests/game-round4.security.rules.test.js` benötigen den Firestore-Emulator – ein Downloadversuch wurde real ausgeführt und schlug wie erwartet mit „Connection blocked by network allowlist" fehl (kein Umgehungsversuch). `tests/deploy-regression.test.js`/`tests/feature-002-deploy-regression.test.js` benötigen echten Netzwerkzugriff auf die Live-URL, real ausprobiert, ebenfalls blockiert (`getaddrinfo EAI_AGAIN`). Diese Läufe stehen bei Stephan noch aus (siehe „Was jetzt noch fehlt").
+- **Hinweis zur Diskrepanz im Auftrag:** Der Arbeitsauftrag nannte als aktuell abgenommene Tickets nur FEATURE-001/TASK-001/TASK-002; tatsächlich stehen in Backlog.md, Abschnitt „✅ Done", zusätzlich FEATURE-002, FEATURE-003 und FEATURE-005 mit Status „Done". Da BUGFIX-001 laut eigener Spec ausdrücklich auch FEATURE-002 (Idempotenz) und FEATURE-005 (Rejoin/Verbindungshinweis) unmittelbar berührt, wurde der Regressionstest auf alle sechs tatsächlich als Done markierten Tickets ausgeweitet, nicht nur auf die im Auftrag genannten drei.
+
+**Abweichung von der vorgeschlagenen BDD-Test-API:** Keine. `mitVerbindungsRetry(aufgabe, optionen)` und `istTransienterVerbindungsFehler(err)` wurden exakt wie in den Testdateien vorgeschlagen implementiert (Modul, Funktionsnamen, Parameterreihenfolge, Fehlercodes `unavailable`/`deadline-exceeded`). Keine Testdatei musste nachträglich angepasst werden, um grün zu werden.
+
+**Emulator-Regressionslauf (Stephan, 2026-07-21):**
+- `npm run test:emulator` (FEATURE-001/002/003, Sicherheitsregeln + Logik): 7 Testsuiten, 103/103 grün.
+- `npm run test:emulator:feature-005` (Rejoin-Mechanismus, direkt von diesem Fix berührt): 8/8 grün, inklusive der beiden hier besonders relevanten Fälle (Idempotenz beim Rejoin, unabhängige Host-/Teilnehmenden-Zustände).
+- Damit vollständige Regression gegen alle sechs Done-Tickets real bestätigt (kein Teil mehr nur behauptet).
+
+**Deploy:** Commit `1c4c4af`, GitHub-Actions-Lauf „Deploy to Firebase Hosting on merge" #24 – Status „Success" (34s). Live auf https://flow-game-19f01.web.app.
+
+**Echter Browser-Test (Stephan, 2026-07-21):** Cross-Device-Test wie ursprünglich im Bug beschrieben war praktisch nicht durchführbar, weil Safaris automatische Host-Session-Wiederherstellung (FEATURE-001) einen neuen Tab/Hard-Reset in derselben Safari-Instanz nie „frisch" macht (Origin-Speicher wird immer geteilt, unabhängig von Tab/Reload). Stattdessen in einem privaten Safari-Fenster getestet (eigener, isolierter Speicherbereich – technisch exakt die ursprüngliche Fehlerbedingung: kein vorhandener Firestore-Cache). **Ergebnis: Beitritt gelang ohne den „client is offline"-Fehler.** Das ursprünglich gemeldete Problem ist damit real im Live-Betrieb bestätigt behoben, nicht nur durch Tests.
+
+**Zusätzliche Beobachtung beim manuellen Test (kein Teil des ursprünglichen Bugs):** Beim Klick auf „Beitreten" tritt eine spürbare Verzögerung *ohne jede Fehlermeldung* auf (bestätigt: normale Wartezeit, nicht der neue Retry-Fall) – es gibt aktuell keine allgemeine Ladeanzeige während des Beitretens, unabhängig vom Verbindungsfehler-Fix. Als eigenständiges Ticket BUGFIX-002 im ToDo-Abschnitt aufgenommen (nicht Teil des BUGFIX-001-Scopes).
+
+**Alle drei Freigabe-Gates durchlaufen, Status von Stephan am 2026-07-21 explizit auf Done bestätigt.**
+
+---
 
 ### FEATURE-005 Phase 5 – Robustheit
 

@@ -23,10 +23,14 @@
 
   async function wechsleZurNaechstenRunde({ code, vonRunde }, db) {
     if (typeof vonRunde !== 'number') {
-      throw new Error('vonRunde ist erforderlich.');
+      const fehler = new Error('vonRunde ist erforderlich.');
+      fehler.code = 'VON_RUNDE_ERFORDERLICH';
+      throw fehler;
     }
     if (vonRunde >= 4) {
-      throw new Error('Runde 4 ist die letzte Runde - kein weiterer Wechsel möglich.');
+      const fehler = new Error('Runde 4 ist die letzte Runde - kein weiterer Wechsel möglich.');
+      fehler.code = 'UNBEKANNTE_RUNDE';
+      throw fehler;
     }
     if (vonRunde === 3) {
       return global.FlowGame.starteRundeVier({ code }, db);

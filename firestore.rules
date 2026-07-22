@@ -90,6 +90,33 @@ service cloud.firestore {
         .hasOnly(['ergebnisseFreigegeben', 'ergebnisseFreigegebenAm']);
     }
 
+    // FEATURE-006: Spielweites Sprachfeld `sprache` auf spiele/{spielId}
+    // (Option A, siehe Backlog.md FEATURE-006, Pre-Mortem-Risiko 3, AK 8/9).
+    // Analog zum Freigabe-Feld-Muster oben: eine generische Update-Regel
+    // erlaubte vor FEATURE-006 JEDER teilnehmenden Person, beliebige neue
+    // Felder wie `sprache` zu setzen – das würde eine nicht-hostende Person
+    // in die Lage versetzen, die für ALLE Rollen gemeinsam geltende Sprache
+    // eigenmächtig umzuschalten. Nur der Host darf dieses Feld ändern, auch
+    // während das Spiel bereits läuft (AK 9) – unabhängig vom Rundenstatus,
+    // anders als z. B. die Freigabe-Felder oben, die zusätzlich verlangen,
+    // dass die letzte Runde bereits beendet ist.
+    function spracheFeldBetroffen() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['sprache']);
+    }
+
+    // Deckt sowohl den Normalfall (kein sprache-Feld im Update, also nichts
+    // zu prüfen) als auch den geschützten Fall ab: nur der Host, ausschliess-
+    // lich das sprache-Feld selbst (kein Huckepack mit anderen Feldern,
+    // Pre-Mortem-Risiko 3), und nur einer der beiden unterstützten Werte.
+    function spracheAenderungErlaubt(spielId) {
+      return !spracheFeldBetroffen()
+        || (
+          istHost(spielId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sprache'])
+          && request.resource.data.sprache in ['de', 'en']
+        );
+    }
+
     // Pre-Mortem Risiko 3: Freigabe nur zulassen, wenn die zuletzt gespielte
     // Runde (spiele/{spielId}.aktuelleRunde, von rundenStart.js bei jedem
     // Rundenstart/-wechsel gesetzt) bereits vollständig beendet ist
@@ -419,6 +446,13 @@ service cloud.firestore {
       allow update: if istTeilnehmer(spielId) && istAktiv(resource.data)
         && request.resource.data.code == resource.data.code
         && !('hostKennung' in request.resource.data.keys())
+        // FEATURE-006: sprache darf ausschliesslich vom Host geändert werden
+        // (siehe spracheAenderungErlaubt() oben) – als eigenständige,
+        // zusätzliche Bedingung, unabhängig von den Freigabe-Fällen A/B
+        // unten, damit auch ein Huckepack-Versuch (sprache gebündelt mit
+        // einer sonst erlaubten Aktualisierung wie letzteAktivitaet) durch
+        // eine Nicht-Host-Person zuverlässig abgelehnt wird.
+        && spracheAenderungErlaubt(spielId)
         && (
           // Fall A: normale Aktualisierung – Freigabe-Felder bleiben dabei
           // unangetastet, unverändertes Verhalten aus FEATURE-001/FEATURE-002.

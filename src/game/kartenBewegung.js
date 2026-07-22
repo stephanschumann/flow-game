@@ -26,13 +26,19 @@ async function bewegeKarte({
   simuliereVerbindungsabbruch,
 }) {
   if (typeof vonPosition !== 'number' || typeof nachPosition !== 'number') {
-    throw new Error('vonPosition und nachPosition sind erforderlich.');
+    const fehler = new Error('vonPosition und nachPosition sind erforderlich.');
+    fehler.code = 'POSITION_FEHLT';
+    throw fehler;
   }
   if (nachPosition !== vonPosition + 1) {
-    throw new Error('Nur ein Schritt vorwärts erlaubt – Stationen können nicht übersprungen werden.');
+    const fehler = new Error('Nur ein Schritt vorwärts erlaubt – Stationen können nicht übersprungen werden.');
+    fehler.code = 'NUR_EIN_SCHRITT';
+    throw fehler;
   }
   if (nachPosition > 6) {
-    throw new Error('Position 6 (Ziel) ist die letzte gültige Position.');
+    const fehler = new Error('Position 6 (Ziel) ist die letzte gültige Position.');
+    fehler.code = 'POSITION_MAX';
+    throw fehler;
   }
 
   let runde = holeRunde(code, rundenNummer);

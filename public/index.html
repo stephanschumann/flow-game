@@ -30,27 +30,90 @@
   .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)} .btn.ghost:hover{color:var(--text);border-color:var(--dim)}
   .stage{margin-top:32px;animation:rise .45s cubic-bezier(.2,.7,.2,1)}
   @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  /* FEATURE-006: Sprachumschalter - vor Beitritt/Erstellen eines Spiels eine
+     rein lokale Personen-Vorliebe (kein Spiel-Dokument vorhanden), siehe
+     public/spiel.html für den spielweiten, host-gesteuerten Fall. */
+  .sprach-umschalter{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .sprach-umschalter select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:6px 10px;font-size:13px;font-family:inherit}
 </style>
 </head>
 <body>
 <div class="hud"><div class="hud-in">
   <div class="brand">FLOW <b>GAME</b></div>
+  <div class="sprach-umschalter">
+    <label for="sprach-auswahl" id="sprach-label" class="muted" style="text-transform:uppercase;font-size:11px;letter-spacing:.06em">Sprache</label>
+    <select id="sprach-auswahl" aria-label="Sprache wählen">
+      <option value="en">English</option>
+      <option value="de">Deutsch</option>
+    </select>
+  </div>
 </div></div>
 <div class="wrap">
   <div class="stage">
     <div class="hero">
-      <div class="logo">Ein Lernspiel zu Flow, Batchsizing und Kontextwechsel</div>
-      <h1>FLOW&nbsp;GAME</h1>
-      <div class="tag">Grundgerüst live — die eigentliche Spiellogik folgt in den nächsten Phasen.</div>
+      <div class="logo" id="label-kicker">Ein Lernspiel zu Flow, Batchsizing und Kontextwechsel</div>
+      <h1 id="label-titel">FLOW&nbsp;GAME</h1>
+      <div class="tag" id="label-tag">Grundgerüst live — die eigentliche Spiellogik folgt in den nächsten Phasen.</div>
       <div style="margin-top:22px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <a href="spiel.html" class="btn primary" style="text-decoration:none;display:inline-block">Spiel erstellen oder beitreten</a>
+        <a href="spiel.html" class="btn primary" id="label-cta" style="text-decoration:none;display:inline-block">Spiel erstellen oder beitreten</a>
       </div>
     </div>
-    <div class="panel" style="text-align:center;color:var(--muted);font-size:15px">
+    <div class="panel" style="text-align:center;color:var(--muted);font-size:15px" id="label-hinweis-panel">
       Diese Seite bestätigt: Hosting, Deploy-Pipeline und Design-Übernahme aus „Agent Contract" funktionieren (Phase 0, Teil 1).
     </div>
   </div>
 </div>
+<!-- FEATURE-006: uebersetzungen.js liefert window.FlowGame.uebersetze()/
+     UEBERSETZUNGEN für die zentrale Text-/Schlüssel-Tabelle (siehe
+     src/i18n/uebersetzungen.js, muss synchron gehalten werden). Diese Seite
+     hat noch kein Spiel-Dokument (kein Host/keine spielweite Sprache) -
+     Sprachwahl ist hier eine rein lokale, in localStorage gespeicherte
+     Personen-Vorliebe, dieselbe wie der Startzustand des Umschalters in
+     spiel.html. -->
+<script src="js/i18n/uebersetzungen.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const SPRACHE_LOCALSTORAGE_KEY = 'flowGameSpracheVorliebe';
+  const sprachAuswahl = document.getElementById('sprach-auswahl');
+  let aktuelleSprache = 'en';
+  try {
+    const gespeichert = localStorage.getItem(SPRACHE_LOCALSTORAGE_KEY);
+    if (gespeichert === 'de' || gespeichert === 'en') {
+      aktuelleSprache = gespeichert;
+    }
+  } catch (err) { /* localStorage evtl. nicht verfügbar - Default bleibt "en" */ }
+
+  function t(schluessel) {
+    return window.FlowGame.uebersetze(schluessel, aktuelleSprache);
+  }
+
+  function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function wendeSpracheAn() {
+    document.documentElement.lang = aktuelleSprache;
+    sprachAuswahl.value = aktuelleSprache;
+    setText('sprach-label', t('sprachumschalter.label'));
+    setText('label-kicker', t('startseite.kicker'));
+    setText('label-titel', t('startseite.titel'));
+    setText('label-tag', t('startseite.tag'));
+    setText('label-cta', t('startseite.cta'));
+    setText('label-hinweis-panel', t('startseite.hinweisPanel'));
+  }
+
+  sprachAuswahl.addEventListener('change', function () {
+    aktuelleSprache = sprachAuswahl.value;
+    try { localStorage.setItem(SPRACHE_LOCALSTORAGE_KEY, aktuelleSprache); } catch (err) { /* nicht kritisch */ }
+    wendeSpracheAn();
+  });
+
+  wendeSpracheAn();
+})();
+</script>
 </body>
 </html>
 
