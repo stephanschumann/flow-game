@@ -302,6 +302,16 @@ describe('FEATURE-002 Sicherheitsregeln: Stapel-Tor je Runde', () => {
     await assertSucceeds(zug);
   });
 
+  // KORREKTUR (BUGFIX-008, 2026-07-23, nachträglich - von Stephan bestätigt):
+  // Wie beim Testfall oben ("geöffnetem Stapel-Tor ... durch die ABGEBENDE
+  // Station") testete auch dieser Fall bislang unbeabsichtigt mit der
+  // EMPFANGENDEN Station (spieler-station-2) als Akteurin, obwohl es hier
+  // eigentlich nur um die Stapel-Tor-Logik (wie viele Karten je Stapel
+  // angekommen sein müssen) geht, nicht um die Frage, wer den Zug auslösen
+  // darf. Akteurin auf die tatsächlich zuständige, ABGEBENDE Station
+  // (spieler-station-1) umgestellt - Testaussage (Stapel-Tor-Verhalten)
+  // bleibt unverändert, nur der zuvor übersehene inkorrekte Akteur wurde
+  // korrigiert.
   test('Szenario Runde 2: Stapel A vollständig (3) an Station 1, Stapel B unvollständig → Stapel-A-Karte darf weiter, Stapel-B-Karte nicht', async () => {
     // Given: Runde 2, karte-1/2/3 = Stapel A (alle an Station 1), karte-4/5/6 = Stapel B (im Auftragseingang), DoR abgeschlossen
     const code = await seedGame({
@@ -315,42 +325,48 @@ describe('FEATURE-002 Sicherheitsregeln: Stapel-Tor je Runde', () => {
     for (let i = 1; i <= 3; i++) await setzeKartenPosition(code, 2, `karte-${i}`, 1);
     // Eine Karte aus Stapel B ist ebenfalls schon an Station 1, aber noch nicht alle drei
     await setzeKartenPosition(code, 2, 'karte-4', 1);
-    const stationZwei = testEnv.authenticatedContext('spieler-station-2');
+    const stationEins = testEnv.authenticatedContext('spieler-station-1');
     // WICHTIG: .firestore() genau EINMAL pro Kontext aufrufen und die Instanz
     // wiederverwenden (siehe Kommentar beim Regressionstest weiter unten) -
     // dieser Testfall rief sie bisher zweimal auf (einmal je Zug) und loeste
     // dadurch denselben "Firestore has already been started"-Fehler aus.
-    const dbStationZwei = stationZwei.firestore();
+    const dbStationEins = stationEins.firestore();
 
-    // When: Die Person an Station 2 bewegt eine Stapel-A-Karte weiter
-    const zugA = updateDoc(doc(dbStationZwei, `spiele/${code}/runden/2/karten/karte-1`), {
+    // When: Die Person an Station 1 (die tatsächlich abgebende Station) bewegt eine Stapel-A-Karte weiter
+    const zugA = updateDoc(doc(dbStationEins, `spiele/${code}/runden/2/karten/karte-1`), {
       position: 2,
-      letzteBewegungVon: 'spieler-station-2',
+      letzteBewegungVon: 'spieler-station-1',
       letzteBewegungAm: serverTimestamp(),
     });
     // Then: Der Zug für Stapel A wird angenommen
     await assertSucceeds(zugA);
 
-    // When: Die Person an Station 2 versucht, die einzelne angekommene Stapel-B-Karte weiterzubewegen
-    const zugB = updateDoc(doc(dbStationZwei, `spiele/${code}/runden/2/karten/karte-4`), {
+    // When: Die Person an Station 1 versucht, die einzelne angekommene Stapel-B-Karte weiterzubewegen
+    const zugB = updateDoc(doc(dbStationEins, `spiele/${code}/runden/2/karten/karte-4`), {
       position: 2,
-      letzteBewegungVon: 'spieler-station-2',
+      letzteBewegungVon: 'spieler-station-1',
       letzteBewegungAm: serverTimestamp(),
     });
     // Then: Der Zug für Stapel B wird abgelehnt (nur 1 von 3 Stapel-B-Karten angekommen)
     await assertFails(zugB);
   });
 
-  test('Szenario Runde 3: Eine einzelne angekommene Karte genügt, damit die nächste Station sie weiterbewegen darf', async () => {
+  // KORREKTUR (BUGFIX-008, 2026-07-23, nachträglich - von Stephan bestätigt):
+  // Dieselbe Korrektur wie bei den beiden Testfällen oben - Akteurin von der
+  // EMPFANGENDEN Station (spieler-station-2) auf die tatsächlich zuständige,
+  // ABGEBENDE Station (spieler-station-1) umgestellt. Testaussage (ein
+  // einzelnes angekommenes Element genügt für das Stapel-Tor in Runde 3)
+  // bleibt unverändert.
+  test('Szenario Runde 3: Eine einzelne angekommene Karte genügt, damit die abgebende Station sie weiterbewegen darf', async () => {
     // Given: Runde 3, DoR abgeschlossen, genau eine Karte ist an Station 1 angekommen
     const code = await seedGame({ runde: 3, dorAbgeschlossen: true });
     await setzeKartenPosition(code, 3, 'karte-1', 1);
-    const stationZwei = testEnv.authenticatedContext('spieler-station-2');
+    const stationEins = testEnv.authenticatedContext('spieler-station-1');
 
-    // When: Die Person an Station 2 bewegt diese einzelne Karte weiter
-    const zug = updateDoc(doc(stationZwei.firestore(), `spiele/${code}/runden/3/karten/karte-1`), {
+    // When: Die Person an Station 1 (die tatsächlich abgebende Station) bewegt diese einzelne Karte weiter
+    const zug = updateDoc(doc(stationEins.firestore(), `spiele/${code}/runden/3/karten/karte-1`), {
       position: 2,
-      letzteBewegungVon: 'spieler-station-2',
+      letzteBewegungVon: 'spieler-station-1',
       letzteBewegungAm: serverTimestamp(),
     });
 
