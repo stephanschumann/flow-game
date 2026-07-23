@@ -1213,7 +1213,12 @@
     if (!aktuelleRundenDaten || !aktuelleRundenDaten.dorAbgeschlossen) return false;
     if (eigeneStationsNummer === null) return false; // Host/Beobachtende
     const nachPosition = vonPosition + 1;
-    const istZustaendig = eigeneStationsNummer === vonPosition || eigeneStationsNummer === nachPosition;
+    // BUGFIX-008: Die empfangende Station darf nur beim Auftragseingang-
+    // Sonderfall (vonPosition === 0, Station 1 holt die erste Karte aktiv
+    // ab) zuständig sein, sonst ausschließlich die tatsächlich abgebende
+    // Station (Server-Pendant: firestore.rules, bewegungErlaubt()).
+    const istZustaendig = eigeneStationsNummer === vonPosition
+      || (vonPosition === 0 && eigeneStationsNummer === nachPosition);
     if (!istZustaendig) return false;
     return window.FlowGame.stapelTorOffen({
       rundenNummer, vonPosition, stapel: karte.stapel || null, karten: aktuelleKartenListe,

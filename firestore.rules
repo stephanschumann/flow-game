@@ -202,11 +202,16 @@ service cloud.firestore {
         || anzahlAnPosition(spielId, runde, vonPosition, stapel) >= stapelTorSchwelle(runde);
     }
 
-    // Bewegung ist erlaubt, wenn entweder die abgebende Station (Quelle,
-    // "abgebende Station löst die Bewegung aus", Entscheidung 2026-07-18)
-    // ODER die empfangende Station (Ziel – Sonderfall Auftragseingang, wo es
-    // niemanden "Abgebendes" gibt: Station 1 holt sich die erste Karte
-    // aktiv ab) mit der bewegenden Person übereinstimmt.
+    // Bewegung ist erlaubt, wenn die abgebende Station (Quelle, "abgebende
+    // Station löst die Bewegung aus", Entscheidung 2026-07-18) mit der
+    // bewegenden Person übereinstimmt. Die einzige Ausnahme ist der
+    // Auftragseingang-Sonderfall (vonPosition == 0): dort gibt es niemanden
+    // "Abgebendes", deshalb darf dort ausnahmsweise die empfangende Station
+    // (Station 1) die Bewegung selbst auslösen. BUGFIX-008: Diese Ausnahme
+    // galt zuvor fälschlich für JEDEN Übergang statt nur für den
+    // Auftragseingang-Sonderfall, wodurch auch jede andere empfangende
+    // Station Karten an sich ziehen konnte, die noch bei der vorgelagerten
+    // Station lagen.
     function bewegungErlaubt(spielId, runde, kartenId) {
       let mitgliedStation = get(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data.get('station', null);
       let vonPosition = resource.data.position;
@@ -218,7 +223,7 @@ service cloud.firestore {
         && request.resource.data.letzteBewegungVon == request.auth.uid
         && request.resource.data.letzteBewegungAm == request.time
         && request.resource.data.get('stapel', null) == vorherigerStapel
-        && (mitgliedStation == vonPosition || mitgliedStation == nachPosition)
+        && (mitgliedStation == vonPosition || (vonPosition == 0 && mitgliedStation == nachPosition))
         && stapelTorOffen(spielId, runde, vonPosition, vorherigerStapel);
     }
 

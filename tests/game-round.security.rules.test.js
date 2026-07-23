@@ -275,16 +275,26 @@ describe('FEATURE-002 Sicherheitsregeln: Stapel-Tor je Runde', () => {
     await assertFails(zug);
   });
 
-  test('Szenario Runde 1: Bewegung bei geöffnetem Stapel-Tor (alle 6 an Station 1) wird angenommen', async () => {
+  // KORREKTUR (BUGFIX-008, flow-game-bdd, 2026-07-23): Dieser Testfall testete
+  // bislang fälschlich mit der EMPFANGENDEN Station (spieler-station-2) als
+  // Akteurin und bestätigte damit unbeabsichtigt genau das real gemeldete
+  // Fehlverhalten als "korrekt" (siehe Analyse-Spec, "Ausgangslage",
+  // fünfter Punkt). Die bewegende Person muss die tatsächlich zuständige,
+  // ABGEBENDE Station sein (spieler-station-1) — der bisherige Fall
+  // (Station 2 zieht die Karte an sich) wird jetzt als eigener, expliziter
+  // Regressionstest gegen den Bug weiter unten separat mit assertFails
+  // geprüft (siehe describe-Block "BUGFIX-008 Sicherheitsregeln"), nicht
+  // mehr hier mit assertSucceeds.
+  test('Szenario Runde 1: Bewegung bei geöffnetem Stapel-Tor (alle 6 an Station 1) durch die ABGEBENDE Station wird angenommen', async () => {
     // Given: Alle sechs Karten sind an Station 1 angekommen, DoR abgeschlossen
     const code = await seedGame({ runde: 1, dorAbgeschlossen: true });
     for (let i = 1; i <= 6; i++) await setzeKartenPosition(code, 1, `karte-${i}`, 1);
-    const stationZwei = testEnv.authenticatedContext('spieler-station-2');
+    const stationEins = testEnv.authenticatedContext('spieler-station-1');
 
-    // When: Die Person an Station 2 bewegt Karte 1 weiter
-    const zug = updateDoc(doc(stationZwei.firestore(), `spiele/${code}/runden/1/karten/karte-1`), {
+    // When: Die Person an Station 1 (die tatsächlich abgebende Station) bewegt Karte 1 weiter
+    const zug = updateDoc(doc(stationEins.firestore(), `spiele/${code}/runden/1/karten/karte-1`), {
       position: 2,
-      letzteBewegungVon: 'spieler-station-2',
+      letzteBewegungVon: 'spieler-station-1',
       letzteBewegungAm: serverTimestamp(),
     });
 
@@ -347,6 +357,87 @@ describe('FEATURE-002 Sicherheitsregeln: Stapel-Tor je Runde', () => {
     // Then: Der Zug wird angenommen (Stapel-Tor Runde 3 = 1)
     await assertSucceeds(zug);
   });
+});
+
+// BUGFIX-008 (flow-game-bdd, 2026-07-23): Given/When/Then-Testfälle für die
+// freigegebene Spec in Backlog.md ("### BUGFIX-008"), Akzeptanzkriterien
+// 1-5 (AK6/Runde 4 ist nicht betroffen, siehe Analyse-Spec — dafür gilt
+// stattdessen der unveränderte Bestand von tests/game-round4.*.test.js als
+// Regressionsnachweis, siehe Testplan im Ticket).
+//
+// WICHTIG – bewusst ROT: `bewegungErlaubt()` in firestore.rules (Zeile
+// ~210-223) erlaubt heute noch unverändert auch der EMPFANGENDEN Station
+// (mitgliedStation == nachPosition) jeden Übergang auszulösen, nicht nur den
+// Auftragseingang-Sonderfall (vonPosition == 0) — siehe Analyse-Spec,
+// "Ausgangslage / Brainstorming & Example Mapping". Die beiden
+// assertFails-Testfälle unten würden heute mit einem echten
+// Assertion-Fehlschlag ROT laufen (Firestore lehnt den Zug bislang nicht
+// ab, weil die Regel ihn fälschlich erlaubt) — genau der real gemeldete
+// Bug, jetzt als automatisierter Regressionstest kodiert. Diese Suite ist
+// in dieser Sandbox mangels Firestore-Emulator-Zugriff nicht ausführbar
+// (siehe Testergebnis-Abschnitt im Ticket) — Stephan muss
+// `npm run test:emulator:feature-002` einmal lokal laufen lassen, um das
+// erwartete ROT tatsächlich zu bestätigen, bevor `flow-game-impl` startet.
+describe('BUGFIX-008 Sicherheitsregeln: Nur die abgebende Station darf eine Kartenbewegung auslösen (nicht die empfangende, außer beim Auftragseingang-Sonderfall)', () => {
+  test('Szenario Runde 1: Bewegung durch die EMPFANGENDE Station (statt der abgebenden) wird abgelehnt (AK2, AK3 — direkter Regressionstest gegen den real gemeldeten Bug, Station 5 zog fälschlich eine Karte von Station 4 an sich)', async () => {
+    // Given: Alle sechs Karten sind an Station 1 angekommen, DoR abgeschlossen, Stapel-Tor offen
+    const code = await seedGame({ runde: 1, dorAbgeschlossen: true });
+    for (let i = 1; i <= 6; i++) await setzeKartenPosition(code, 1, `karte-${i}`, 1);
+    const stationZwei = testEnv.authenticatedContext('spieler-station-2');
+
+    // When: Die Person an Station 2 (die EMPFANGENDE, nicht abgebende Station) versucht,
+    // Karte 1 von Station 1 zu sich heranzuziehen, ohne dass Station 1 selbst aktiv wurde
+    const zug = updateDoc(doc(stationZwei.firestore(), `spiele/${code}/runden/1/karten/karte-1`), {
+      position: 2,
+      letzteBewegungVon: 'spieler-station-2',
+      letzteBewegungAm: serverTimestamp(),
+    });
+
+    // Then: Der Zug wird abgelehnt — die Karte bleibt an ihrer bisherigen Position
+    await assertFails(zug);
+  });
+
+  test('Szenario Runde 1: Bewegung durch die EMPFANGENDE Station bei einem mittleren Übergang wird abgelehnt (AK5 — gilt für jeden Übergang, nicht nur 1→2, nachgestellt exakt der zweite real gemeldete Fall: Station 4 zog eine Karte von Station 3)', async () => {
+    // Given: Karte 1 liegt bereits an Station 3, alle sechs Karten dort (Stapel-Tor 3→4 offen), DoR abgeschlossen
+    const code = await seedGame({ runde: 1, dorAbgeschlossen: true });
+    for (let i = 1; i <= 6; i++) await setzeKartenPosition(code, 1, `karte-${i}`, 3);
+    const stationVier = testEnv.authenticatedContext('spieler-station-4');
+
+    // When: Die Person an Station 4 (die EMPFANGENDE, nicht abgebende Station) versucht,
+    // Karte 1 von Station 3 zu sich heranzuziehen, ohne dass Station 3 selbst aktiv wurde
+    const zug = updateDoc(doc(stationVier.firestore(), `spiele/${code}/runden/1/karten/karte-1`), {
+      position: 4,
+      letzteBewegungVon: 'spieler-station-4',
+      letzteBewegungAm: serverTimestamp(),
+    });
+
+    // Then: Der Zug wird abgelehnt — die Karte bleibt an Station 3
+    await assertFails(zug);
+  });
+
+  test('Szenario Runde 1: Derselbe mittlere Übergang (3→4) durch die tatsächlich ABGEBENDE Station bleibt weiterhin erlaubt (AK1, AK5 — Regressionsschutz, muss unverändert grün bleiben)', async () => {
+    // Given: Karte 1 liegt bereits an Station 3, alle sechs Karten dort, DoR abgeschlossen
+    const code = await seedGame({ runde: 1, dorAbgeschlossen: true });
+    for (let i = 1; i <= 6; i++) await setzeKartenPosition(code, 1, `karte-${i}`, 3);
+    const stationDrei = testEnv.authenticatedContext('spieler-station-3');
+
+    // When: Die Person an Station 3 (die tatsächlich abgebende Station) reicht Karte 1 selbst weiter
+    const zug = updateDoc(doc(stationDrei.firestore(), `spiele/${code}/runden/1/karten/karte-1`), {
+      position: 4,
+      letzteBewegungVon: 'spieler-station-3',
+      letzteBewegungAm: serverTimestamp(),
+    });
+
+    // Then: Der Zug wird angenommen
+    await assertSucceeds(zug);
+  });
+
+  // Hinweis: AK4 (Auftragseingang-Sonderfall bleibt erlaubt) ist bereits
+  // durch den bestehenden Testfall "Übergang Auftragseingang → Station 1
+  // ist immer offen, unabhängig vom Stapel-Tor" weiter oben (describe
+  // "FEATURE-002 Sicherheitsregeln: Kartenbewegung (Grundregeln, alle
+  // Runden)") abgedeckt und muss unverändert grün bleiben — kein
+  // zusätzlicher, redundanter Testfall hier nötig (Pre-Mortem-Risiko 1).
 });
 
 describe('FEATURE-002 Sicherheitsregeln: Definition of Ready (DoR)', () => {
