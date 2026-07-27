@@ -1,5 +1,7 @@
 # Backlog – Flow Game
 
+> **Sync-Konvention (seit 2026-07-23):** Diese Datei (`Flow Game/Backlog.md`, lokal auf Stephans Mac, git-versioniert) ist die maßgebliche Quelle für alle Flow-Game-Tickets (Inhalt, Status, Reihenfolge). Das Cloud-Projekt-Dokument `claude/Backlog.md` (Projects-Tool) ist ein vollständiger Spiegel dieser Datei. **Regel:** Nach JEDER inhaltlichen Änderung an dieser lokalen Datei (neues Ticket, Statuswechsel, Spec-Ergänzung, Lane-Verschiebung, Implementierungsnotiz) muss der komplette, aktuelle Inhalt dieser Datei unmittelbar per `project_write` 1:1 nach `claude/Backlog.md` gespiegelt werden — im selben Arbeitsschritt, nicht erst am Sitzungsende. **Bekannte Ausnahme:** Der `flow-game-analyze`-Skill schreibt Analyse-Specs aktuell direkt in die Cloud-Kopie, nicht in diese lokale Datei. Nach jedem `flow-game-analyze`-Lauf muss der dabei entstandene Cloud-Stand zusätzlich in diese lokale Datei zurückgespiegelt werden (Cloud → Lokal, umgekehrte Richtung als sonst), sonst divergieren beide erneut. Diese Rückrichtung ist noch nicht automatisiert und muss bis auf Weiteres manuell nachgezogen werden.
+
 ## 📋 ToDo
 
 ### TASK-003 Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen
@@ -8,26 +10,185 @@
 |------|------|
 | **Typ** | Task |
 | **Priorität** | Hoch |
-| **Status** | ToDo |
+| **Status** | Done |
 | **Erstellt** | 2026-07-21 |
+| **Analyse am** | 2026-07-21 |
+| **Spec freigegeben am** | 2026-07-21 |
+| **Done seit** | 2026-07-21 |
 
 **Beschreibung:** Stephan hat keine fünf weiteren Personen/Geräte zur Verfügung, um einen vollständigen Mehrpersonen-Durchlauf (Host + 5 Stationen + Beobachtende) real zu testen. Er braucht eine Möglichkeit, als Entwickler auf einem einzigen Rechner mehrere unabhängige Spielidentitäten gleichzeitig zu simulieren (z. B. mehrere Browser-Tabs = mehrere Stationen).
 
 **User Story:** Als Entwickler ohne weitere Testgeräte/-personen, möchte ich auf einem Rechner mehrere unabhängige Spielrollen gleichzeitig simulieren können, sodass ich einen vollständigen Mehrpersonen-Durchlauf selbst testen kann, ohne echte Mitspielende zu brauchen.
 
-**Kontext/Verweise:** Direkt ausgelöst durch BUGFIX-001 (Stephan braucht dies, um den vollständigen Mehrpersonen-Durchlauf für FEATURE-004 Gate 3 überhaupt testen zu können) – technisch aber ein eigenständiges Thema, kein Teil des BUGFIX-001-Fixes selbst.
+**Kontext/Verweise:** Direkt ausgelöst durch BUGFIX-001 (Stephan braucht dies, um den vollständigen Mehrpersonen-Durchlauf für FEATURE-004 Gate 3 überhaupt testen zu können) – technisch aber ein eigenständiges Thema, kein Teil des BUGFIX-001-Fixes selbst. Blockiert außerdem TASK-004 (Verifikation Beteiligungsspanne bei vollständig besetztem Spiel), die einen echten 5-Stationen-Test voraussetzt.
 
-**Bereits bekanntes technisches Hintergrundwissen (noch nicht vollständig analysiert, als Ausgangspunkt für `flow-game-analyze`):**
-- Mehrere Browser-Tabs derselben Origin teilen sich in Chrome immer denselben `localStorage`/`IndexedDB`-Zustand, inklusive Firebase-Anonymous-Auth-Sitzung – mehrere Tabs liefern deshalb heute **keine** unabhängigen Identitäten, egal wie sie geöffnet werden (siehe `chrome-multi-identity-testing-conventions`).
-- Ein möglicher Lösungsansatz (noch nicht verifiziert): Firebase-Auth-Persistenz von der Standardeinstellung (`LOCAL`, IndexedDB-basiert, geteilt) auf `SESSION` (sessionStorage-basiert) umstellen – `sessionStorage` ist pro Tab isoliert, wodurch jeder Tab eine eigene anonyme Auth-Identität bekäme.
-- **Regressionsrisiko, das im Analyse-Schritt zwingend zu prüfen ist:** FEATURE-001 (Done) verlässt sich darauf, dass der Host nach eigenem Neuladen seine Moderationsrechte über eine clientseitig gespeicherte Host-Session-Kennung zurückbekommt (`hostSession.js`). Ob und wie diese Kennung an die Firebase-Auth-Persistenz gekoppelt ist, ist noch nicht geprüft – eine Umstellung auf `SESSION`-Persistenz könnte dieses bereits abgenommene Verhalten brechen (z. B. wenn ein Host-Tab geschlossen und neu geöffnet statt nur neu geladen wird). Muss vor jeder Implementierung real geprüft werden, nicht angenommen.
-- Alternative, rein methodische Lösung ohne Code-Änderung (aus `chrome-multi-identity-testing-conventions`): separate Browser-Profile oder unterschiedliche Browser auf demselben Rechner nutzen. Löst das Problem, ist aber unbequemer als ein Tab-pro-Rolle-Workflow und bei fünf Stationen + Host + Beobachtende schwer parallel zu bedienen.
-
-**Reale Bestätigung des Problems (Stephan, 2026-07-21, beim manuellen Test von BUGFIX-001):** Stephan hat versucht, mehrere Spielende über mehrere zusätzliche private Safari-Fenster in derselben privaten Sitzung zu simulieren. Ergebnis: Als „Spielender 4" konnte er Karten von „Spielendem 3" bewegen, als „Spieler 5" die von „Spieler 4" – ein Verhalten, das wie ein Bruch der Zugriffsregel „nur eigene Station" aussah, aber auf Rückfrage als Testmethodik-Artefakt bestätigt wurde: mehrere private Fenster derselben Sitzung teilen sich denselben Speicher/dieselbe Auth-Identität, genau wie bei regulären Tabs. Kein echter Fehler in den Zugriffsregeln – aber direkter Beleg dafür, dass genau dieses Ticket gebraucht wird, damit Entwicklertests nicht versehentlich falsche Sicherheitsalarm-artige Befunde erzeugen.
-
-**Nächster Schritt:** Analyse-Phase (`flow-game-analyze`), sequenziert nach BUGFIX-001 (beide berühren denselben Auth-/Session-Code, um Konflikte zu vermeiden).
+**Reale Bestätigung des Problems (2026-07-21):** Stephan hat mehrere private Safari-Fenster derselben privaten Sitzung genutzt, die sich denselben Speicher/dieselbe Auth-Identität teilten – ein "Spielender 4" konnte Karten von "Spielendem 3" bewegen. Das ist kein Zugriffsregel-Bug, sondern der reale Beleg für genau das hier zu lösende Testmethodik-Problem: Mehrere Fenster/Tabs derselben Browser-Sitzung liefern keine unabhängigen Identitäten.
 
 ---
+
+#### Analyse-Spec (2026-07-21)
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code geprüft, Repo `github.com/stephanschumann/flow-game`, Commit `1c4c4af` – nicht angenommen):**
+
+- `firebase.auth().setPersistence(...)` wird im gesamten Projekt **nirgends aufgerufen** (per Volltextsuche über alle `.js`/`.html`-Dateien bestätigt). Es gilt also durchgängig die Firebase-Standardeinstellung `LOCAL`: Der anonyme Auth-Zustand (die `uid`) wird in IndexedDB gespeichert – origin-weit geteilt über alle Tabs/Fenster hinweg und übersteht auch ein vollständiges Schließen und Neuöffnen des Browsers.
+- **Host-Wiederherstellung (`hostSession.js`, FEATURE-001) ist bereits absichtlich UID-unabhängig, nicht UID-gebunden.** `restoreHostSession({code, hostSessionKennung, uid})` (`public/js/game/hostSession.js` Zeile 14-40) schreibt per `teilnehmerRef.set(...)` auf `spiele/{code}/teilnehmende/{uid}` – mit der **aktuellen** `uid` der laufenden Sitzung, nicht mit einer irgendwo fest verankerten "Original-Host-UID". Die zugehörige Sicherheitsregel (`firestore.rules` Zeile 474-496, `allow create` auf `teilnehmende/{uid}`) lässt diesen Schreibvorgang für **jede beliebige** `uid` zu, sofern das mitgeschickte `hostKennung`-Feld per `getAfter()` mit dem serverseitig hinterlegten Geheimnis (`spiele/{code}/geheim/kennung`) übereinstimmt. Die Host-Berechtigungsprüfung selbst (`istHost()`, Zeile 59-66) fragt zur Laufzeit `get(teilnehmende/{request.auth.uid}).data.rolle == 'host'` ab – ebenfalls ohne jeden Bezug zu einer historischen UID. **Konsequenz: Der Host-Reclaim-Mechanismus ist by design ein Passwort-/Geheimnis-Mechanismus, kein Sitzungs-Kontinuitäts-Mechanismus.** Er funktioniert unverändert, unabhängig davon, ob die aktuelle `uid` mit einer früheren identisch ist oder brandneu ist – solange das Geheimnis bekannt ist.
+- Die eigentliche, für das Geheimnis nötige Persistenz liegt **nicht** in der Firebase-Auth-Persistenz, sondern in eigenem, gewöhnlichem `localStorage`: `speichereHostSession()`/`geladeneHostSession()` (`public/spiel.html` Zeile 449-454) lesen/schreiben `localStorage['flowGameHost:'+code]` und `localStorage['flowGameLetztesSpiel']` – klassisches `window.localStorage`, **origin-weit geteilt über alle Tabs**, komplett unabhängig davon, welche Firebase-Auth-Persistenzstufe eingestellt ist.
+- **Teilnehmenden-Wiederherstellung (`teilnehmerSession.js`, FEATURE-005) ist dagegen strukturell UID-GEBUNDEN, nicht geheimnisbasiert.** `restoreTeilnehmerSession()` (`public/js/game/teilnehmerSession.js` Zeile 18-35) liest zunächst `teilnehmerRef.get()` auf `spiele/{code}/teilnehmende/{uid}` mit der **aktuellen** `uid`, um `warRejoin` zu bestimmen, und ruft danach `joinGame()` auf. `joinGame()` (`src/game/joinGame.js`) ist – seit dem FEATURE-002-Idempotenz-Bugfix vom 2026-07-20 – ausschließlich **pro `uid`** idempotent: Es prüft, ob unter genau dieser `uid` bereits ein Teilnehmenden-Dokument existiert; wenn nicht, wird ganz normal eine neue Station vergeben. Es gibt keinen geheimnisbasierten Rückweg wie beim Host. **Das bedeutet: Die Wiederherstellung für Spielende/Beobachtende funktioniert nur, solange dieselbe `uid` erhalten bleibt.**
+- Die App-eigenen `localStorage`-Schlüssel für den Teilnehmenden-Rejoin (`speichereTeilnehmerSession()`/`geladeneTeilnehmerSession()`, `public/spiel.html` Zeile 461-466: `localStorage['flowGameTeilnehmer:'+code]`, `localStorage['flowGameLetzterTeilnehmerCode']`) sind – wie beim Host – gewöhnliches, origin-weit geteiltes `localStorage`, ebenfalls unabhängig von der Firebase-Auth-Persistenzstufe.
+- Die separate Zwei-Tabs-Erkennung aus FEATURE-005 (`eigeneTabId` via `crypto.randomUUID()`, `spiel.html` Zeile 363-368; `registriereAktivenTab()`/`istAktiverTab()` in `teilnehmerSession.js` Zeile 37-73, Feld `aktiverTab` auf dem Teilnehmenden-Dokument) ist ein **anderer** Mechanismus mit anderem Zweck: Er erkennt, wenn **dieselbe** `uid` in zwei Tabs gleichzeitig offen ist (versehentliches Doppel-Öffnen derselben Rolle), und markiert den älteren Tab als inaktiv. Er hilft nicht dabei, mehrere **verschiedene** Identitäten zu erzeugen, und wird von einer Umstellung der Auth-Persistenz nicht berührt.
+- `pruefeStationsVerfuegbarkeit()` und `createGame()` laufen ebenfalls direkt nach `signInAnonymously()` bzw. nutzen `auth.currentUser`/`user.uid` aus derselben `init()`-Ablauflogik (`public/spiel.html` Zeile 1599-1699) – für die Analyse relevant, weil jede Änderung an der Auth-Persistenz alle diese Aufrufstellen gleichzeitig betrifft, nicht nur den Beitritt.
+
+**Zentraler, im Ticket noch nicht erkannter Befund (durch Code-Lektüre neu, nicht Teil des vorab hinterlegten Hintergrundwissens):** Eine Umstellung von `firebase.auth().setPersistence(...)` auf `SESSION` würde **ausschließlich** ändern, wo die Firebase-SDK-eigene Auth-Sitzung (die `uid`) gespeichert wird (dann in `sessionStorage`, pro Tab isoliert, statt in `IndexedDB`, origin-weit geteilt). Sie würde **nichts** an den vier App-eigenen `localStorage`-Schlüsseln ändern (`flowGameHost:*`, `flowGameLetztesSpiel`, `flowGameTeilnehmer:*`, `flowGameLetzterTeilnehmerCode`) – die bleiben `localStorage` und damit **weiterhin über alle Tabs derselben Origin hinweg geteilt**, unabhängig von der Auth-Persistenzstufe. Das hat zwei gegenläufige, beide real code-geprüfte Konsequenzen:
+
+1. **Der im Ticket als Hauptrisiko vermutete Host-Regressionsfall tritt so NICHT ein.** Weil der Host-Reclaim-Mechanismus geheimnisbasiert und UID-unabhängig ist (siehe oben), würde ein Host-Tab, der geschlossen und in einem neuen Tab neu geöffnet wird (wodurch bei `SESSION`-Persistenz eine neue `uid` entsteht), trotzdem erfolgreich wieder Host werden – die neue `uid` legt einfach ein neues `teilnehmende/{neueUid}`-Dokument mit `rolle: 'host'` an, die Sicherheitsregel prüft nur das Geheimnis, nicht die UID-Historie. FEATURE-001s Akzeptanzkriterium ("Host bekommt nach eigenem Neuladen seine Moderationsrechte zurück") bliebe damit formal erfüllt. **Nicht geprüfter Nebeneffekt:** Das alte `teilnehmende/{alteUid}`-Dokument (ebenfalls `rolle: 'host'`) bleibt als Karteileiche in der Sammlung zurück – nicht sicherheitskritisch, aber ein Dateninkonsistenz-Risiko für jede Stelle, die "den Host" zählt oder auflistet (aktuell nicht bekannt, dass so eine Stelle existiert, aber nicht ausgeschlossen).
+2. **Der eigentliche, ungeprüfte Regressionsfall liegt stattdessen bei den SPIELENDEN/BEOBACHTENDEN (FEATURE-005), nicht beim Host – und ist gravierender als im Ticket angenommen.** Weil `joinGame()`s Idempotenz strikt an die `uid` gebunden ist (kein Geheimnis-Fallback wie beim Host), würde eine Person, deren Browser-Tab bei `SESSION`-Persistenz vollständig geschlossen und neu geöffnet wird (nicht nur neu geladen), eine **neue** `uid` bekommen. Der automatische Rejoin (`restoreTeilnehmerSession()`) würde für diese neue `uid` **kein** bestehendes Teilnehmenden-Dokument finden (`warRejoin = false`) und `joinGame()` würde ihr ganz normal eine **neue** Station zuweisen (oder mit "Stationen voll" scheitern) – statt sie, wie von FEATURE-005 AK1-3 verlangt, zu ihrer ursprünglichen Station zurückzuführen. Das ist ein echtes, code-verifiziertes Regressionsrisiko gegen FEATURE-005, das nicht auf Entwicklertests beschränkt wäre, sondern **jede echte spielende Person treffen würde, die während eines echten Workshops ihren Browser/Tab vollständig schließt und neu öffnet** (z. B. Wechsel der App auf dem Tablet, Gerät wird gesperrt und das Betriebssystem verwirft den Tab-Zustand) – **falls** die Persistenzumstellung global für alle Nutzenden gälte, nicht nur für einen Entwicklungsmodus.
+3. **Selbst wenn die Auth-Persistenz erfolgreich auf `SESSION` umgestellt würde, bliebe das eigentliche Ticket-Ziel (Tab 2 soll "Station 2" sein, nicht "was auch immer Tab 1 zuletzt war") ohne WEITERE Änderung ungelöst und würde einen neuen, konkreten Fehlerfall erzeugen:** Weil `flowGameLetztesSpiel`/`flowGameHost:*`/`flowGameLetzterTeilnehmerCode`/`flowGameTeilnehmer:*` weiterhin gewöhnliches, tab-übergreifend geteiltes `localStorage` sind, würde ein frisch geöffneter zweiter Tab (mit eigener, isolierter `sessionStorage`-Auth-Identität) beim Laden trotzdem `localStorage.getItem('flowGameLetztesSpiel')` lesen und – falls Tab 1 zuvor Host war – automatisch versuchen, sich selbst per `restoreHostSession()` zum Host zu machen (und würde, siehe Punkt 1, damit sogar **erfolgreich**, weil geheimnisbasiert!). Ein Entwickler, der Tab 2 bewusst als "Station 2" öffnen wollte, bekäme also nicht Station 2, sondern würde den Host-Tab dupizieren bzw. – falls Tab 1 zuletzt Teilnehmender war – automatisch dieselbe Rolle/denselben Namen wie Tab 1 übernehmen. **Eine Umstellung der Auth-Persistenz allein löst das Ticket-Ziel damit nicht; sie müsste zwingend mit einer Umstellung der vier App-eigenen `localStorage`-Schlüssel auf tab-isoliertes `sessionStorage` (oder eine andere tab-scoped Ablage) einhergehen, sonst entsteht ein neues, verwirrenderes Fehlerbild (Host-Hijacking durch einen eigentlich harmlosen zweiten Tab) statt des ursprünglich beobachteten (geteilte Station).**
+- `chrome-multi-identity-testing-conventions` (Skill, gelesen) bestätigt und ergänzt das Bild aus einer anderen Richtung: Tabs derselben Chrome-Origin teilen sich immer den gesamten Origin-State (`localStorage`, `IndexedDB`, damit auch jeden darauf aufbauenden Auth-Zustand) – das deckt sich exakt mit dem Code-Befund oben. Der Skill weist außerdem ausdrücklich darauf hin, dass **Inkognito-/private Fenster ebenfalls Fallstricke haben**: Mehrere private/Inkognito-Fenster derselben aktiven privaten Sitzung teilen sich denselben In-Memory-Storage – genau das hat Stephan real in Safari erlebt (mehrere private Fenster derselben privaten Sitzung, geteilter Zustand). Echte Isolation liefern laut Skill nur **separate Geräte** oder – ergänzend hier festgehalten, da im Skill nicht explizit erwähnt – **separate, dauerhaft angelegte Chrome-Profile** (jedes mit eigenem Profildatenverzeichnis auf der Festplatte, dadurch echt eigenes `localStorage`/`IndexedDB`, im Unterschied zu Inkognito-Fenstern derselben Sitzung).
+
+**Durchgespielte Beispiele:**
+
+- Stephan öffnet zwei normale (nicht private) Tabs im selben Chrome-Fenster, tippt in Tab 1 "Spiel erstellen", in Tab 2 einen Beitritts-Code ein → heute: Tab 2 teilt sich dieselbe `uid` wie Tab 1 (LOCAL-Persistenz, IndexedDB geteilt); je nachdem, welcher Tab zuletzt geschrieben hat, "gewinnt" eine Rolle, die andere verschwindet faktisch – exakt das reale Safari-Erlebnis, nur mit normalen statt privaten Fenstern.
+- Angenommen, Auth-Persistenz wäre bereits auf `SESSION` umgestellt, UND Stephan öffnet Tab 2 als **komplett neuen, unabhängig getippten** Tab (nicht "Tab duplizieren", das würde `sessionStorage` vom Ursprungstab erben) → Tab 2 bekommt eine eigene, isolierte Firebase-`uid`. Lädt Tab 2 nun `spiel.html`, findet `init()` trotzdem `localStorage['flowGameLetztesSpiel']` (geteilt) und versucht automatisch, Tab 2 in dasselbe Spiel wie Tab 1 einzuloggen – mit der Rolle, die Tab 1 zuletzt gespeichert hat (Host, falls Tab 1 Host war), nicht mit der von Stephan für Tab 2 beabsichtigten Rolle. Ohne weitere Codeänderung bekäme Stephan hier keine kontrollierte "Station 2"-Identität, sondern einen unerwarteten zweiten Host-Tab oder eine Kopie von Tab 1s Teilnehmenden-Identität.
+- Derselbe Versuch mit **fünf** dauerhaft eingerichteten, getrennten Chrome-Profilen (z. B. "Flow-Host", "Flow-Station1" … "Flow-Station5", "Flow-Beobachtend") statt Tabs → jedes Profil hat sein eigenes, physisch getrenntes Speicherverzeichnis; jede der sieben gleichzeitig geöffneten Profil-Fenster bekommt eine echte eigene `uid`, eigenes `localStorage`, keine gegenseitige Beeinflussung – funktioniert schon heute, ohne jede Codeänderung.
+- Ein echter Workshop-Teilnehmer wechselt während einer Pause auf dem Tablet die App und kommt später zurück, der Browser hat den Tab-Zustand zwischenzeitlich verworfen (Betriebssystem-Speicherbereinigung) → mit der heutigen `LOCAL`-Persistenz bleibt die `uid` in IndexedDB erhalten, der automatische Rejoin (FEATURE-005) funktioniert unverändert. Würde die Persistenz global auf `SESSION` umgestellt, bekäme dieselbe Person nach dem Zurückkommen eine neue `uid` und würde – wie oben unter Punkt 2 beschrieben – nicht ihre alte Station zurückbekommen, sondern eine neue zugewiesen bekommen (oder "Stationen voll" sehen). Das ist ein Szenario, das nichts mit Entwicklertests zu tun hat, sondern reale Workshop-Nutzung betrifft.
+- Stephan führt stattdessen den gesamten Mehrpersonen-Test **sequenziell in einem einzigen Tab** durch: Station für Station durchspielen, zwischen den Identitäten jeweils `signOut()` + gezielter, bewusster Storage-Reset + Neuladen (wie im `chrome-multi-identity-testing-conventions`-Skill als Ausweichoption beschrieben) → funktioniert bereits heute ohne Codeänderung, ist aber nicht "gleichzeitig", sondern nacheinander – für viele der Timing-/Race-Condition-relevanten Testfälle (z. B. FIFO in Runde 4, gleichzeitige Kartenbewegung) ungeeignet, weil kein echtes Nebeneinander mehrerer aktiver Sitzungen entsteht.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): ob eine Codeänderung überhaupt gewünscht ist, nachdem der Code-Befund zeigt, dass sie (a) den ursprünglich vermuteten Regressionsfall (Host) nicht auslöst, dafür aber (b) einen ernsteren, bisher nicht bekannten Regressionsfall bei echten Spielenden/Beobachtenden auslösen kann, falls sie global statt nur für einen abgegrenzten Entwicklungsmodus vorgenommen wird; ob ein explizit abgegrenzter, nie in Produktion aktiver "Dev-Test-Modus" überhaupt lohnt gegenüber der rein methodischen Lösung (separate Chrome-Profile).
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Stephan kann auf einem einzigen Rechner mindestens sieben gleichzeitig aktive, voneinander unabhängige Spielidentitäten offen halten (1 Host + 5 Stationen + 1 Beobachtende), ohne dass eine Handlung in einer Identität (Karte bewegen, Definition of Ready abschließen, würfeln, Stadt eintragen) eine andere Identität sichtbar beeinflusst.
+2. Eine neu gestartete Identität (neuer Tab bzw. neues Profil-Fenster) übernimmt niemals automatisch die zuletzt in einer anderen, gleichzeitig offenen Identität benutzte Rolle, den zuletzt benutzten Spielcode oder den zuletzt benutzten Namen – jede Identität muss bewusst und unabhängig einem Spiel beitreten bzw. es erstellen können.
+3. Die für echte Workshop-Teilnehmende bereits bestehende, abgenommene Rejoin-Funktionalität (FEATURE-001 Host-Wiederherstellung nach eigenem Neuladen, FEATURE-005 Wiederbetreten für Spielende/Beobachtende) funktioniert nach der Umsetzung dieses Tickets für echte Nutzende unverändert genauso wie zuvor – unabhängig davon, ob dieses Ticket eine Code- oder eine rein methodische Lösung wählt.
+4. Wird eine Codeänderung gewählt, ist eindeutig erkennbar und dokumentiert (z. B. über einen expliziten Schalter/eine Umgebungsbedingung), dass sie ausschließlich Entwicklungs-/Testzwecken dient und niemals unbeabsichtigt im normalen Spielbetrieb für echte Teilnehmende aktiv wird.
+5. Stephan hat eine klare, nachvollziehbare Schritt-für-Schritt-Anleitung, wie er auf seinem eigenen Rechner in der Praxis sieben gleichzeitige Identitäten herstellt (unabhängig davon, ob das über Codeänderung oder reine Methodik gelöst wird).
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Angenommenes Hauptrisiko (Host-Regression durch `SESSION`-Persistenz) trifft real nicht zu – aber ein ANDERES, im Ticket nicht vorhergesehenes Risiko (Teilnehmenden-Rejoin-Regression) trifft real zu, falls eine Persistenzumstellung global statt entwicklungsmodus-beschränkt erfolgt.** Siehe Ausgangslage oben (Punkt 2). Gegenmaßnahme: Eine etwaige Umstellung der Firebase-Auth-Persistenz auf `SESSION` ausschließlich innerhalb eines explizit aktivierten, standardmäßig ausgeschalteten Entwicklungsmodus vornehmen (z. B. über einen URL-Parameter oder eine lokal gesetzte Konstante, die in der produktiven Nutzung nie greift) – niemals als globale Änderung für alle Nutzenden.
+2. **Selbst innerhalb eines Entwicklungsmodus löst eine reine Auth-Persistenz-Umstellung das eigentliche Ticket-Ziel nicht, sondern erzeugt ein neues, verwirrenderes Fehlerbild (Host-Hijacking durch einen harmlosen zweiten Tab), weil die App-eigenen `localStorage`-Schlüssel (`flowGameHost:*`, `flowGameLetztesSpiel`, `flowGameTeilnehmer:*`, `flowGameLetzterTeilnehmerCode`) weiterhin origin-weit geteilt blieben.** Siehe Ausgangslage oben (Punkt 3) – code-real verifiziert, kein angenommenes Risiko. Gegenmaßnahme: Würden diese Schlüssel im Entwicklungsmodus zusätzlich auf `sessionStorage` umgestellt (tab-isoliert), müsste das exakt für den Entwicklungsmodus-Pfad geschehen, ohne den produktiven `localStorage`-Pfad für echte Nutzende anzufassen – zusätzlicher, nicht trivialer Verzweigungsaufwand in bereits mehrfach durch andere Tickets (BUGFIX-001, FEATURE-005) berührtem Code.
+3. **Inkognito-/private Fenster sind KEINE zuverlässige Ausweich-Lösung**, wie Stephans eigener, realer Test bereits gezeigt hat (mehrere private Safari-Fenster derselben privaten Sitzung teilten sich denselben Zustand). Gegenmaßnahme: Diese Möglichkeit in der Empfehlung explizit als ungeeignet ausschließen, damit sie nicht erneut versehentlich als vermeintlich einfache Lösung ausprobiert wird.
+4. **Race Conditions werden bei sequenziellem Ein-Tab-Testen (Ausweichmethode aus dem Skill) nicht erfasst.** Gerade Runde-4-FIFO-Verhalten (FEATURE-004) und gleichzeitige Kartenbewegungen (FEATURE-002) sind ausdrücklich auf echtes Nebeneinander mehrerer aktiver Sitzungen angewiesen; ein rein nacheinander durchgespielter Test deckt diese Fälle nicht ab. Gegenmaßnahme: Für Timing-/Race-Condition-relevante Testfälle zwingend echte parallele, unabhängige Identitäten verwenden (separate Profile/Geräte), nicht die sequenzielle Ein-Tab-Methode.
+5. **Verwechslungsgefahr beim manuellen Testen mit vielen gleichzeitig offenen Fenstern/Profilen:** Bei sieben gleichzeitig offenen Fenstern (Host + 5 Stationen + Beobachtende) steigt das Risiko, versehentlich im falschen Fenster zu klicken und dadurch eine falsche Station zu bedienen – kein Software-Fehler, aber ein reales Testdurchführungs-Risiko. Gegenmaßnahme: Fenster/Profile eindeutig sichtbar beschriften (Chrome-Profilname/-Avatar je Rolle), Fenster erkennbar auf dem Bildschirm anordnen.
+6. **Ein etwaiger Dev-Modus-Code bleibt versehentlich im produktiven Build/Deploy aktiv.** Da `public/spiel.html` unverändert über GitHub Actions automatisch deployt wird (kein separater Build-Schritt, der Dev-Code herausfiltert), müsste ein Entwicklungsmodus-Schalter so gebaut sein, dass er strukturell nicht versehentlich für echte Nutzende scharf geschaltet werden kann (z. B. nur bei explizitem, nicht erratbarem URL-Parameter, niemals per Default-Wert `true`). Gegenmaßnahme: Automatisierter Test, der bestätigt, dass ohne den expliziten Parameter das Verhalten für echte Nutzende exakt dem heutigen Stand entspricht (Regressionsschutz, siehe Testplan).
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- Falls eine Codeänderung gewählt wird: `public/spiel.html`, `init()`-Ablauf (Zeile ~1599-1699) – Firebase-Auth-Initialisierung und die Stellen, die `localStorage.getItem`/`localStorage.setItem` für `flowGameLetztesSpiel`/`flowGameHost:*`/`flowGameTeilnehmer:*`/`flowGameLetzterTeilnehmerCode` nutzen (Zeile 449-466, 1621-1693, 1780).
+- Kein erwarteter Änderungsbedarf an `firestore.rules`, `src/game/joinGame.js`, `src/game/hostSession.js`, `src/game/teilnehmerSession.js`, `src/game/createGame.js` selbst – die bestehende Server-Logik/Sicherheitsregeln bleiben unverändert, nur die clientseitige Speicherung/Initialisierung würde (falls überhaupt) angepasst.
+- Falls rein methodisch gelöst (keine Codeänderung): keine Architektur betroffen – reine Testdurchführungs-Anleitung/Konvention, ggf. Ergänzung des bereits bestehenden `chrome-multi-identity-testing-conventions`-Skills um die hier neu gewonnenen Erkenntnisse (Chrome-Profile als robuste Alternative zu Inkognito-Fenstern, Warnung vor Inkognito-Fallstrick real bestätigt).
+- Keine Änderung an Firestore-Datenmodell, keine Änderung an Spielregeln/Zeitmessung (Product.md §10) in jedem der geprüften Szenarien.
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Host-Session-Wiederherstellung – code-real geprüft: durch eine reine Persistenzumstellung NICHT gefährdet, da geheimnisbasiert/UID-unabhängig; siehe Ausgangslage. Muss aber unverändert bleiben, falls ein Dev-Modus-Zweig eingebaut wird – der produktive Pfad darf nicht berührt werden). FEATURE-005 (Teilnehmenden-Rejoin – code-real geprüft: HIER liegt das tatsächliche Regressionsrisiko, weil `joinGame()`s Idempotenz strikt UID-gebunden ist; jede Änderung an der Auth-Persistenz oder an den `localStorage`-Rejoin-Schlüsseln muss zwingend gegen die bestehenden FEATURE-005-Tests (`tests/game-rejoin.logic.test.js`, `tests/game-a11y-static.test.js`, `tests/game-feature-005-manual-checks.test.js`) regressionsgetestet werden, bevor irgendein Dev-Modus als sicher gelten kann). BUGFIX-001 (Retry-Mechanismus läuft unmittelbar nach `signInAnonymously()` in denselben Aufrufstellen wie ein etwaiger Dev-Modus – darf durch Umbauten an `init()` nicht gestört werden). FEATURE-004 (Runde 4, In Progress – ein Dev-Modus mit echter Tab-Parallelität wäre gerade für den FIFO-/Staffel-Test dort besonders wertvoll, aber auch besonders empfindlich gegenüber Verwechslungen zwischen Testidentitäten, siehe Pre-Mortem-Risiko 5).
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Rein methodische Lösung ohne jede Codeänderung (empfohlen als sofortiger, risikofreier Start): Separate, dauerhaft angelegte Chrome-Profile (nicht Inkognito-Fenster) je Rolle.* Stephan legt einmalig sieben Chrome-Profile an (z. B. "Flow-Host", "Flow-Station1" … "Flow-Station5", "Flow-Beobachtend"), jedes mit eigenem, physisch getrenntem Speicherverzeichnis, dadurch von Haus aus eigenes `localStorage`/`IndexedDB`/eigene Firebase-Auth-Identität – keine der oben gefundenen Verflechtungen greift hier überhaupt, weil gar nichts geteilt wird. Fenster lassen sich nebeneinander auf dem Bildschirm anordnen und bleiben alle gleichzeitig aktiv nutzbar. Vorteile: funktioniert schon heute, ohne jede Codeänderung, ohne jedes der oben gefundenen Regressionsrisiken (weder das ursprünglich vermutete Host-Risiko noch das neu gefundene Teilnehmenden-Risiko), sofort einsetzbar. Nachteile: einmaliger, manueller Einrichtungsaufwand (sieben Profile anlegen), etwas unbequemer als ein einfacher "neuer Tab"-Klick, Bildschirmplatz für sieben Fenster nötig.
+
+*Option B – Codeänderung: Firebase-Auth-Persistenz global auf `SESSION` umstellen (die im Ticket ursprünglich vermutete Lösung).* **Von der Analyse nicht empfohlen und aktiv abgeraten**, nachdem der Code-Befund zwei Dinge gezeigt hat: (1) Sie löst das Ticket-Ziel allein nicht, weil die App-eigenen `localStorage`-Rejoin-Schlüssel weiterhin tab-übergreifend geteilt blieben und dadurch ein neues, verwirrenderes Fehlerbild (unbeabsichtigtes Host-Hijacking durch einen harmlosen zweiten Tab) entstünde, das schwerer zu durchschauen ist als das ursprüngliche. (2) Als globale, produktionsweite Änderung würde sie ein echtes, bisher nicht bekanntes Regressionsrisiko gegen FEATURE-005 einführen (Teilnehmenden-Rejoin nach vollständigem Schließen/Neuöffnen eines Tabs würde für echte Workshop-Teilnehmende nicht mehr zur ursprünglichen Station zurückführen, siehe Pre-Mortem-Risiko 1/Ausgangslage Punkt 2). Nachteile deutlich größer als der Nutzen für ein reines Testmethodik-Problem.
+
+*Option C – Codeänderung: abgegrenzter, explizit zu aktivierender Entwicklungsmodus (nur falls Option A sich in der Praxis als zu unbequem erweist).* Ein nie standardmäßig aktiver Schalter (z. B. nur bei explizitem, langem, nicht erratbarem URL-Parameter) würde in `init()` zusätzlich (a) `firebase.auth().setPersistence(SESSION)` setzen UND (b) alle vier App-eigenen Rejoin-`localStorage`-Schlüssel für diesen Modus durch `sessionStorage` ersetzen (tab-isoliert) – nur dann wäre das eigentliche Ticket-Ziel (jeder Tab = eigene, unabhängige Identität, inklusive eigenem Rejoin-Verhalten innerhalb des Tabs) tatsächlich erreicht, ohne den produktiven Pfad für echte Nutzende zu berühren. Vorteile: bequemer als Option A (einfacher "neuer Tab" statt Profile anlegen), volle Parallelität für Race-Condition-relevante Tests (FEATURE-004 FIFO). Nachteile: nicht triviale Verzweigungslogik in bereits mehrfach angefasstem, kritischem `init()`-Code (Pre-Mortem-Risiko 2/6), zusätzlicher Testaufwand, um sicherzustellen, dass der produktive Pfad dadurch nicht versehentlich verändert wird, sowie ein grundsätzliches Abwägen, ob der Nutzen (Bequemlichkeit) den Aufwand/das Restrisiko in einem Code, der bereits Host- und Teilnehmenden-Sicherheitslogik trägt, rechtfertigt.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A als sofortigen, risikofreien Einstieg. Sie löst das eigentliche Bedürfnis (gleichzeitiger Mehrpersonen-Test durch Stephan selbst) vollständig und ohne jedes der beiden real gefundenen Regressionsrisiken, und sie steht heute schon zur Verfügung. Option C nur dann in Erwägung ziehen, wenn sich das Anlegen/Verwalten von sieben Chrome-Profilen in der Praxis als so unbequem erweist, dass der zusätzliche Implementierungs- und Testaufwand gerechtfertigt erscheint – und dann mit eigener, vollständiger `flow-game-bdd`/`flow-game-impl`-Runde inklusive vollem Regressionslauf gegen FEATURE-001/FEATURE-005. Option B wird ausdrücklich nicht empfohlen: Sie war die im Ticket vorab vermutete Lösung, hält aber der Code-Prüfung nicht stand – sie schützt genau das nicht ausreichend, wofür sie gedacht war (echte Tab-Isolation), und gefährdet stattdessen ein bereits abgenommenes, unbeteiligtes Feature (FEATURE-005-Rejoin für echte Nutzende).
+
+**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Dieses Ticket ist keine UI/UX-Frage (kein Layout, keine Interaktion, kein Bedienkonzept für Endnutzende betroffen), sondern eine reine Entwicklungs-/Testmethodik- bzw. Architekturfrage (Auth-Persistenz, Speicherorte). Ein klickbarer Prototyp ist hier nicht das passende Werkzeug – die relevante Unsicherheit liegt in der Bewertung von Regressionsrisiken gegen bestehenden Code, nicht im "wie fühlt sich das an".
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec – abhängig davon, welche Option Stephan wählt):**
+
+- Falls Option A (reine Methodik) gewählt wird: kein `flow-game-bdd`-Durchlauf nötig, da keine Codeänderung entsteht. Stattdessen: kurze, für Stephan verwertbare Schritt-für-Schritt-Anleitung zum Anlegen der sieben Chrome-Profile, ggf. als Ergänzung im `chrome-multi-identity-testing-conventions`-Skill festgehalten (neue Erkenntnis: Inkognito-Fenster real als ungeeignet bestätigt; dauerhafte Chrome-Profile als robuste Alternative ergänzen).
+- Falls Option C (Entwicklungsmodus) gewählt wird:
+  - Given/When/Then je Akzeptanzkriterium oben (5 Stück).
+  - Given der Entwicklungsmodus-Parameter fehlt, When die Seite lädt, Then verhält sich `init()` (Auth-Persistenz, alle vier `localStorage`-Schlüssel) exakt wie heute – Regressionstest, der den produktiven Pfad unverändert bestätigt (AK3, AK4).
+  - Given der Entwicklungsmodus-Parameter ist gesetzt UND zwei unabhängig geöffnete Tabs (kein "Tab duplizieren", das `sessionStorage` erben würde), When beide Tabs `spiel.html` laden, Then bekommt jeder Tab eine eigene `uid` und findet keinen der anderen Tabs zugehörigen `localStorage`/`sessionStorage`-Rejoin-Zustand (AK1, AK2).
+  - Given Entwicklungsmodus, ein Tab ist Host, ein zweiter, unabhängiger Tab wird neu geöffnet, When der zweite Tab lädt, Then wird der zweite Tab NICHT automatisch zum Host (Regressionstest gegen das in der Analyse gefundene Host-Hijacking-Risiko, Pre-Mortem-Risiko 2).
+  - Regressionstests: bestehende Suiten `tests/game-rejoin.logic.test.js`, `tests/game-a11y-static.test.js`, `tests/game-feature-005-manual-checks.test.js`, `tests/game-connection-retry.*.test.js` laufen nach der Änderung unverändert grün (kein bestehendes Modul außerhalb von `init()` verändert).
+
+---
+
+**Offene Fragen an Stephan (müssen vor Freigabe der Spec geklärt werden, keine Annahmen getroffen):**
+
+1. **Grundsatzentscheidung Option A vs. C:** Reicht die rein methodische Lösung (separate, dauerhaft angelegte Chrome-Profile, Option A) als Startpunkt, oder soll direkt in einen code-basierten Entwicklungsmodus (Option C) investiert werden? Die Analyse empfiehlt, zunächst nur Option A umzusetzen (keine Codeänderung, kein Regressionsrisiko) und Option C nur bei Bedarf nachzuziehen – trifft diese Entscheidung aber nicht endgültig.
+2. **Falls Option C gewünscht wird:** Ist Stephan bewusst, dass die im Ticket ursprünglich vermutete Lösung ("Auth-Persistenz auf `SESSION` umstellen") allein nicht ausreicht und zusätzlich die vier App-eigenen `localStorage`-Rejoin-Schlüssel für den Entwicklungsmodus auf `sessionStorage` umgestellt werden müssten – womit der Umsetzungsaufwand größer ist als ursprünglich angenommen? Soll dieser größere Aufwand dennoch investiert werden?
+3. **Falls Option C gewünscht wird:** Wie soll der Entwicklungsmodus aktiviert werden (z. B. konkreter URL-Parameter-Name), damit er sicher nie versehentlich von echten Workshop-Teilnehmenden ausgelöst wird?
+4. **Reichweite für TASK-004:** TASK-004 (Beteiligungsspanne-Verifikation) wartet explizit auf dieses Ticket. Reicht dafür ein einmaliger, sequenziell oder über separate Profile durchgeführter 5-Stationen-Test (Option A), oder soll TASK-004 gezielt auf einen künftigen Entwicklungsmodus (Option C) warten?
+
+---
+
+**Freigabe-Entscheidungen (Stephan, 2026-07-21):**
+
+1. Grundsatzentscheidung: Stephan wählt Option A — getrennte, dauerhaft angelegte Chrome-Profile. Kein Interesse an einer Codeänderung (Option C), auch wenn deren zusätzlicher Aufwand jetzt bekannt ist.
+2. Der Aufwand von Option C (inklusive der zusätzlich nötigen Umstellung der App-eigenen Speicherorte) spielt damit keine Rolle mehr — diese Option wird nicht verfolgt.
+3. Eine Aktivierungsfrage für einen Entwicklungsmodus erübrigt sich aus demselben Grund.
+4. TASK-004 kann mit einem Test über die separaten Chrome-Profile (Option A) fortgesetzt werden, sobald diese eingerichtet sind — es muss nicht auf einen künftigen Entwicklungsmodus gewartet werden.
+
+Damit ist die Analyse-Spec freigegeben. Da Option A keine Codeänderung mit sich bringt, entfallen die Phasen `flow-game-bdd` und `flow-game-impl` für dieses Ticket vollständig — es gibt nichts zu testen oder zu programmieren. Stattdessen folgt unten eine praktische Anleitung.
+
+---
+
+**Praktische Anleitung: Sieben getrennte Chrome-Profile für gleichzeitige Testrollen**
+
+Ziel: Ein Fenster pro Rolle (Host, fünf Stationen, eine beobachtende Person), alle gleichzeitig geöffnet, ohne dass sie sich gegenseitig beeinflussen.
+
+Wichtiger Hinweis vorab: Private Fenster (Inkognito) funktionieren dafür NICHT zuverlässig — mehrere private Fenster teilen sich innerhalb derselben privaten Sitzung denselben Speicher, wie Stephan bereits selbst erlebt hat. Es müssen echte, dauerhaft angelegte Chrome-Profile sein, keine privaten Fenster.
+
+Schritt 1: In Chrome oben rechts auf das Profil-Symbol klicken und ein neues Profil anlegen (Chrome führt dabei durch einen kurzen Einrichtungsdialog). Das Profil z. B. „Flow-Host" nennen, damit es später eindeutig erkennbar ist.
+
+Schritt 2: Diesen Vorgang sechsmal wiederholen für die restlichen Rollen: „Flow-Station1" bis „Flow-Station5" und „Flow-Beobachtend". Am Ende gibt es sieben Profile.
+
+Schritt 3: Jedes Profil öffnet ein eigenes Chrome-Fenster. Alle sieben Fenster lassen sich gleichzeitig offen halten und z. B. nebeneinander auf dem Bildschirm anordnen.
+
+Schritt 4: In jedem Fenster die Spielseite öffnen. Im „Flow-Host"-Fenster ein neues Spiel erstellen, den entstehenden Beitritts-Code notieren. In den fünf Stations-Fenstern und dem Beobachtend-Fenster jeweils mit diesem Code beitreten.
+
+Damit sind sieben unabhängige Identitäten gleichzeitig aktiv, jede mit eigenem Speicher — eine Aktion in einem Fenster (Karte bewegen, würfeln, Stadt eintragen) beeinflusst keines der anderen Fenster.
+
+Hinweis zur Verwechslungsgefahr: Bei sieben gleichzeitig offenen Fenstern ist es leicht, versehentlich im falschen Fenster zu klicken. Es hilft, die Fenster erkennbar auf dem Bildschirm anzuordnen und sich beim Klicken kurz zu vergewissern, welches Fenster gerade aktiv ist.
+
+**Bestätigt durch echten Test (2026-07-21):** Stephan hat alle sieben Chrome-Profile angelegt (Host, Station1–5, Beobachtend) und damit ein echtes Spiel durchgespielt (Host + Beitritt aller sechs weiteren Rollen mit Code Z2DKPMYY). Die sieben Identitäten liefen nachweislich unabhängig nebeneinander — keine Aktion in einem Profil hat ein anderes Profil sichtbar beeinflusst, keine der gefürchteten Verwechslungen aus den privaten Safari-Fenstern trat auf. Der Test deckte dabei einen echten, von der Testmethode unabhängigen Anwendungsfehler auf (eine Station konnte Karten einer fremden Station bewegen, Runde 1, alle sechs Karten betroffen) — dieser wurde als eigenes Ticket BUGFIX-008 aufgenommen, blockiert aber nicht die Freigabe dieses Tickets, da das eigentliche Testmethoden-Ziel (unabhängige Identitäten auf einem Rechner) erreicht ist.
+
+**Status dieses Tickets:** Bleibt auf „ToDo", bis Stephan diese Anleitung tatsächlich ausprobiert und einen echten gleichzeitigen Mehrpersonen-Test damit erfolgreich durchgeführt hat. Erst nach dieser Bestätigung wird der Status auf „Done" gesetzt (Gate 3 des Orchestrators).
+
+---
+
+### BUGFIX-008 Station kann Karten anderer Stationen bewegen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Status** | Done |
+| **Erstellt** | 2026-07-21 |
+| **Done seit** | 2026-07-23 |
+
+**Beschreibung:** Beim ersten echten Mehrpersonen-Test mit sieben unabhängigen Chrome-Profilen (im Zuge von TASK-003) hat sich gezeigt: In Runde 1 konnte die Person an Station 5 eine Karte bewegen, die eigentlich bei Station 4 lag, und die Person an Station 4 konnte ebenso eine Karte bewegen, die bei Station 3 lag. Betroffen waren alle sechs Karten gleichermaßen, nicht nur ein Einzelfall. Da die sieben Testidentitäten nachweislich unabhängig waren (getrennte Chrome-Profile, jede mit eigener Anmeldung), handelte es sich nicht um ein Test-Artefakt, sondern um ein echtes Verhalten der Anwendung: Die Berechtigungsprüfung erlaubte fälschlich auch der empfangenden Station jede Kartenbewegung auszulösen, statt nur der tatsächlich abgebenden Station.
+
+**User Story:** Als Spielender an einer bestimmten Station, möchte ich nur Karten bewegen können, die tatsächlich gerade bei meiner eigenen Station liegen, sodass das Spiel den echten Fließband-Ablauf korrekt abbildet und niemand versehentlich oder absichtlich in eine fremde Station eingreifen kann.
+
+**Kontext/Verweise:** Entdeckt am 2026-07-21 während des ersten realen Mehrpersonen-Tests zu TASK-003 (sieben getrennte Chrome-Profile: Host, Station 1–5, Beobachtend), Runde 1, betraf alle sechs Karten. Betraf die Kernlogik aus FEATURE-002 (`bewegungErlaubt()` in `firestore.rules` sowie das clientseitige Pendant `darfIchDieseKarteBewegen()` in `public/spiel.html`). Blockierte TASK-004 (Beteiligungsspanne-Verifikation), da ein vertrauenswürdiger Mehrpersonen-Test erst nach Behebung dieses Fehlers sinnvoll war.
+
+**Root Cause (bestätigt am echten Code, Commit `55e0ab3`):** `bewegungErlaubt()` ließ eine Bewegung zu, wenn entweder die abgebende Station ODER die empfangende Station mit der handelnden Person übereinstimmte. Die Empfänger-Ausnahme war ursprünglich nur für den Sonderfall Auftragseingang gedacht (Station 1 holt sich die allererste Karte aktiv ab, dort gibt es niemanden "Abgebendes") — sie galt im Code aber fälschlich für jeden Übergang, nicht nur für `vonPosition == 0`. Dadurch konnte jede nachfolgende Station Karten an sich ziehen, die noch bei der vorgelagerten Station lagen.
+
+**Fix:** Empfänger-Ausnahme in `bewegungErlaubt()` (`firestore.rules`) und im clientseitigen Pendant (`public/spiel.html`) exakt auf `vonPosition == 0` eingegrenzt; ein bestehender Sicherheitsregel-Test, der den Bug fälschlich als korrektes Verhalten bestätigt hatte, wurde korrigiert, neue Tests für den Bug-Fall und Regressionstests für den weiterhin erlaubten Auftragseingang-Normalfall ergänzt.
+
+**Verifikation:** Per Emulator-Regressionslauf bestätigt (inkl. zweier nachträglich korrigierter, zuvor den Bug fälschlich bestätigender Regressionstests). Commits `55e0ab3` (Hauptfix) und `70ea874` (Nachtrag: zwei weitere FEATURE-002-Tests korrigiert), beide auf `main`, mit `origin/main` synchron — per `git log`/`git show` verifiziert, nicht nur behauptet. Retro durchgeführt.
+
+**Cross-Check gegen FEATURE-004 (Runde 4):** Die dortige Zuständigkeitsprüfung (`rundeVierKettenfortschrittErlaubt()` in `firestore.rules`) verwendet eine einzelne, nicht-oder-verknüpfte Bedingung (`rundeVierPositionVon(...) == vonPosition`) — kein Empfänger-Sonderfall, keine strukturelle Ähnlichkeit zur hier gefundenen Schwachstelle. Nach Lektüre des aktuellen Regeltexts kein Hinweis auf dieselbe Fehlerklasse in Runde 4.
+
+---
+
 
 ### FEATURE-004 Phase 4 – Runde 4 (Kontextwechsel)
 
@@ -249,8 +410,10 @@ Ticket bleibt „In Progress" – die eigentliche Spieler-Oberfläche für Runde
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Mittel |
-| **Status** | ToDo |
+| **Status** | In Progress |
 | **Erstellt** | 2026-07-21 |
+| **Spec freigegeben am** | 2026-07-22 |
+| **In Progress seit** | 2026-07-22 |
 
 **Beschreibung:** Drei zusammenhängende Beobachtungen aus dem echten Testlauf (Host + 1 Teilnehmende via privatem Safari-Fenster) darüber, was eine spielende Person auf ihrem Bildschirm sieht, bevor und während gespielt wird:
 
@@ -260,9 +423,215 @@ b) **Bug – veralteter Text während laufender Runde:** Nach Spielstart zeigt d
 
 c) **UI-Polish – Spaltenköpfe der Stationen:** Über den Spalten (Stationen) fehlt der Name der zuständigen spielenden Person. Zusätzlich sind die Spaltenüberschriften unsauber umbrochen/sortiert — teils ragen sie über die Spaltenbreite hinaus, teils steht die Nummerierung in einer eigenen Zeile, uneinheitlich zwischen den Stationen.
 
+**Erneut bestätigt (Stephan, 2026-07-27, FEATURE-004-Gate-3-Durchlauf):** Weiterhin keine Spielernamen über den Stationsspalten sichtbar, wenn Karten von einer Station zur nächsten bewegt werden — Punkt (c) besteht unverändert fort.
+
 **User Story:** Als Spielender möchte ich an jedem Punkt im Spiel (Lobby vor Start, laufende Runde) sehen, was gerade Sache ist und wer an welcher Station arbeitet, sodass ich nicht rätseln muss, ob das Spiel überhaupt begonnen hat oder was gerade von mir erwartet wird.
 
-**Kontext/Verweise:** Alle drei Punkte betreffen denselben Bildschirmbereich (Spielbrett-Ansicht in `public/spiel.html`) zu unterschiedlichen Zeitpunkten im Spielverlauf — deshalb hier gebündelt statt als drei Einzeltickets. (b) ist der einzige echte Funktionsfehler der drei (Zustand wird nach Rundenstart nicht aktualisiert); (a) und (c) sind fehlender bzw. unsauberer Inhalt. Getrennt zu halten von FEATURE-007 (Landingpage-Onboarding vor dem Beitreten) und von FEATURE-004 (Runde 4), da dessen Spielbrett-Oberfläche laut eigener Spec ohnehin komplett neu gebaut wird („Fokus + Warteschlange") und mit dem hier beobachteten Stationen-Layout aus Runde 1–3 nicht identisch ist.
+**Kontext/Verweise:** Alle drei Punkte betreffen denselben Bildschirmbereich (Spielbrett-Ansicht in `public/spiel.html`) zu unterschiedlichen Zeitpunkten im Spielverlauf — deshalb hier gebündelt statt als drei Einzeltickets. (b) ist der einzige echte Funktionsfehler der drei (Zustand wird nach Rundenstart nicht aktualisiert); (a) und (c) sind fehlender bzw. unsauberer Inhalt. Ursprünglich als von einer Landingpage-Onboarding-Frage (Erklärung von Spielzweck/Lernziel VOR dem Beitreten) getrennt gedacht — ein eigenes Ticket dafür existiert im aktuellen Backlog aber (noch) nicht, daher hier nur als Abgrenzungshinweis vermerkt: Dieses Ticket behandelt ausschließlich die Kontext-Anzeige NACH dem Beitreten bzw. während der Runde. Ebenfalls getrennt zu halten von FEATURE-004 (Runde 4), da dessen Spielbrett-Oberfläche laut eigener Spec ohnehin komplett neu gebaut wird („Fokus + Warteschlange"), und mit dem hier beobachteten Stationen-Layout aus Runde 1–3 nicht identisch ist.
+
+---
+
+#### Analyse-Spec (2026-07-21)
+
+**Code-Basis dieser Analyse:** Frischer Klon von `github.com/stephanschumann/flow-game` nach `/tmp/flow-game-bugfix003-analyse`, HEAD real geprüft (`git log -1`): Commit `1c4c4af` ("BUGFIX-001: Retry bei transientem Verbindungsfehler beim Beitreten/Erstellen") — identisch mit dem im Auftrag genannten letzten bekannten Stand, keine weitere Entwicklung seither. Alle folgenden Zeilenangaben sind gegen genau diesen Commit verifiziert, nicht aus einer früheren Analyse übernommen.
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code, nicht angenommen):**
+
+*Zu (a) – Lobby-Erläuterung:*
+- `zeigeLobby(db, code, eigeneRolleText, rolle)` (`public/spiel.html` Zeile 521) setzt bei der Anzeige der Lobby ausschließlich `lobbyRolleHinweis.textContent = eigeneRolleText` (Zeile 526) — ein einzeiliger Satz. Die drei Aufrufstellen liefern exakt: „Du bist Host dieses Spiels." (Zeile 1630, Host nach Erstellen), „Du bist Host dieses Spiels. Teile den Code mit deiner Gruppe." (Zeile 1694, Host nach Wiederbetreten) und „Du bist " + ROLLEN_LABEL[rolle] + " in diesem Spiel." (Zeile 1665 und 1784, Beitritt bzw. automatisches Wiederbetreten) — für eine spielende Person also wörtlich „Du bist Spielende in diesem Spiel.", exakt wie im Ticket zitiert.
+- Keine weitere Erläuterung zu Startbedingungen existiert irgendwo im Skript: eine Volltextsuche nach „mindest" liefert im gesamten `public/spiel.html` keinen Treffer. Die Mindestbesetzung „mindestens fünf Spielenden" + ein Host ist ausschließlich in `Product.md` (Abschnitt 2/3) als Workshop-/Moderationsregel dokumentiert, aber nirgends im Code als technische Schranke hinterlegt.
+- `host-rundenstart-bereich` (der „Aufgabe vorstellen (Runde 1 starten)"-Button-Bereich, Zeile 198) wird ausschließlich über `hostRundenstartBereich.hidden = !(eigeneRolle === 'host' && !aktuelle)` gesteuert (Zeile 661) — geprüft wird nur „ist Host" und „noch keine laufende Runde", NICHT die Anzahl beigetretener Spielender. Der Host kann also technisch schon mit 0 oder 1 beigetretenen Personen starten; das ist bereits heute so und wird durch dieses Ticket nicht verändert — nur die fehlende Erläuterung dazu fehlt.
+- Es gibt keinen Live-Zähler „X von mindestens 5 sind da" irgendwo in der Lobby-Ansicht; die Teilnehmendenliste (`teilnehmer-liste`, ab Zeile 597 `renderTeilnehmerListe()`) zeigt nur Namen + Rollen-Badges, keine Zusammenfassung/Fortschrittsanzeige.
+
+*Zu (b) – veralteter Hero-Text:*
+- `.hero`/`#untertitel` existieren in `public/spiel.html` (Zeile 152-155: `<div class="hero"><div class="logo">Spiel-Räume</div><h1 id="titel">Flow Game</h1><div class="tag" id="untertitel">Lädt…</div></div>`) UND separat in `public/index.html` (Zeile 41-44, andere Landingpage-Datei, dort korrekt eigenständiger Text „Grundgerüst live…" — nicht Teil dieses Bugs).
+- Der `#untertitel` in `spiel.html` wird im gesamten Skript nur an ZWEI Stellen per JavaScript gesetzt: Zeile 1619 `untertitel.textContent = 'Erstelle ein Spiel oder tritt mit einem Beitritts-Code bei.';` (läuft beim allerersten Laden, bevor entschieden ist, ob bereits eine Lobby/Runde existiert) und Zeile 1796 (Fehlerfall: „Fehler beim Laden: …"). An KEINER Stelle in `zeigeLobby()` oder `wechsleZuRunde()` (Rundenwechsel-Funktion, Zeile 710) wird `untertitel` erneut gesetzt — er bleibt also während der gesamten Lobby-Phase UND während jeder laufenden Runde unverändert auf dem initialen Landingpage-Satz stehen, exakt das im Ticket beschriebene Verhalten. Auch der `.logo`-Text „Spiel-Räume" (Zeile 153) ist rein statisches HTML, ändert sich nie.
+- Zum Vergleich – das etablierte Muster für „Text je nach Zustand aktualisieren" existiert bereits im selben Code, nur eben nicht für den Hero-Bereich: Der Rundenbereich selbst hat einen dynamischen Header (`runde-titel`/`#runde-nummer`/`#runde-phase-badge`, Zeile 205-207, gespeist aus der Konstante `PHASE_LABEL` Zeile 704-708: „Aufgabe vorgestellt" / „Bereit – Karten können bewegt werden" / „Runde beendet") sowie ein dynamisches `eigene-hinweis`-Element (Zeile 1028-1030), das je nach Rolle korrekt zwischen „Du bist Host und beobachtest…" und „Du bist Beobachtende/r…" wechselt.
+- Wichtig für die Optionsbewertung: `Product.md` (Abschnitt 5) bestätigt, dass die eigentliche Rundenaufgabe/Anleitung eine vom HOST mündlich vermittelte Erklärung ist („Die nächste Station darf erst starten, wenn…" usw.) — die App selbst speichert aktuell keinen Aufgabentext pro Runde als Datenfeld. Eine wörtliche „Ersetzung durch die tatsächliche Rundenaufgabe" im Sinne einer vollständigen Aufgabenbeschreibung existiert im Datenmodell also noch nicht; vorhanden sind nur Rundennummer und Phase (`PHASE_LABEL`).
+
+*Zu (c) – Spaltenköpfe:*
+- `renderBrett(db, code)` (Zeile 931) setzt pro Spalte ausschließlich `titel.textContent = POSITION_LABELS[position]` (Zeile 942) in ein `.spalte-titel`-Element (Zeile 940f.). `POSITION_LABELS` (Zeile 698-702) wird rein aus `['Auftragseingang'].concat(STATIONEN.map((name, i) => (i+1) + '. ' + stationsLabel(name))).concat(['Ziel'])` gebildet — der Name der an dieser Station tatsächlich zuständigen Person kommt darin nirgends vor.
+- Die Stationsnamen selbst (`STATIONEN`, `src/game/createGame.js` Zeile 25-31: `wareneingang`, `kommissionierung`, `packstation`, `versand`, `qualitaetskontrolle`) sind nach Großschreibung durch `stationsLabel()` unterschiedlich lang (7 bis 19 Zeichen: „Versand" vs. „Qualitaetskontrolle"). `.spalte-titel` (CSS, Zeile 78) hat außer `text-align:center` und `font-size:11px` keinerlei Breiten-/Umbruchsteuerung, bei einer Spaltenbreite von `minmax(120px,1fr)` (`.brett`, Zeile 76). Das erklärt den im Ticket beschriebenen uneinheitlichen Umbruch real: kurze Namen („Versand") bleiben einzeilig, lange („Qualitaetskontrolle") brechen nach der Nummer in eine eigene Zeile um — reproduzierbar allein aus den unterschiedlichen Wortlängen, kein Zufallseffekt.
+- Der Name der zuständigen Person (`anzeigename`) liegt technisch bereits live vor: `teilnehmendeNamenMap` (Zeile 416, uid→Anzeigename) wird innerhalb von `zeigeLobby()`s `verarbeiteTeilnehmerDoc()` (Zeile 564) per `onSnapshot` kontinuierlich aktualisiert, und die zugehörigen zwei Listener (eigenes Dokument + gefilterte Collection-Query, Zeile 615-640) werden beim Wechsel in die laufende Runde (`wechsleZuRunde()`) NICHT abgemeldet — `teilnehmendeNamenMap` bleibt also auch während der Runde live aktuell. Laut eigenem Kopfkommentar „für Kennzahlen-Anzeige" vorbereitet, aber **aktuell an keiner Stelle im Code tatsächlich gelesen** — auch nicht in der Vergleichsansicht (`renderVergleichsTabelle()`, Zeile 1336-1400), die Stationen nur als „Station N (Stationsname)" beschriftet (Zeile 1382/1386), ebenfalls ohne Personennamen. Eine Zuordnung „Stationsnummer → aktuell zuständige Person" existiert bislang nur indirekt über `teilnehmendeCache` (uid-Schlüssel, lokal auf die Funktion `zeigeLobby()` beschränkt) und müsste für `renderBrett()` zugänglich gemacht werden — Implementierungsdetail, hier nur als Baustein festgehalten.
+
+**Fundstellen-Sweep (Pflicht):** Suchbegriffe `untertitel` (2 Fundstellen im Skript, beide oben behandelt, keine weitere), `mindest` (0 Treffer in `spiel.html` — bestätigt, dass es aktuell keinerlei Code-Schranke für die Mindestbesetzung gibt, nur die Produktdokument-Regel), `POSITION_LABELS` (3 Fundstellen: Definition Zeile 698, Verwendung Zeile 942 Spaltentitel, Verwendung Zeile 999 aria-label des Bewegen-Buttons — letzteres bereits korrekt textbasiert aus FEATURE-005, nicht Teil dieses Tickets), `teilnehmendeNamenMap` (2 Fundstellen: Definition Zeile 416, einzige Schreibstelle Zeile 564 — **niemals gelesen**, siehe oben; das ist eine zusätzliche, im Ticket nicht genannte Fundstelle, die für die Umsetzung von (c) der naheliegende Ansatzpunkt ist). Zusätzlich geprüft: `renderVergleichsTabelle()` (Kennzahlen-/Vergleichsansicht) hat dasselbe „kein Personenname, nur Stationsname"-Muster wie die Spaltenköpfe — das Ticket nennt aber ausdrücklich nur „Spaltenköpfe der Stationen" (Spielbrett), nicht die Auswertungsansicht; dieser Fund wird deshalb nicht automatisch in den Scope gezogen, sondern unten als offene Abgrenzungsfrage an Stephan gestellt.
+
+**Durchgespielte Beispiele:**
+
+- Eine Person tritt als sechste Person bei (alle fünf Stationen bereits belegt) und wird automatisch Beobachtende → sieht heute „Du bist Beobachtende/r in diesem Spiel.", ohne zu erfahren, dass das Spiel erst mit Host-Auslösung beginnt.
+- Der Host öffnet die Lobby mit nur zwei beigetretenen Spielenden und klickt versehentlich „Aufgabe vorstellen" → heute technisch möglich (kein Code-Gate), Runde startet reglementarisch „zu früh"; dieses Ticket ändert daran nichts, ergänzt nur die Erläuterung, dass mindestens 5 gebraucht werden — verhindert das gedankenlose Frühstarten aber nicht technisch.
+- Eine spielende Person sieht während Runde 2 weiterhin „Erstelle ein Spiel oder tritt mit einem Beitritts-Code bei." im Kopfbereich, obwohl direkt darunter im Rundenbereich bereits „Runde 2" + Phase-Badge korrekt angezeigt werden → der Widerspruch zwischen Kopfbereich (veraltet) und Rundenbereich (korrekt) ist der eigentliche Verwirrungspunkt, nicht ein komplett fehlender Hinweis.
+- Station „Kommissionierung" (16 Zeichen) und Station „Versand" (7 Zeichen) stehen nebeneinander im Brett → „2. Kommissionierung" bricht nach der Nummer um, „4. Versand" bleibt einzeilig, exakt das im Ticket beschriebene uneinheitliche Bild.
+- Eine Person verlässt gedanklich den Überblick, wer an Station 3 sitzt, weil dort nur „3. Packstation" steht → mit Namensanzeige („3. Packstation – Kim") wäre sofort klar, wer gerade zuständig ist.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan" unten): der genaue Wortlaut/Umfang der Lobby-Erläuterung (nur Fließtext vs. zusätzlich Live-Zähler), was der Hero-Bereich während der Runde konkret zeigen soll (nur Rundenkontext-Echo vs. echter Aufgabentext, den es im Datenmodell noch nicht gibt), das genaue Anzeigeformat für den Personennamen in den Spaltenköpfen, und ob die Vergleichsansicht (dasselbe „kein Name"-Muster) mit in den Scope soll.
+
+---
+
+**Zustands-Check (Pflicht) – Warte-, Leer- und Fehlerfall:**
+
+- **Lobby-Erläuterung (a):** Wartezustand: keiner, der Text ist statisch und sofort vorhanden (kein Serverzugriff nötig) → kein eigenes AK. Leerzustand: Sonderfall „noch niemand sonst beigetreten" (Teilnehmendenliste zeigt nur die eigene Zeile) — die Erläuterung muss auch dann sinnvoll lesbar bleiben, nicht nur bei „fast voll"; eigenes AK unten. Fehlerfall: kein neuer Fehlerfall, bestehende Fehlerbehandlung beim Laden der Teilnehmendenliste (`zeigeFehler(...)`, Zeile 628/639) bleibt unverändert.
+- **Hero/Untertitel (b):** Wartezustand: Zwischen `zeigeLobby()`-Aufruf und dem ersten `onSnapshot`-Update von `ueberwacheSpielUndRunden()` (Zeile 647) vergeht ein kurzer Moment ohne Rundendaten — der Hero-Text darf in diesem Zwischenmoment nicht auf einen falschen/leeren Zustand springen, bevor der erste Snapshot da ist; eigenes AK unten. Leerzustand: entfällt (Lobby und Runde sind die einzigen Zustände, „kein Spiel" gibt es hier nicht, da `zeigeLobby()` erst nach erfolgreichem Beitritt/Erstellen aufgerufen wird). Fehlerfall: bestehende Fehlerbehandlung (Zeile 1796, „Fehler beim Laden: …") bleibt unverändert bestehen und darf durch die neue dynamische Logik nicht überschrieben werden.
+- **Spaltenköpfe (c):** Wartezustand: Direkt nach Rundenstart, bevor `teilnehmendeNamenMap` für alle Stationen vollständig gefüllt ist (z. B. eine Person joint erst nach Rundenstart nach) — der Spaltenkopf darf dann nicht „undefined"/leer wirken, sondern braucht einen sinnvollen Platzhalter; eigenes AK unten. Leerzustand: „Auftragseingang" und „Ziel" (Position 0 und 6) haben nie eine zugeordnete Person — dürfen durch die Namenserweiterung nicht versehentlich einen leeren/falschen Namen erhalten. Fehlerfall: kein neuer Fehlerfall, bestehende Fehlerbehandlung der beiden Teilnehmenden-Listener (Zeile 628/639) bleibt unverändert.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+*(a) Lobby-Erläuterung:*
+
+1. Wer nach dem Beitreten in der Lobby steht (egal ob Spielende, Beobachtende oder Host), sieht zusätzlich zum bisherigen Rollensatz eine verständliche Erläuterung, dass das Spiel erst beginnt, wenn der Host es startet, und dass dafür mindestens fünf Spielende und ein Host gebraucht werden.
+2. Diese Erläuterung ist unabhängig davon lesbar und sinnvoll, ob gerade schon mehrere Personen beigetreten sind oder die Person die erste/einzige in der Lobby ist.
+3. Die Erläuterung erscheint bei jeder Art des Betretens der Lobby gleichermaßen — nach frischem Beitritt genauso wie nach automatischem Wiederbetreten (FEATURE-005).
+
+*(b) Hero/Kontext während Lobby und Runde:*
+
+4. Solange sich eine Person in der Lobby befindet (vor Rundenstart), zeigt der obere Kopfbereich der Seite keinen Text mehr, der so klingt, als sei noch kein Spiel gewählt worden (wie aktuell „Erstelle ein Spiel oder tritt mit einem Beitritts-Code bei.").
+5. Sobald eine Runde läuft, zeigt derselbe Kopfbereich einen Text, der erkennbar zur aktuellen Runde und Phase passt (z. B. dass gerade Runde X läuft), statt weiterhin den Beitritts-Werbetext der Startseite zu zeigen.
+6. Dieser aktualisierte Kopfbereich-Text bleibt über den gesamten Rundenverlauf hinweg korrekt, auch beim Wechsel von einer Runde zur nächsten (kein Zurückfallen auf den alten Text bei einem Rundenwechsel).
+7. Direkt nach dem Wechsel von der Lobby in die laufende Ansicht (kurzer Moment, bevor die ersten Rundendaten vollständig geladen sind) wirkt der Kopfbereich nicht leer oder widersprüchlich, sondern zeigt einen sinnvollen Zwischenzustand oder direkt den korrekten Rundentext.
+
+*(c) Spaltenköpfe:*
+
+8. Über jeder der fünf Stations-Spalten steht zusätzlich zur Stationsbezeichnung erkennbar der Name der Person, die gerade an dieser Station zuständig ist.
+9. Die beiden Spalten ohne zugeordnete Person („Auftragseingang" und „Ziel") zeigen weiterhin nur ihre bisherige Bezeichnung, ohne einen leeren, „undefined" oder anderweitig falschen Namenszusatz.
+10. Ist eine Station noch nicht besetzt (z. B. weil eine Person gerade erst nach Rundenstart beitritt), zeigt die Spalte einen verständlichen Platzhalter statt eines leeren oder technisch wirkenden Felds.
+11. Die Spaltenüberschriften brechen bei allen fünf Stationen einheitlich um (z. B. immer Nummer+Name in derselben Zeilenstruktur), unabhängig davon, wie lang der jeweilige Stationsname ist — keine Station ragt über die Spaltenbreite hinaus oder bricht anders um als die anderen.
+12. Diese Änderungen an den Spaltenköpfen wirken sich ausschließlich auf die Ansicht der Runden 1–3 aus; die (noch nicht gebaute) Spielbrett-Oberfläche für Runde 4 ist nicht Teil dieses Tickets.
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Änderung an `init()`/Lobby-Aufbau bricht den bestehenden Host- oder Teilnehmenden-Rejoin (FEATURE-001/FEATURE-005):** Die Lobby-Erläuterung und der neue Hero-Zustand müssen an denselben Stellen greifen, an denen `zeigeLobby()` sowohl nach frischem Beitritt als auch nach automatischem Wiederbetreten aufgerufen wird (vier Aufrufstellen, Zeile 1630/1665/1694/1784). Wird nur eine dieser vier Stellen angepasst, entsteht dieselbe Art von Inkonsistenz wie beim ursprünglichen Bug. Gegenmaßnahme: alle vier Aufrufstellen im selben Zug anfassen bzw. die Erläuterung zentral in `zeigeLobby()` selbst verankern statt an den Aufrufstellen zu duplizieren.
+2. **Hero-Text-Update kollidiert mit dem bestehenden Verbindungsstatus-/Zwei-Tabs-Hinweisbereich (FEATURE-005/BUGFIX-001):** Der Kopfbereich der Seite trägt bereits mehrere dynamische Hinweis-Elemente (`verbindungs-hinweis`, `tab-inaktiv-hinweis`, Zeile 145/149). Ein zusätzlicher dynamischer Hero-Text darf diese bestehenden Hinweise nicht verdrängen oder mit ihnen um denselben visuellen Platz konkurrieren. Gegenmaßnahme: bestehendes Layout unangetastet lassen, Hero-Text als reinen Text-Swap behandeln, kein neues Element einführen, das mit den bestehenden hidden/visible-Zuständen kollidiert.
+3. **`teilnehmendeNamenMap` für die Spaltenköpfe zu nutzen setzt voraus, dass die zwei Teilnehmenden-Listener aus `zeigeLobby()` beim Rundenwechsel wirklich aktiv bleiben — unverifiziert für den Fall eines Rejoins mitten in einer Runde:** Die Analyse hat bestätigt, dass `wechsleZuRunde()` diese beiden Listener nicht abmeldet (kein `unsub...` dafür vorhanden), das gilt aber nur für den normalen Ablauf innerhalb derselben Sitzung. Bei einem automatischen Rejoin mitten in einer laufenden Runde (FEATURE-005) muss geprüft werden, ob `zeigeLobby()` erneut durchlaufen und die Map dabei sauber neu aufgebaut wird, bevor `renderBrett()` zum ersten Mal zeichnet. Gegenmaßnahme: Testfall „Rejoin während laufender Runde 2, danach zeigt Spaltenkopf trotzdem korrekten Namen" in den Testplan aufnehmen.
+4. **Uneinheitlicher Zeilenumbruch wird nur kosmetisch kaschiert statt strukturell gelöst:** Eine reine Schriftgrößen-Reduktion behebt das ungleichmäßige Umbruchbild nur teilweise (bei sehr langen Namen wie „Qualitaetskontrolle" plus einem langen Personennamen könnte das Problem wiederkehren). Gegenmaßnahme: bewusst eine feste, einheitliche Zeilenstruktur für alle fünf Spalten vorsehen (z. B. immer „Nummer" / „Stationsname" / „Personenname" als drei separate, gleich behandelte Zeilen mit `text-overflow`/Kürzung bei Bedarf), nicht nur Schriftgröße anpassen.
+5. **Regressionsrisiko gegen den bestehenden `aria-label` des Bewegen-Buttons (FEATURE-005 AK15):** Dieser nutzt `POSITION_LABELS[position]` direkt im Text („Karte X weiterbewegen von 3. Packstation zu 4. Versand", Zeile 998-999). Wird `POSITION_LABELS` selbst verändert (z. B. um den Personennamen direkt einzubauen statt ihn separat anzuzeigen), würde sich der aria-label-Text ungewollt mitändern und könnte unhandlich lang werden. Gegenmaßnahme: Personenname als zusätzliches, separates Element im Spaltenkopf ergänzen, `POSITION_LABELS` selbst unverändert lassen, damit der bestehende aria-label-Text und der bestehende `game-a11y-static.test.js`-Test unberührt bleiben.
+6. **Der Ticket-Wortlaut zu (b) („ersetzt durch die tatsächliche Rundenaufgabe/Anleitung") wird zu wörtlich umgesetzt und ein Aufgabentext-Datenmodell gebaut, das eigentlich nicht verlangt ist:** Da die App aktuell keinen Aufgabentext pro Runde speichert (das ist mündliche Host-Moderation laut `Product.md`), bestünde das Risiko, unnötig ein neues, größeres Feature (redaktionell gepflegte Aufgabentexte je Runde) mitzubauen, obwohl ein einfacher Rundenkontext-Echo („Runde 2 läuft") ausreichen könnte. Gegenmaßnahme: siehe offene Frage unten – vor der Umsetzung klären, welche der beiden Varianten gemeint ist.
+7. **Keine Live-Multiplayer-Race-Condition-relevanten Risiken in diesem Ticket:** Anders als bei den meisten anderen Flow-Game-Tickets betrifft BUGFIX-003 ausschließlich reine Anzeige-/Text-/Layout-Logik, keine Schreibvorgänge, keine Firestore-Regeln, keine Zeitmessung. Bewusst hier vermerkt (Pflicht-Rubrik „Mehrspieler/Zeitmessung" aus dem Skill), damit das Fehlen solcher Risiken nicht wie eine vergessene Prüfung wirkt, sondern als geprüftes Ergebnis dasteht.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/spiel.html` ist die einzige betroffene Datei — kein Backend-/Regel-/Datenmodell-Eingriff nötig für alle drei Teilprobleme.
+- (a): `zeigeLobby()` (Zeile 521) bzw. das umgebende Lobby-Markup (`lobby-panel`, Zeile 193-201) — neuer Erläuterungstext, keine neue Firestore-Abfrage nötig (die bereits geladene Teilnehmendenliste reicht für einen optionalen Live-Zähler, falls gewünscht, siehe offene Frage).
+- (b): Der Hero-Bereich (`#untertitel`, Zeile 155) plus die Stellen, die ihn setzen könnten: `zeigeLobby()` (aktuell keine Aktualisierung) und `wechsleZuRunde()`/`renderRundenStatus()` (Rundenwechsel-Pfad, Zeile 710ff. und die Snapshot-Verarbeitung in `ueberwacheSpielUndRunden()`, Zeile 647ff.) — neuer Aufruf, der `untertitel.textContent` passend zum aktuellen Panel/Rundenzustand setzt.
+- (c): `renderBrett()` (Zeile 931) plus `POSITION_LABELS`-Umfeld (Zeile 698) und CSS `.spalte-titel`/`.spalte` (Zeile 76-78) — zusätzliche Datenquelle für „Stationsnummer → aktuell zuständige Person", vermutlich aufbauend auf der bereits bestehenden, aber ungenutzten `teilnehmendeNamenMap` (Zeile 416) bzw. einer neu zu ergänzenden Stationsnummer→Name-Zuordnung, plus CSS-Anpassung für einheitlichen Zeilenumbruch.
+- Explizit NICHT betroffen: `firestore.rules`, alle `src/game/*.js`-Logikmodule, das Firestore-Datenmodell, die Zeitmessung, die Kartenbewegungs-/Stapel-Tor-Logik. Auch NICHT betroffen: die Runde-4-Spielbrett-Oberfläche (`rv-brett`, FEATURE-004), da dort eine komplett andere „Fokus + Warteschlange"-Darstellung vorgesehen ist (siehe eigene Spec dort) — falls die Spaltenkopf-Lösung aus (c) auf Runde 4 übertragen werden soll, ist das ein separater Abstimmungspunkt mit FEATURE-004, nicht impliziter Teil dieses Tickets.
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Host-Lobby-Anzeige/-Rejoin — alle vier `zeigeLobby()`-Aufrufstellen müssen weiterhin korrekt funktionieren, siehe Pre-Mortem-Risiko 1), FEATURE-005 (Rejoin-Mechanismus für Spielende/Beobachtende sowie der bestehende Verbindungsstatus-/Zwei-Tabs-Hinweisbereich im Kopfbereich — darf durch einen zusätzlichen dynamischen Hero-Text nicht verdrängt werden, siehe Pre-Mortem-Risiko 2; außerdem der bestehende `aria-label` des Bewegen-Buttons, der `POSITION_LABELS` direkt verwendet, siehe Pre-Mortem-Risiko 5; und der `game-a11y-static.test.js`-Regressionstest, der genau diesen aria-label-Text sowie Fokus-Stil/Kontrast prüft und unverändert grün bleiben muss), FEATURE-002/FEATURE-003 (Spielbrett-Rendering/Kennzahlen-Vergleichsansicht — `renderBrett()` und `renderVergleichsTabelle()` dürfen durch die CSS-/Markup-Änderungen an den Spaltenköpfen nicht in ihrer Kartenbewegungs- bzw. Kennzahlen-Darstellung beeinträchtigt werden), FEATURE-004 (In Progress — komplett eigene Spielbrett-Darstellung für Runde 4, siehe Abgrenzung oben; keine Regression zu erwarten, da andere DOM-Struktur, aber als Beobachtungspunkt vermerkt, falls (c) später auf Runde 4 übertragen werden soll).
+
+---
+
+**Cross-Ticket-Abgrenzung (BUGFIX-008, FEATURE-004, FEATURE-006):**
+
+- **BUGFIX-008** (Station kann Karten anderer Stationen bewegen, ToDo, keine Analyse): Bei der Code-Verifikation für dieses Ticket ist als Nebenfund aufgefallen, dass die client-seitige UI-Gate-Funktion `darfIchDieseKarteBewegen()` (`public/spiel.html` Zeile 920-929) `istZustaendig = eigeneStationsNummer === vonPosition || eigeneStationsNummer === nachPosition` prüft — das lässt eine Station sowohl Karten an ihrer EIGENEN Position als auch an der NÄCHSTEN Position (der Zielposition der Weitergabe) als „zuständig" gelten, was strukturell genau zu dem in BUGFIX-008 beschriebenen Fehlerbild passt (Station 5 kann Karten an Position 4 bewegen, weil `nachPosition` für Station 4 gleich 5 wäre – die Bedingung ist symmetrisch missverständlich formuliert). Das ist ausdrücklich **kein Teil des Scopes von BUGFIX-003** (reine Berechtigungs-/Sicherheitsfrage, keine Kontext-Anzeige) und wird hier nur als Fundstelle für die BUGFIX-008-Analyse vermerkt, nicht selbst behoben. Keine inhaltliche Überschneidung im Code selbst: BUGFIX-003 ändert nur Textinhalt/CSS der Spaltenköpfe (`titel.textContent`, Zeile 942), nicht die Berechtigungslogik (`darfIchDieseKarteBewegen()`, separate Funktion) — beide Tickets können unabhängig voneinander bearbeitet werden, ohne sich gegenseitig zu blockieren.
+- **FEATURE-004** (Runde 4, In Progress, Backend fertig, Spielbrett-UI fehlt noch): Wie im Ticket selbst bereits vermerkt, nutzt Runde 4 ein komplett anderes Anzeigekonzept („Fokus + Warteschlange", `rv-brett`, `rv-fokus-card`, `rv-warteschlange`, Zeile 231-238) statt der Stationen-Spalten aus `renderBrett()`. Diese Analyse bestätigt das: keine gemeinsame Funktion, kein gemeinsames Markup zwischen `renderBrett()` (Runden 1-3, Betroffen von diesem Ticket) und der noch zu bauenden Runde-4-UI. Kein Abgrenzungsbedarf über die bereits im Ticket vermerkte Trennung hinaus — falls die hier für (c) entwickelte Lösung (Personenname anzeigen) später als Vorbild für die Runde-4-Warteschlangen-Chips dienen soll, ist das eine spätere, freiwillige Übertragung, kein impliziter Bestandteil dieses Tickets.
+- **FEATURE-006** (Mehrsprachigkeit, ToDo, Analyse unfreigegeben): Jeder neue, in diesem Ticket eingeführte UI-Text (Lobby-Erläuterung, Hero-Rundenkontext-Text, ggf. Platzhaltertext für unbesetzte Stationen) wird ein weiterer, aktuell hart auf Deutsch codierter String im selben Stil wie die bereits bestehenden Texte in `spiel.html`. Das erweitert die in FEATURE-006 bereits als Pre-Mortem-Risiko 1 dokumentierte Migrationsmenge geringfügig, ändert aber nichts an der dortigen Architekturempfehlung (zentrale Text-/Schlüssel-Tabelle, Option A) — kein neuer Abgrenzungsbedarf, nur zur Vollständigkeit vermerkt, damit FEATURE-006 bei der eigenen Umsetzung diese neuen Texte mit erfasst.
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Drei unabhängige, kleine Fixes nacheinander (empfohlen):* (a) Lobby-Erläuterung als zusätzlicher Fließtext-Absatz in `zeigeLobby()`; (b) Hero-Text wird bei jedem Zeigen der Lobby bzw. bei jedem Rundenwechsel neu gesetzt (reiner Rundenkontext-Echo, kein neues Aufgabentext-Datenfeld); (c) `renderBrett()` erweitert `POSITION_LABELS`-Anzeige um einen zusätzlichen, separaten Namens-Text pro Spalte plus CSS-Fix für einheitlichen Umbruch. Vorteile: minimal-invasiv, jedes Teilproblem einzeln testbar, kein neues Datenmodell, kein Cloud-Functions-/Blaze-Bedarf, folgt der bisherigen Architektur-Linie (reine Client-Änderung); die drei Fixes sind voneinander unabhängig und könnten sogar in beliebiger Reihenfolge oder von unterschiedlichen Implementierungs-Durchläufen erledigt werden. Nachteile: bei (b) bleibt die Frage offen, ob ein reiner Rundenkontext-Echo dem Ticket-Wortlaut „tatsächliche Rundenaufgabe" wirklich gerecht wird (siehe offene Frage 2 unten) — falls Stephan mehr will, wäre das ein größerer Nachtrag.
+
+*Option B – (b) als Anlass nehmen, ein echtes Rundenaufgabentext-Datenmodell einzuführen (z. B. ein Feld je Runde mit einer kurzen Instruktion, die der Host vor Rundenstart eintippt):* Vorteile: würde den Ticket-Wortlaut „tatsächliche Rundenaufgabe" wörtlich erfüllen und dem Host erlauben, eine eigene, angepasste Instruktion zu hinterlegen statt eines generischen Textes. Nachteile: deutlich größerer Scope als im Ticket ursprünglich beschrieben (neues Eingabefeld für den Host, neues Datenfeld auf dem Runden-Dokument, zusätzliche Sicherheitsregel „nur Host darf schreiben"), widerspricht der Produktentscheidung, dass die Aufgabenerklärung laut `Product.md` mündliche Host-Moderation ist, und bläht ein als „Mittel"-Priorität eingestuftes Bugfix-Ticket zu einem Feature auf. Nicht empfohlen ohne ausdrücklichen Wunsch von Stephan.
+
+*Option C – Nur (b) beheben, (a) und (c) in separate Tickets auslagern:* Vorteile: kleinerer, schneller abzuschließender Scope für den einzigen „echten Bug" der drei Beobachtungen. Nachteile: widerspricht der im Ticket selbst begründeten bewussten Bündelung („deshalb hier gebündelt statt als drei Einzeltickets"); (a) und (c) sind für sich genommen klein genug, dass eine Aufteilung mehr Koordinationsaufwand (drei Tickets, drei Analysen/BDD-Durchläufe) erzeugen würde als sie einzusparen hilft. Nicht empfohlen.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A. Sie bleibt beim vom Ticket selbst vorgegebenen Bündelungs-Gedanken, hält den Scope beim reinen Anzeige-/Textproblem (kein neues Datenmodell, keine neue Rolle für den Host), und lässt sich vollständig innerhalb von `public/spiel.html` umsetzen. Bei (b) wird empfohlen, zunächst mit dem einfacheren Rundenkontext-Echo zu starten (analog zum bereits bestehenden `PHASE_LABEL`-Muster) und nur bei ausdrücklichem Bedarf später auf ein Host-editierbares Aufgabentext-Feld (Option B) zu erweitern — diese Empfehlung ist aber ausdrücklich eine offene Frage unten, keine bereits getroffene Entscheidung.
+
+---
+
+**Einschätzung zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Kein `prototype-builder`-Durchlauf vor Gate 1 nötig. Begründung: Keines der drei Teilprobleme stellt eine echte Bedienkonzept-/Interaktionsfrage mit mehreren, sich in der Praxis spürbar unterschiedlich anfühlenden Varianten dar (anders als z. B. die Runde-4-„Fokus + Warteschlange"-Frage in FEATURE-004, die tatsächlich einen Prototyp mit drei Varianten durchlaufen hat). (a) ist reiner Fließtext ohne Interaktionsänderung. (b) ist ein Text-Update an einer bestehenden, rein informativen Anzeigestelle, kein neues Bedienelement. (c) ist zwar ein Layout-Detail (wie genau Nummer/Stationsname/Personenname im Spaltenkopf angeordnet werden), aber nicht-interaktiv (reine Anzeige, kein Klickverhalten) und lässt sich in ein bis zwei Sätzen eindeutig beschreiben („Nummer und Stationsname wie bisher, Personenname als dritte, gleich formatierte Zeile darunter, alle drei Zeilen mit fester Höhe/Kürzung bei Überlänge") — das überschreitet die im Skill genannte Schwelle „mehr als zwei, drei Sätze nötig" bzw. „fühlt sich in der Bedienung unterschiedlich an" nicht. Sollte sich beim Umsetzen zeigen, dass die Drei-Zeilen-Lösung für (c) optisch zu gedrängt wirkt, kann das als kleiner Nachtrag mit ein bis zwei CSS-Alternativen statt eines vollen Prototyp-Durchlaufs geklärt werden.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+
+- Given/When/Then je Akzeptanzkriterium oben (12 Stück).
+- **Lobby-Erläuterung an allen vier Aufrufstellen (Pre-Mortem-Risiko 1):** Given jede der vier `zeigeLobby()`-Aufrufstellen (Host nach Erstellen, Host nach Wiederbetreten, Beitritt, automatisches Wiederbetreten), When die Lobby angezeigt wird, Then erscheint an jeder der vier Stellen dieselbe Startbedingungs-Erläuterung (AK1, AK3).
+- **Hero-Text-Übergang Lobby → Runde → nächste Runde (AK4-7):** Given eine Person befindet sich in der Lobby, When der Host die erste Runde startet, Then wechselt der Hero-Text von „Erstelle ein Spiel…" auf einen rundenbezogenen Text; When danach zur nächsten Runde gewechselt wird, Then bleibt der Text weiterhin rundenbezogen und aktuell (kein Rückfall auf den alten Text).
+- **Regressionstest bestehender Fehlerpfad (Pre-Mortem-Risiko 2):** Given ein Ladefehler tritt auf, When `zeigeFehler()`/die Fehlerbehandlung aus Zeile 1796 greift, Then zeigt der Hero weiterhin den bestehenden Fehlertext, unverändert durch die neue Rundenkontext-Logik.
+- **Spaltenkopf-Namensanzeige (AK8-11):** Given eine besetzte Station mit bekanntem Anzeigenamen, When das Brett gerendert wird, Then zeigt die Spalte Stationsnummer, Stationsname UND Personenname in einheitlicher Formatierung; Given „Auftragseingang"/„Ziel", Then bleibt der bisherige Text ohne Namenszusatz (AK9); Given eine noch unbesetzte Station, Then erscheint ein definierter Platzhaltertext statt eines leeren Felds (AK10).
+- **Einheitlicher Umbruch (AK11, Pre-Mortem-Risiko 4):** Given alle fünf Stationsnamen unterschiedlicher Länge (`wareneingang` … `qualitaetskontrolle`), When das Brett gerendert wird, Then ist die Zeilenstruktur (Anzahl Zeilen, Reihenfolge Nummer/Name/Person) bei allen fünf Spalten identisch — automatisierbar als Static-Test analog zu `game-a11y-static.test.js` (Textstruktur/CSS-Klassen prüfen, kein visueller Pixel-Vergleich nötig).
+- **Regressionstest aria-label Bewegen-Button (Pre-Mortem-Risiko 5):** Given die Spaltenkopf-Änderung ist umgesetzt, Then bleibt der aria-label-Text des Bewegen-Buttons exakt wie in FEATURE-005 spezifiziert (`POSITION_LABELS` unverändert) — bestehender `game-a11y-static.test.js`-Test muss unverändert grün bleiben.
+- **Rejoin mitten in laufender Runde zeigt korrekten Spaltenkopf-Namen (Pre-Mortem-Risiko 3):** Given eine Person lädt die Seite während Runde 2 neu (automatischer Rejoin, FEATURE-005), When das Brett zum ersten Mal gerendert wird, Then zeigt jede Spalte sofort den korrekten, bereits aus `teilnehmendeNamenMap` bekannten Personennamen, nicht erst nach einer sichtbaren Verzögerung oder gar nicht.
+- Regressionstests: bestehende Suiten `game-a11y-static.test.js`, `game-rejoin.logic.test.js`, `game-connection-status.logic.test.js` laufen nach der Änderung unverändert grün (reine Text-/CSS-Änderung an bereits getesteten Bereichen).
+
+---
+
+**Offene Fragen an Stephan (müssen vor Freigabe der Spec geklärt werden, keine Annahmen getroffen):**
+
+1. **Genauer Wortlaut/Umfang der Lobby-Erläuterung (a):** Reicht ein reiner Fließtext-Satz („Das Spiel startet, sobald der Host es auslöst. Dafür werden mindestens 5 Spielende und ein Host gebraucht.") oder soll zusätzlich ein Live-Zähler ergänzt werden (z. B. „3 von mindestens 5 Spielenden sind bisher beigetreten"), der aus der bereits geladenen Teilnehmendenliste berechnet werden könnte? Ein Live-Zähler ist technisch einfach nachrüstbar (Daten liegen bereits vor), wurde aber im Ticket nicht ausdrücklich verlangt.
+2. **Tatsächlicher Umfang von (b) – reiner Rundenkontext-Echo oder echter Aufgabentext:** Der Ticket-Wortlaut spricht von „ersetzt … durch die tatsächliche Rundenaufgabe/Anleitung, die der Host den Spielenden erklären kann". Reicht dafür ein knapper, automatisch generierter Kontext-Hinweis (z. B. „Runde 2 läuft – Bearbeitungszeit läuft" analog zum bestehenden `PHASE_LABEL`-Muster, Empfehlung dieser Analyse, Option A oben), oder ist tatsächlich ein neues, vom Host pro Runde editierbares Aufgabentextfeld gewünscht (Option B oben, deutlich größerer Scope, neues Datenmodell)? Diese Analyse geht von der ersten, schlankeren Variante aus, trifft diese Annahme aber nicht endgültig.
+3. **Format des Personennamens in den Spaltenköpfen (c):** Reicht die Ergänzung als dritte Zeile unterhalb von Nummer/Stationsname (z. B. „3. Packstation" / „Kim"), oder wird ein anderes Format bevorzugt (z. B. Name zuerst, Station in Klammern; oder Name direkt neben statt unter dem Stationsnamen)? Bei sehr langen Namen (mehrere Wörter) müsste zusätzlich eine Kürzungsregel (z. B. `text-overflow: ellipsis`) festgelegt werden — reine Implementierungsdetail-Einschätzung, keine Grundsatzfrage, aber der Wunsch nach dem grundsätzlichen Anordnungsformat ist eine Geschmacksfrage, die Stephan vorgeben sollte.
+4. **Soll die Vergleichsansicht/Kennzahlen-Auswertung (`renderVergleichsTabelle()`) mit demselben „Personenname statt nur Stationsname"-Fix versehen werden?** Der Fundstellen-Sweep hat dasselbe Muster (nur Stationsname, kein Personenname) auch dort gefunden, das Ticket nennt aber ausdrücklich nur die Spielbrett-Spaltenköpfe. Soll das mit in den Scope dieses Tickets, oder als eigenes, künftiges Ticket vorgemerkt werden?
+5. **Platzhaltertext für unbesetzte Stationen (AK10):** Welcher Text soll erscheinen, wenn eine Station zum Render-Zeitpunkt noch niemandem zugeordnet ist (z. B. „noch nicht besetzt" oder schlicht kein Zusatztext, nur die Stationsbezeichnung wie heute)? Reine Formulierungsfrage, aber ohne Vorgabe müsste die Analyse hier raten.
+
+---
+
+**Freigabe-Entscheidungen (Stephan, 2026-07-22):**
+
+1. **Zu offener Frage 1 (Wortlaut/Umfang der Lobby-Erläuterung):** Stephan entscheidet sich für die Variante mit zusätzlichem Live-Zähler. Die Lobby zeigt also nicht nur den erläuternden Fließtext-Satz, dass das Spiel erst mit Host-Auslösung beginnt und mindestens fünf Spielende plus ein Host gebraucht werden, sondern ergänzt das um einen sich automatisch aktualisierenden Live-Zähler nach dem Muster „3 von 5 beigetreten". Der Zähler muss sich bei jeder Änderung der Teilnehmendenliste selbstständig aktualisieren, ohne dass die Seite neu geladen werden muss.
+2. **Zu offener Frage 2 (Umfang des Hero-/Kontext-Texts während laufender Runde):** Stephan entscheidet sich für die schlankere, in der Analyse empfohlene Variante: Der Text während einer laufenden Runde zeigt ausschließlich automatisch generierten Rundenkontext (analog zum bestehenden `PHASE_LABEL`-Muster) — kein vom Host frei eingebbares Aufgabenfeld. Implementierungsoption B (neues, host-editierbares Aufgabentext-Datenmodell) entfällt damit endgültig; es bleibt beim reinen Rundenkontext-Echo aus Implementierungsoption A, in einem kleineren Umbau als ein vollständiges Aufgabentextfeld.
+3. **Zu offener Frage 3 (Format des Personennamens in den Spaltenköpfen):** Der Name der an einer Station zuständigen Person erscheint als eigene Zeile unterhalb der Stationsbezeichnung (z. B. „3. Packstation" in einer Zeile, „Kim" in einer eigenen Zeile darunter) — nicht daneben, nicht dahinter und nicht in derselben Zeile wie die Stationsbezeichnung.
+4. **Zu offener Frage 4 (Scope-Erweiterung auf die Vergleichs-/Auswertungsansicht):** Stephan entscheidet sich dafür, den Scope dieses Tickets zu erweitern. Derselbe Namens-Fix (Personenname zusätzlich zum Stationsnamen) wird nicht als separates, künftiges Ticket vorgemerkt, sondern direkt im Zuge dieses Tickets auch in `renderVergleichsTabelle()` umgesetzt.
+
+**Scope-Erweiterung damit final:** Die Auswertungs-/Vergleichsansicht (`renderVergleichsTabelle()`) ist ab sofort explizit Teil des Scopes dieses Tickets, nicht mehr nur ein bei der Analyse gefundener, aber ausgeklammerter Nebenbefund (siehe Fundstellen-Sweep oben, der diesen Fund ursprünglich noch bewusst außerhalb des Scopes belassen hatte). Der bei (c) erarbeitete Ansatz „Personenname zusätzlich zur Stationsbezeichnung anzeigen, als eigene Zeile darunter" gilt für beide betroffenen Stellen gleichermaßen: die Spielbrett-Spaltenköpfe (`renderBrett()`) UND die Vergleichsansicht (`renderVergleichsTabelle()`), die dort aktuell dieselbe Lücke aufweist („Station N (Stationsname)" ohne Personenname).
+
+Offene Frage 5 (Platzhaltertext für unbesetzte Stationen) bleibt von diesen vier Entscheidungen unberührt und weiterhin offen.
+
+---
+
+#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-22)
+
+Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Änderungen an `public/spiel.html`, gleiches Vorgehen wie bereits bei FEATURE-005/BUGFIX-001 für Static-Tests etabliert, Vorbild `tests/game-a11y-static.test.js`):
+
+- `tests/game-lobby-und-rundenkontext.static.test.js` – 10 Testfälle. Deckt Ticket-Teil (a) und (b) ab (Freigabe-Entscheidungen 1 und 2). Liest den echten Quelltext von `public/spiel.html` und extrahiert per `indexOf`-Anker die vollständigen Funktionskörper von `zeigeLobby()` bzw. `wechsleZuRunde()`/`renderRundenStatus()`, statt an den vier `zeigeLobby()`-Aufrufstellen denselben Musterabgleich zu duplizieren (Skill-Regel 3b: refactoring-verträglich, keine erzwungene Code-Duplizierung). Deckt ab: Erläuterungstext mit Mindestbesetzungs-Hinweis (`/mindest/i` + `/host/i`, AK1-3), Live-Zähler berechnet aus `teilnehmendeCache` (AK1, Freigabe-Entscheidung 1), Zähler-Update innerhalb von `renderTeilnehmerListe()` verankert, kein hartcodiertes „3 von 5"-Beispiel, alle vier bestehenden `zeigeLobby()`-Aufrufstellen weiterhin vorhanden (Pre-Mortem-Risiko 1), `untertitel.textContent`-Zuweisung in `zeigeLobby()` (AK4, Freigabe-Entscheidung 2), rundenbezogene `untertitel`-Aktualisierung in `wechsleZuRunde()`/`renderRundenStatus()` (AK5-7), Leitplanke „kein host-editierbares Aufgabenfeld" (Regressionsschutz gegen Überimplementierung von Option B), Regressionstests für den bestehenden Fehlertext (Zeile 1796) und für `verbindungs-hinweis`/`tab-inaktiv-hinweis` (Pre-Mortem-Risiko 2).
+- `tests/game-stationsnamen.static.test.js` – 9 Testfälle. Deckt Ticket-Teil (c) und die Scope-Erweiterung (Freigabe-Entscheidung 4) ab. Extrahiert ebenso die vollständigen Funktionskörper von `renderBrett()` und `renderVergleichsTabelle()`. Deckt ab: Verwendung von `teilnehmendeNamenMap` in `renderBrett()` (AK8), Name als eigenes, separates Element statt String-Verkettung mit `POSITION_LABELS[position]` (Freigabe-Entscheidung 3), Ausschluss von Position 0/6 („Auftragseingang"/„Ziel", AK9) über ein flexibles Muster-Set statt einer einzigen erzwungenen Zeilenform (bewusst so gestaltet, siehe Hinweis unten), Platzhalter für unbesetzte Stationen (AK10), Regressionsschutz für `POSITION_LABELS` und den bestehenden aria-label-Text (Pre-Mortem-Risiko 5), Namens-Fix auch in `renderVergleichsTabelle()` (Scope-Erweiterung, Freigabe-Entscheidung 4) plus Baseline-Regressionstest für das bestehende „Station N (Stationsname)"-Muster, sowie ein Leitplanken-Test, dass `wechsleZuRunde()` `teilnehmendeNamenMap` nicht zurücksetzt (Pre-Mortem-Risiko 3, Voraussetzung für (c)).
+
+**Hinweis zu einer bewussten Testrevision (Skill-Regel 3b):** Der AK9-Test in `game-stationsnamen.static.test.js` prüfte ursprünglich, ob die exakte, bereits für die Stapel-Tor-Anzeige verwendete Zeichenkette `position >= 1 (&&|\|\|)? position <= 5` ein zweites Mal im Funktionskörper auftaucht. Das hätte die Implementierung gezwungen, exakt dieselbe Bedingung wörtlich zu duplizieren, statt z. B. eine gleichwertige, aber anders formulierte Bereichsprüfung oder eine gemeinsame Hilfsfunktion zu verwenden. Test wurde vor dem ersten Jest-Lauf auf ein Set gleichwertiger Muster (`.some(...)`) sowie eine Nähe-Prüfung (±300 Zeichen um die `teilnehmendeNamenMap`-Verwendung) umgestellt – prüft weiterhin *dass* Position 0/6 ausgeschlossen werden, schreibt aber nicht *wie* vor.
+
+**Status:** Beide Dateien real gegen Jest ausgeführt (`npx jest tests/game-lobby-und-rundenkontext.static.test.js tests/game-stationsnamen.static.test.js`). Von den 19 Testfällen sind 8 wie erwartet ROT (echte Assertion-Fehlschläge gegen den heutigen Quelltext, kein Modul-Ladefehler, da dieses Ticket kein neues Modul benötigt): fehlender Mindestbesetzungs-Hinweis, keine `untertitel`-Aktualisierung in `zeigeLobby()`, keine rundenbezogene `untertitel`-Aktualisierung in `wechsleZuRunde()`/`renderRundenStatus()`, keine Verwendung von `teilnehmendeNamenMap` in `renderBrett()`, kein separates Namens-Element statt String-Verkettung, keine Bereichsprüfung für Position 0/6 im Namenskontext, kein Platzhalter für unbesetzte Stationen, kein Personenname in `renderVergleichsTabelle()`. Die übrigen 11 Testfälle sind bewusst bereits jetzt grün (Regressions-/Leitplanken-Tests: alle vier bestehenden `zeigeLobby()`-Aufrufstellen, bestehender Fehlertext, `verbindungs-hinweis`/`tab-inaktiv-hinweis`, kein host-editierbares Aufgabenfeld, `POSITION_LABELS`/aria-label unverändert, Baseline „Station N (Stationsname)", `teilnehmendeNamenMap` übersteht `wechsleZuRunde()`). Zusätzlich der volle bestehende Regressionslauf (7 Suiten, 72 Tests, u. a. `game-a11y-static.test.js`, `game-rejoin.logic.test.js`, `game-connection-status.logic.test.js`, `game-connection-retry.*.test.js`) real ausgeführt und unverändert grün geblieben – ausschließlich additive, neue Testdateien, keine bestehende Datei verändert. Bereit für `flow-game-impl`.
+
+---
+
+#### Umsetzungsstand (2026-07-22, `flow-game-impl`, zweiter Durchlauf gegen den mehrsprachigen Code-Stand)
+
+**Wichtiger Kontextwechsel:** Der ursprünglich hier dokumentierte erste Umsetzungsversuch (gegen HEAD `1c4c4af`, ohne Mehrsprachigkeit, Testergebnis 19/19 + 83/83) wurde VERWORFEN, nicht übernommen. Grund: zwischenzeitlich wurde entdeckt, dass Stephans echtes Repo bereits eine vollständige, separat entstandene Mehrsprachigkeits-Implementierung (FEATURE-006, DE/EN) enthält, die zuerst gesichert werden musste (Commit `fc14c4c`, siehe FEATURE-006-Ticket). BUGFIX-003 wurde daraufhin komplett neu gegen diesen aktuellen, mehrsprachigen Stand umgesetzt.
+
+**Code-Basis:** Frischer Klon von `github.com/stephanschumann/flow-game`, HEAD real geprüft (sowohl vom Implementierungs-Subagenten als auch unabhängig davon nochmal vom Hauptthread selbst per eigenem `git log -1`): Commit `fc14c4c` ("Sichere lokalen Arbeitsstand: FEATURE-006 Mehrsprachigkeit + Nebenarbeiten"). Geänderte Dateien: `public/spiel.html`, `src/i18n/uebersetzungen.js`, `public/js/i18n/uebersetzungen.js`. Neue Testdateien: `tests/game-lobby-und-rundenkontext.static.test.js`, `tests/game-stationsnamen.static.test.js`.
+
+**Implementiert (alle vier Freigabe-Entscheidungen, jetzt über das bestehende Übersetzungssystem `t()`/`UEBERSETZUNGEN` statt hartcodierter deutscher Strings):**
+
+1. **Lobby-Erläuterung mit Live-Zähler (a):** Neues `<p id="lobby-start-hinweis">` (statischer Erläuterungstext über `t('lobby.startHinweis')`) und `<p id="lobby-live-zaehler">`, dessen Wert live in `renderTeilnehmerListe()` aus der Anzahl der Teilnehmenden mit Rolle `'spielende'` (nicht Host) berechnet und über `t('lobby.liveZaehler', {aktuell, minimum})` gesetzt wird (Platzhalter-Ersetzung, kein hartcodiertes Zahlenbeispiel im Quelltext). Zentral in `zeigeLobby()`/`renderTeilnehmerListe()` verankert, gilt automatisch für alle vier Aufrufstellen.
+2. **Rundenkontext statt Landingpage-Text (b):** `#untertitel` bekommt zwei neue Modi im bestehenden `untertitelModus`-Mechanismus: `'lobby'` (`t('lobby.untertitelInLobby')`, gesetzt in `zeigeLobby()`) und `'runde'` (`t('spielbrett.rundeKontextMitPhase', {rundenNummer, phase})` bzw. `t('spielbrett.rundeKontextOhnePhase', {rundenNummer})` als Zwischenzustand, gesetzt in `wechsleZuRunde()` und danach laufend aktualisiert in `renderRundenStatus()`). Wie von Stephan entschieden: kein host-editierbares Aufgabenfeld eingeführt.
+3. **Personenname in Spaltenköpfen (c):** `verarbeiteTeilnehmerDoc()` füllt zusätzlich `teilnehmendeNamenMap['station:' + N]`. `renderBrett()` hängt für Position 1-5 ein neues `<div class="spalte-person">`-Element unter den Stationstitel (eigene Zeile), mit Platzhalter `t('spielbrett.stationUnbesetzt')` für unbesetzte Stationen. Position 0/6 unverändert ohne Namenszusatz. `positionLabelsAktuell`/`titel.textContent` und der aria-label-Text des Bewegen-Buttons bleiben unverändert (Regressionsschutz FEATURE-005 AK15, per eigenem Read des Quelltexts durch den Hauptthread stichprobenartig verifiziert, nicht nur behauptet übernommen).
+4. **Scope-Erweiterung Vergleichsansicht (d):** `renderVergleichsTabelle()` ergänzt additiv eine dritte Zeile je Station mit `t('kennzahlen.zustaendigePerson')` + demselben `teilnehmendeNamenMap`-Wert, ohne die bestehenden zwei Zeilen zu ersetzen.
+
+**Neue i18n-Schlüssel** (in `src/i18n/uebersetzungen.js` UND `public/js/i18n/uebersetzungen.js` synchron gehalten — vom Hauptthread unabhängig per eigenem Skript nachgezählt: 123/123 Schlüssel identisch in beiden Dateien, keine Abweichung): `lobby.startHinweis`, `lobby.liveZaehler`, `lobby.untertitelInLobby`, `spielbrett.rundeKontextMitPhase`, `spielbrett.rundeKontextOhnePhase`, `spielbrett.stationUnbesetzt`, `kennzahlen.zustaendigePerson` — jeweils mit deutscher und englischer Übersetzung.
+
+**Testergebnis (real ausgeführt und vom Hauptthread unabhängig per eigenem Jest-Lauf im selben Klon nachgeprüft, nicht nur vom Subagenten behauptet):**
+
+- `npx jest tests/game-lobby-und-rundenkontext.static.test.js tests/game-stationsnamen.static.test.js` → **26/26 grün** (15 + 11 Testfälle — gegenüber dem ursprünglichen Testplan von 19 Fällen um 7 zusätzliche i18n-spezifische Prüfungen erweitert, die verifizieren, dass die neuen Texte über `t()`/echte Übersetzungsschlüssel eingebunden sind statt als hartcodierter deutscher String).
+- Vollständiger Nicht-Emulator-Regressionslauf (12 Suiten, u. a. `game-a11y-static.test.js`, `game-connection-retry.logic/.integration/.static.test.js`, `game-round4.logic.test.js`, `game-evaluation.logic.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-i18n.manual-checks.test.js`, `game-form-loading-state.static.test.js`, plus die zwei neuen BUGFIX-003-Tests) → **133/133 grün**, keine Regression.
+- **Nicht ausführbar in dieser Sandbox (Umgebungseinschränkung, kein Codefehler):** alle Firestore-Emulator-gestützten Suiten (`game-evaluation.security.rules.test.js`, `game-i18n.logic.test.js`, `game-i18n.security.rules.test.js`, `game-rejoin.logic.test.js`, `game-rooms.logic.test.js`, `game-rooms.security.rules.test.js`, `game-round.logic.test.js`, `game-round.security.rules.test.js`, `game-round.stapel-zaehlung.test.js`, `game-round4.security.rules.test.js`) sowie die beiden Live-URL-Deploy-Regressionstests (403 vom Proxy) — muss Stephan separat auf seinem eigenen Rechner laufen lassen, bevor das Ticket auf Done gehen kann.
+
+**Was Stephan noch lokal bestätigen muss, bevor dieses Ticket auf Done gesetzt werden kann:**
+
+1. Emulator-gestützter Regressionslauf auf seinem Rechner (Firestore-abhängige Suiten, siehe Liste oben) — in der Sandbox nicht möglich.
+2. Übertragung des jetzt gegen den mehrsprachigen Stand gebauten Codes auf seinen Rechner (noch nicht erfolgt).
+3. Echter Cross-Device/Browser-Test: Lobby mit mehreren getrennten Geräten/Browser-Profilen betreten und den Live-Zähler beim Beitreten weiterer Personen tatsächlich hochzählen sehen; eine Runde starten und prüfen, dass der Kopfbereich (`#untertitel`) den Rundenkontext zeigt statt des alten Landingpage-Texts, auch über einen Rundenwechsel hinweg; das Spielbrett mit allen fünf besetzten Stationen ansehen und die Namenszeile unter jeder Stationsbezeichnung visuell prüfen (inkl. Platzhalter bei einer erst nach Rundenstart beigetretenen Person); die Auswertungsansicht (`renderVergleichsTabelle()`) auf die neue „Zuständige Person"-Zeile prüfen; zusätzlich in beiden Sprachen (DE/EN) prüfen, da alle neuen Texte jetzt übersetzt sind.
+4. Danach: Deploy auf die Live-URL (Push auf `main`, wie bei allen bisherigen Tickets über GitHub Actions).
+
+**Status bleibt In Progress** (Ticket wird nicht eigenständig auf Done gesetzt — das ist Gate 3, das erst nach Stephans expliziter Bestätigung der obigen Punkte erfolgt).
 
 ---
 
@@ -295,6 +664,8 @@ c) **UI-Polish – Spaltenköpfe der Stationen:** Über den Spalten (Stationen) 
 **Beschreibung:** Aus dem Testlauf ergab sich die offene Frage, ob Karten künftig per Drag-and-Drop bewegt werden könnten, statt wie heute über einen Klick-Button — um die Interaktion spielerischer zu machen. **Dies ist ausdrücklich noch keine Entscheidung, sondern nur die Frage selbst, festgehalten zur späteren Bewertung durch Stephan.** Keine Analyse, keine Aufwandsschätzung, keine Priorisierung bisher vorgenommen.
 
 **Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Vor einer Analysephase (`flow-game-analyze`) müsste Stephan zunächst entscheiden, ob diese Richtung überhaupt weiterverfolgt werden soll, da sie das bestehende, serverautoritative Bewegungs-/Regel-Modell (`bewegungErlaubt()` u. Ä. aus FEATURE-002) und ggf. die Barrierefreiheit (siehe `game-a11y-static.test.js`) berührt.
+
+**Erneut bestätigt (Stephan, 2026-07-27, FEATURE-004-Gate-3-Durchlauf):** Wunsch nach echtem Drag-and-Drop statt Klick-Button erneut geäußert — weiterhin offene Design-Frage, keine neue Entscheidung.
 
 ---
 
@@ -384,6 +755,379 @@ c) **UI-Polish – Spaltenköpfe der Stationen:** Über den Spalten (Stationen) 
 **User Story:** Als Host oder Spielender mit Lean-/Flow-Hintergrund möchte ich die im Workshop-Kontext gebräuchlichen englischen Fachbegriffe wiedererkennen, statt eingedeutschter Varianten, die in der Community unüblich sind.
 
 **Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Eine grobe Fundstellen-Schätzung (wie viele Textstellen betroffen sind) wäre für die Analysephase sinnvoll, wurde hier aber bewusst nicht selbst durchgezählt. Berührt dieselben Anzeige-Stellen wie BUGFIX-004 (`formatiereZeit()`-Aufrufe/Kennzahlen-Labels in `public/spiel.html`) sowie FEATURE-006 (Mehrsprachigkeit, ToDo) — bei einer künftigen Umsetzung von FEATURE-006 sollte diese Terminologiefrage mitgedacht werden, da „Lead Time"/„Cycle Time" ohnehin bereits die englischen Begriffe sind und sich die Frage für die englische Sprachversion nicht stellt, wohl aber für die deutsche.
+
+---
+
+### BUGFIX-005 Beitreten vergibt fälschlich Gastgeber-Rolle statt Mitspieler-Rolle
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Beim Beitreten über den Spiel-Code bekommt eine neu beitretende Person manchmal (in 2 von 3 getesteten Spielen, 3x reproduziert) fälschlich die Gastgeber-Rolle und dieselbe Beobachter-Ansicht wie der echte Host, statt einer eigenen Spielstation zugewiesen zu werden. Auslöser unklar (evtl. abhängig von wiederholter Nutzung desselben Browsers — das war die Testmethode, echte Nutzende auf eigenen Geräten wurden nicht geprüft). Das ist der Kern-Mechanismus des Spiels — macht die Gruppe im schlimmsten Fall handlungsunfähig.
+
+**User Story:** Als beitretende Person möchte ich beim Beitreten über den Code zuverlässig meine eigene Spielstation zugewiesen bekommen, sodass die Gruppe verlässlich starten kann.
+
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+### FEATURE-011 Gastgeber-Rolle zurückerlangen können
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Hoch |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Für den Host existiert bereits ein automatischer, geheimnisbasierter Wiederherstellungs-Mechanismus (`hostSession.js`, `restoreHostSession()`, siehe FEATURE-001) — er greift beim Neuladen im selben Browser und funktioniert dort zuverlässig, ohne UID-Bindung. Die eigentliche Lücke liegt in einem anderen, engeren Fall: Geht der lokal im Browser gespeicherte Zustand verloren (`flowGameHost:*`/`flowGameLetztesSpiel` in `localStorage`) — etwa durch Gerätewechsel, Browser-Neustart oder versehentlich gelöschte Daten —, greift der automatische Mechanismus nicht mehr, weil er genau auf diesen lokalen Schlüssel angewiesen ist. Für diesen Fall gibt es aktuell keinen manuellen/expliziten Weg (z. B. Eingabe eines Host-Geheimnisses/Codes auf einem neuen Gerät), die Host-Rolle zurückzubekommen — nur ein komplett neues Spiel mit neuem Code, was die ganze Gruppe zum erneuten Beitreten zwingt. In einem echten Workshop mit Beamer-/Laptop-Wechsel ein realistisches, workshop-lahmlegendes Szenario. Laut FEATURE-001-Analyse ist dabei ein technisches Detail mitzudenken, aber kein Show-Stopper: Karteileichen (alte `teilnehmende/{uid}`-Dokumente mit `rolle: 'host'`), die entstehen können, sollten bei einer Lösung berücksichtigt werden.
+
+**User Story:** Als Gastgeber(in), möchte ich meine Host-Rolle auch nach Verlust des lokalen Browser-Zustands (z. B. neues Gerät) manuell zurückerlangen können, sodass ein Gerätewechsel den Workshop nicht abbricht.
+
+**Kontext/Verweise:** Erstnutzer-Test-Bericht vom 2026-07-23 (Live-Test auf https://flow-game-19f01.web.app).
+
+---
+
+### FEATURE-012 Zentrale Spielbegriffe im Spiel selbst erklären (Gate, Definition of Ready)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Hoch |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Begriffe wie "Gate: 0/6 closed" und "Complete Definition of Ready" werden nirgends im Spiel erklärt. Ohne mündliche Moderation ist nicht ersichtlich, was ein "Tor" bedeutet, wann es sich schließt oder warum das wichtig ist — dabei ist genau das (Losgrößen/Batch Sizing) offenbar der Kern der Lernerfahrung laut Untertitel der Startseite. Ohne Erklärung im Spiel hängt der Lerneffekt komplett von einer erfahrenen Moderation ab.
+
+**User Story:** Als Spielende(r) ohne Scrum-Vorwissen, möchte ich zentrale Spielbegriffe direkt im Spiel erklärt bekommen, sodass ich die Lernidee auch ohne mündliche Moderation verstehe.
+
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+**Zweite, unabhängige Bestätigung (Stephan, 2026-07-27, während des FEATURE-004-Gate-3-Mehrpersonen-Durchlaufs):** Nach Spielstart (Zustand „Round 1 / Task Presented", Zeitmessung läuft bereits) ist für die Spielenden nicht klar und deutlich erklärt, was die eigentliche Aufgabe ist und wann es nach Abschluss der Definition of Ready wirklich losgeht. Deckt sich mit der obigen Beschreibung (fehlende Erklärung zentraler Spielbegriffe/-abläufe im Spiel selbst) – hier zusätzlich mit Blick auf den Rundenstart-Moment konkret bestätigt, kein separates Ticket nötig.
+
+---
+
+### BUGFIX-006 Deutsche Fachbegriffe erscheinen in der englischen Oberfläche
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Bei aktiv eingestellter englischer Oberfläche erscheinen Stationsnamen weiterhin auf Deutsch (z. B. "wareneingang", "kommissionierung", "packstation", "versand", "qualitaetskontrolle") sowie Kartenbeschriftungen ("Karte 1"–"Karte 6"). Zusätzlich zeigte sich bei einer Person einmalig nur "Your station: 5" (Zahl statt Name) — wirkte wie ein einmaliger Anzeigefehler und sollte bei der Umsetzung mitgeprüft werden. Ebenfalls hier mit erledigen: kleine Grammatikholprigkeit "You are Players in this game." (sollte Singular sein). Wirkt unfertig, für nicht-deutschsprachige Teilnehmende schlicht unverständlich, obwohl explizit Englisch angeboten wird.
+
+**User Story:** Als Mitspielende(r) mit englischer Spracheinstellung, möchte ich durchgängig englische Bezeichnungen sehen, sodass die Oberfläche konsistent und verständlich ist.
+
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+### TASK-006 Interne Entwicklerhinweise von der öffentlichen Startseite entfernen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Task |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Unter dem Hauptknopf der Startseite stehen aktuell interne Entwicklerhinweise ("Basic setup live — the actual game logic follows in the next phases.", "Phase 0, Part 1", "Agent Contract"). Für Erstnutzer(innen) wirkt das wie eine interne Testseite statt der echten Anwendung und untergräbt das Vertrauen beim ersten Eindruck. Diese Hinweise für echte Nutzende ausblenden oder durch einen normalen, verständlichen Begrüßungstext ersetzen.
+
+**User Story:** Als neue(r) Nutzer(in), möchte ich auf der Startseite einen verständlichen, vertrauenswürdigen Text sehen statt interner Entwicklersprache, sodass ich sicher bin, auf der richtigen Seite zu sein.
+
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+### FEATURE-013 Beitritts-Übersicht für Gastgeber(in) vor Rundenstart
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Vor dem Start von Runde 1 sieht die gastgebende Person nicht, wer schon beigetreten ist — nur den eigenen Namen mit "HOST"-Markierung und den Start-Knopf. Man muss blind darauf vertrauen, dass alle fünf Stationen da sind. Eine sichtbare Liste "X von 5 Stationen sind beigetreten" auf dem Gastgeber-Bildschirm ergänzen.
+
+**User Story:** Als Gastgeber(in), möchte ich vor dem Rundenstart sehen, wie viele Stationen schon beigetreten sind, sodass ich nicht blind starte.
+
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+### FEATURE-014 Wartehinweis für beigetretene Mitspielende
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Nach dem Beitritt sieht eine Person nur die eigene Zeile und die Liste der anderen, aber keinen Hinweis wie „Warte, bis der/die Gastgeber(in) die Runde startet". Fühlt sich für Erstnutzer(innen) wie eine Sackgasse an (ist das fertig? muss ich noch etwas tun?). Einen klaren Wartehinweis mit kurzer Erklärung ergänzen — sowohl aus Mitspielenden- als auch aus Gastgeber-Sicht fehlt aktuell eine „Wir warten noch auf …"-Anzeige.
+
+**User Story:** Als beigetretene Person, möchte ich nach dem Beitritt eine klare Bestätigung sehen, dass ich fertig bin und nur noch warte, sodass ich nicht verunsichert bin.
+
+**Kontext/Verweise:** Erstnutzer-Test-Bericht vom 2026-07-23 (Live-Test auf https://flow-game-19f01.web.app). Hängt inhaltlich mit FEATURE-008 zusammen (beide betreffen die Lobby-Phase vor Rundenstart).
+
+---
+
+### BUGFIX-007 Zeitmessung startet zu früh, schon während der Erklärungsphase
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Mittel |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Nach dem Rundenstart läuft sofort eine Zeit-Anzeige ("Lead Time"), obwohl noch niemand etwas tun kann — es erscheint erst der Text "Before cards can be moved, the group needs to understand the task." und der Knopf "Complete Definition of Ready". Die Uhr tickt aber schon während dieser Erklärungsphase. Kann unnötigen, unfairen Zeitdruck erzeugen, bevor überhaupt gespielt werden kann. Die Zeitmessung soll erst starten, wenn tatsächlich Karten bewegt werden dürfen.
+
+**User Story:** Als Spielgruppe, möchte ich, dass die Zeitmessung erst beginnt, sobald wir wirklich spielen können, sodass keine unfaire Zeit verloren geht.
+
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+### FEATURE-015 Code-kopieren-Knopf beim Spiel erstellen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Niedrig |
+| **Status** | ToDo |
+| **Erstellt** | 2026-07-23 |
+
+**Beschreibung:** Der Beitritts-Code muss aktuell von Hand abgetippt oder mündlich durchgesagt werden. Bei einer Gruppe mit fünf Stationen führt das leicht zu Tippfehlern beim Weitergeben. Einen Knopf zum Kopieren des Codes ergänzen (optional zusätzlich ein fertiger Beitritts-Link).
+
+**User Story:** Als Gastgeber(in), möchte ich den Beitritts-Code mit einem Klick kopieren können, sodass ich ihn fehlerfrei weitergeben kann.
+
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+### BUGFIX-009 Länderkarten werden mehrfach im selben Spiel verwendet (Runde 4)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Erstellt** | 2026-07-27 |
+| **Status** | In Progress |
+| **In Progress seit** | 2026-07-27 |
+
+**Beschreibung:** Während des FEATURE-004-Gate-3-Mehrpersonen-Durchlaufs (2026-07-27) beobachtet: Mindestens zwei Länderkarten, die bereits mehrere Städte-Einträge trugen (eine Indien-Karte mit bereits fünf eingetragenen Städten, eine Deutschland-Karte mit mehreren Einträgen), erschienen bei anderen Spielenden erneut als scheinbar „neue", leere bzw. fast leere Karte desselben Landes. Nach dem Grundmodell aus FEATURE-004 darf es pro Land in einer Runde nur eine einzige Länderkarte geben (sechs Länderkarten insgesamt, jede durchläuft alle fünf Spielenden genau einmal) — eine Wiederverwendung/erneutes Ausspielen eines bereits in Bearbeitung befindlichen Landes verletzt dieses Grundmodell und verfälscht sowohl den Spielablauf als auch die anschließende Qualitätsauswertung (die gezeigten Zahlen 14/30 korrekt, 12× falsches Land, 7× Dublette aus demselben Durchlauf sind dadurch mit Vorbehalt zu betrachten, bis die Ursache geklärt ist).
+
+**User Story:** Als Spielender, möchte ich sicher sein, dass jede Länderkarte in einer Runde nur genau einmal existiert und durchgängig um dieselben Einträge wächst, sodass Spielablauf und Qualitätsauswertung verlässlich sind.
+
+**Kontext/Verweise:** Direkt aus dem FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Blockiert die finale Freigabe von FEATURE-004 (Gate 3), da der Kernmechanismus der Runde betroffen ist. Nächster Schritt: Ursache am echten Code verifizieren (`src/game/rundeVier/elemente.js`/`elementBewegung.js`, `firestore.rules`-Helfer `rundeVier*`) — vermutete Hypothesen (noch nicht verifiziert, nicht als Fakt zu behandeln): fehlerhafte Element-Identifikation beim Weiterreichen, oder ein Zurücksetzen/Neuerzeugen einer Karte statt Referenz auf die bestehende.
+
+**Pflicht-Code-Verifikation der Prämissen — Kernbefund (2026-07-27):** Beide im Ticket vermuteten Hypothesen sind am echten Code geprüft und **widerlegt**:
+
+- *„Fehlerhafte Element-Identifikation beim Weiterreichen":* widerlegt. `public/js/game/rundeVier.js` (`gibElementWeiter()`, Zeile 288–346) adressiert jedes Element ausschliesslich über seine feste Firestore-Dokument-ID (`elementRef = rundenRef.collection('elemente').doc(elementId)`), keine dynamische Zuordnung über Land/Name. `firestore.rules` prüft Zuständigkeit ebenfalls ausschliesslich über `rundeVierPositionVon()`/`elementId`, nie über den Land-Wert. Auch die UI (`public/spiel.html`, Zeile 1184: `elementId: change.doc.id`) rendert Karten nach Dokument-ID, nicht nach Land — zwei verschiedene Karten desselben Landes können sich in der Anzeige also nicht gegenseitig überschreiben.
+- *„Zurücksetzen/Neuerzeugen einer Karte statt Referenz":* widerlegt. Alle zwölf Elemente werden ausschliesslich einmalig, atomar, host-only in `starteRundeVier()` (`rundeVier.js` Zeile 222–284, `db.runTransaction`) angelegt; `firestore.rules` erlaubt `create` unter `elemente/{elementId}` ausschliesslich `istHost`, und der laufende Kettenfortschritt (`gibElementWeiter()`) verwendet ausschliesslich `batch.update(elementRef, …)`, niemals `set()`/Neuanlage. Ein Mid-Round-Reset einer einzelnen Karte ist im Code nicht vorgesehen.
+
+**Tatsächliche, verifizierte Ursache — eine dritte, im Ticket nicht genannte Erklärung:** Die Länder-Zuordnung beim Rundenstart zieht für jede der sechs Länderkarten **unabhängig und mit Zurücklegen** ein zufälliges Land aus der Acht-Länder-Liste — sowohl in der Node-Referenz (`src/game/rundeVier/elemente.js`, Zeile 17–20, `zufaelligesLand()`) als auch im tatsächlich produktiv laufenden Browser-Code (`public/js/game/rundeVier.js`, Zeile 97–99 + Aufruf Zeile 265, `land: zufaelligesLand()`, innerhalb derselben Transaktion, einmal je der sechs `karte-N`-Dokumente). Es gibt **keinerlei Ausschluss bereits vergebener Länder** zwischen den sechs Ziehungen. Rechnerisch: bei 6 unabhängigen Ziehungen aus 8 Ländern liegt die Wahrscheinlichkeit, dass alle sechs Karten unterschiedliche Länder bekommen, bei nur 8·7·6·5·4·3⁄8⁶ ≈ 7,7 % — **in ca. 92 % aller Spiele** trägt mindestens ein Land zwei (oder mehr) verschiedene, komplett unabhängig voneinander fortschreitende Karten-Dokumente. Genau das erklärt die beobachtete Symptomatik: Eine zweite, andere „Indien"-Karte (anderes `elementId`, z. B. `karte-5` statt `karte-2`) lief die ganze Zeit parallel zur bereits weiter fortgeschrittenen ersten „Indien"-Karte mit — sie wurde nicht „zurückgesetzt" oder „wiederverwendet", sie ist von Anfang an ein eigenständiges Dokument mit eigenem, unabhängigem Fortschritt.
+
+**Wichtigster Befund, der die Einstufung dieses Tickets infrage stellt:** Das im Ticket behauptete „Grundmodell aus FEATURE-004" („pro Land in einer Runde darf es nur eine einzige Länderkarte geben") **ist so in keinem der geprüften Dokumente festgehalten** — im Gegenteil, FEATURE-004s eigene, bereits freigegebene Spec widerspricht dieser Behauptung ausdrücklich:
+  - `Flow-Game-Entscheidungen.md` (Abschnitt „Das korrigierte Grundmodell", 2026-07-20): „Jede Karte ist zu Rundenbeginn zufällig einem von acht Ländern zugeordnet" — pro Karte, unabhängig, keine Eindeutigkeits-Bedingung erwähnt.
+  - `Backlog.md`, FEATURE-004-Spec, Pre-Mortem-Risiko 1 (Zeile 92, Stand 2026-07-20): „**Zwei verschiedene Länderkarten mit demselben Land laufen parallel durch die Kette**" — wird dort ausdrücklich als erwartetes, zu behandelndes Szenario beschrieben, nicht als Fehlerfall.
+  - `Backlog.md`, FEATURE-004-Spec, AK-13-Beispiel (Zeile 49): „Person 1 hat für eine „Deutschland"-Karte bereits „Berlin" eingetragen. **Eine zweite, andere „Deutschland"-Karte** kommt bei Person 3 an, die ebenfalls „Berlin" einträgt" — exakt das Szenario, das im Live-Test beobachtet und hier als Bug gemeldet wurde, ist im eigenen Beispiel der freigegebenen Spec bereits so vorgesehen.
+  - Die Qualitätsauswertung (`qualitaetsauswertung.js`/`berechneQualitaet()`) ist bewusst genau für diesen Fall gebaut: Sie erkennt Dubletten über **alle sechs Karten hinweg** per normalisiertem Stadtnamen und deterministischer Zeitstempel-Reihenfolge (Pre-Mortem-Risiko 1 der FEATURE-004-Spec), unabhängig davon, ob zwei Karten dasselbe Land tragen. Die im Gate-3-Durchlauf gezeigten Zahlen (14/30 korrekt, 12× falsches Land, 7× Dublette) sind nach dieser Prüfung **entgegen der Vermutung im Ticket voraussichtlich nicht verfälscht** — die Auswertungslogik war für genau diesen Fall ausgelegt.
+
+  Damit ist die im Ticket angenommene Prämisse eine unverifizierte Fehlinterpretation einer live beobachteten, aber tatsächlich dokumentierten und im Auswertungscode bereits berücksichtigten Spielmechanik — kein Datenmodell-Bug. Ob das trotzdem geändert werden soll (weil es pädagogisch/spielerisch unerwünscht ist, auch wenn es nie als Bug gemeint war), ist eine Produktentscheidung, keine Bugfix-Frage. Siehe 🔴 Frage 1 unten.
+
+**Annahmen-Protokoll (Pflicht):**
+
+- 🔴 **Frage 1 (funktional kritisch, blockiert `flow-game-bdd`):** Soll die zufällige Länderzuordnung ab sofort **ohne Zurücklegen** erfolgen (sechs der acht Länder, garantiert paarweise verschieden, wie ursprünglich im Ticket angenommen), oder bleibt die bisherige, in `Flow-Game-Entscheidungen.md` und der FEATURE-004-Spec dokumentierte Zufallsziehung **mit** Zurücklegen (Wiederholungen möglich und laut Pre-Mortem-Risiko 1/AK-13-Beispiel ausdrücklich vorgesehen) bestehen? Das ist keine Bugfix-Entscheidung, sondern eine Produkt-/Spieldesign-Entscheidung, die FEATURE-004s bereits freigegebene Spec inhaltlich ändern würde, falls „ohne Zurücklegen" gewählt wird.
+- 🔴 **Frage 2 (funktional kritisch, falls Frage 1 mit „ohne Zurücklegen" beantwortet wird):** Soll dieses Ticket dann rückwirkend auch klären, ob die bereits im Gate-3-Durchlauf erzeugten Zahlen (14/30 etc.) verworfen/neu interpretiert werden müssen, oder gilt der Fix nur für künftige Spiele? (Nach obigem Befund ist eine Verwerfung wahrscheinlich nicht nötig, da die Auswertungslogik bereits korrekt mit Dubletten-Ländern umgeht — aber das ist Stephans Entscheidung, nicht Teil dieser Analyse.)
+- ⚪ **Annahme (Konvention):** Falls Frage 1 mit „ohne Zurücklegen" beantwortet wird, betrifft das ausschliesslich die Länder-Zuordnung beim Rundenstart (`starteRundeVier()`), nicht die Städte-/Dubletten-Prüfung (bleibt unverändert, ist bereits korrekt). ⚠️ Annahme: bitte bestätigen.
+- ✅ **Klar aus dem Code ableitbar, keine Rückfrage nötig:** Die zwei real gefundenen Hypothesen aus dem Ticket-Rohtext (Element-Identifikation, Reset/Neuerzeugen) sind beide durch Code-Verifikation widerlegt und werden nicht weiterverfolgt.
+
+**Fundstellen-Sweep (Pflicht):** Suchbegriffe `zufaelligesLand` und `land:` (Erzeugung) über `src/` und `public/`: genau 2 Erzeugungs-Fundstellen — `src/game/rundeVier/elemente.js` (Node-Referenz) und `public/js/game/rundeVier.js` (Browser-Produktivcode, muss laut Kopfkommentar der Datei manuell synchron gehalten werden) — plus 1 reine Lese-Fundstelle in `qualitaetsauswertung.js`/`berechneQualitaet()` (liest `karte.land`, erzeugt es nicht). Keine weiteren Fundstellen. Zusätzlich geprüft: `tests/game-round4.security.rules.test.js` seedet in `seedRundeVier()` (Zeile 184) die sechs Karten explizit mit `laender = ['USA','UK','Germany','India','Spain','France','Italy','Canada']` und nimmt daraus `laender[i-1]` für i=1..6 — das sind zufällig die ersten sechs, **immer paarweise verschieden**. Das bedeutet: Die 28 Sicherheitsregel-Testfälle haben den Duplikat-Länder-Fall **nie** ausgeführt, weshalb dieses Verhalten dort nie auffallen konnte, unabhängig davon, ob es als Bug oder als Feature gilt. Separat, aber bei derselben Durchsicht gefunden: In `firestore.rules` ist im `allow update`-Block für `elemente/{elementId}` das Feld `land` an keiner Stelle als unveränderlich abgesichert (anders als `typ`, `position`, und der Städte-Präfix) — heute schreibt kein Client-Pfad `land` bei einem Update, das Feld ist also praktisch nie in Gefahr, aber die Regel verhindert eine nachträgliche Änderung nicht ausdrücklich. Unabhängig vom Ausgang der 🔴-Fragen als kleiner, risikoarmer Zusatzfund empfohlen (siehe Implementierungsoptionen).
+
+**Zustands-Check (Pflicht) – Warte-, Leer- und Fehlerfall:** Die Länder-Zuordnung passiert vollständig synchron innerhalb der bereits bestehenden, einmaligen `runTransaction()` beim Rundenstart — kein zusätzlicher Wartezustand, keine zusätzliche Fehlerquelle gegenüber heute. Leerzustand: jede neu angelegte Länderkarte startet unverändert mit `staedte: {}` (0 Einträge) — das gilt unabhängig davon, ob „ohne Zurücklegen" gezogen wird, und ist kein neuer Zustand. Fehlerfall: Da die Länderliste fest 8 Einträge hat und immer nur 6 gezogen werden, kann eine Ziehung „ohne Zurücklegen" (z. B. per Fisher-Yates-Shuffle + erste 6 Elemente) nie fehlschlagen oder eine Ausnahme werfen — kein neuer Fehlerpfad.
+
+**Akzeptanzkriterien (beobachtbares Verhalten) — gelten NUR, falls Stephan Frage 1 mit „ohne Zurücklegen" beantwortet:**
+
+1. Zu Rundenbeginn tragen alle sechs Länderkarten paarweise unterschiedliche Länder (nie dasselbe Land auf zwei Karten im selben Spiel).
+2. Über viele Spiele hinweg bleibt die Länderauswahl weiterhin zufällig (nicht immer dieselben sechs von acht Ländern) — nur die Wiederholung innerhalb eines einzelnen Spiels entfällt.
+3. Die Städte-/Dubletten-Qualitätsauswertung nach Rundenende verhält sich unverändert (sie musste bereits vorher mit potenziellen Doppel-Ländern umgehen können und tut das weiterhin korrekt, jetzt nur seltener gefordert).
+4. Für den unwahrscheinlichen Fall, dass Stephan bei Frage 1 die bisherige Ziehung „mit Zurücklegen" bestätigt: Dieses Ticket wird **nicht** als Bugfix umgesetzt, sondern als „kein Bug, dokumentiertes Verhalten bestätigt" geschlossen; stattdessen wird geprüft, ob eine kleine Anzeige-/Kommunikationsverbesserung sinnvoll ist (z. B. sichtbare Kartennummer wie „Länderkarte 3 von 6" neben dem Landnamen), damit Live-Beobachtende zwei gleichnamige Karten künftig nicht für dieselbe halten — als eigenes, separates Ticket, nicht Teil dieses Bugfixes. **(Gegenstandslos geworden: Stephan hat Frage 1 am 2026-07-27 mit „ja, eindeutig ziehen" beantwortet, siehe Freigabe-Entscheidungen unten — dieser Zweig tritt nicht ein.)**
+5. **(Neu, Freigabe-Entscheidung Stephan 2026-07-27, eigenes Akzeptanzkriterium, nicht mehr nur Option C):** Zusätzlich zur Eindeutigkeit zeigt jede der sechs Länderkarten sichtbar an, um welche der sechs Karten es sich handelt (z. B. „Karte 3 von 6"), unabhängig vom angezeigten Land — zur Einordnung/Fortschrittsanzeige für Spielende und Live-Beobachtende. Dies ist Teil des Scopes dieses Tickets, kein separates Ticket.
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Doppelte Pflege Node-Referenz vs. Browser-Produktivcode:** `elemente.js` und `rundeVier.js` müssen laut bestehender Konvention (Kopfkommentar in `rundeVier.js`) manuell synchron gehalten werden. Wird die Ziehungslogik nur an einer Stelle geändert, driften Test (Node) und Produktivverhalten (Browser) auseinander, ohne dass ein automatisierter Test das auffängt. Gegenmaßnahme: beide Dateien im selben Commit ändern, Diff explizit gegenlesen, neuen Test in `tests/game-round4.logic.test.js` ergänzen, der Eindeutigkeit über alle sechs gezogenen Länder prüft.
+2. **Sicherheitsregel-Tests verdecken den Fall weiterhin:** `seedRundeVier()` in `tests/game-round4.security.rules.test.js` seedet weiterhin sechs paarweise verschiedene Länder (siehe Fundstellen-Sweep) — das bleibt so, unabhängig vom Fix, ist also kein Test-Gap, der durch diesen Fix automatisch behoben wird. Wird nicht separat behoben, da die Länder-Eindeutigkeit ohnehin künftig client-/host-seitig erzwungen würde, nicht regelseitig (siehe Betroffene Architektur).
+3. **Konkurrierender doppelter Rundenstart (unabhängiger, aber verwandter Befund):** `starteRundeVier()` schreibt mit `tx.set()` (nicht mit einer Existenzprüfung), `btnNaechsteRunde.disabled = true` schützt nur denselben Browser-Tab vor einem zweiten Klick, nicht vor einem zweiten Host-Tab/-Gerät oder einem Seiten-Reload, der den Button erneut aktiviert. Träfe das ein, würden alle zwölf Elemente inklusive bereits eingetragener Städte durch einen kompletten Neustart überschrieben — das sieht optisch fast identisch aus wie das in diesem Ticket beschriebene Symptom, konnte aber am vorliegenden Code nicht als tatsächliche Ursache bestätigt werden (siehe Kernbefund oben: die beobachtete Diskrepanz "verschiedene Spielende sehen zur selben Zeit unterschiedlich weit fortgeschrittene Karten desselben Landes" passt eher zur Doppel-Länder-Erklärung als zu einem globalen Reset, der alle Spielenden gleichzeitig treffen würde). Trotzdem als eigenständiges, unabhängig von diesem Ticket bestehendes Regressionsrisiko vermerkt — nicht Teil des Scopes hier, ggf. eigenes Ticket wert.
+4. **Verwechslungsgefahr bleibt bestehen, selbst nach einem „ohne Zurücklegen"-Fix, für ANDERE Elemente:** Der Fix (falls gewählt) betrifft nur die sechs Länderkarten. Zwei Würfel-Elemente sind ohnehin ununterscheidbar (kein Land, keine Stadt) — falls die eigentliche Sorge hinter dem Ticket „ich kann zwei gleich aussehende Elemente nicht auseinanderhalten" ist, bleibt das bei Würfeln unverändert (dort aber unkritisch, weil Würfel keine inhaltliche Fortschrittsanzeige tragen, die verwechselt werden könnte).
+5. **Gate-3-Zahlen-Neuinterpretation:** Falls Stephan die Gate-3-Zahlen nachträglich als „durch den vermeintlichen Bug verfälscht" verwirft (obwohl der Code-Befund das nicht stützt), müsste klar kommuniziert werden, dass ein erneuter Testlauf nicht wegen eines Bugs, sondern nur zur Beruhigung nötig wäre — sonst entsteht der Eindruck, es sei tatsächlich ein Fehler behoben worden, wo keiner war.
+
+**Zusammenspiel bestehender Bausteine (Pflicht):**
+
+- **Berührte Bausteine:** `starteRundeVier()`/`erzeugeElemente()` (Rundenstart, Host-Transaktion), `firestore.rules` `elemente/{elementId}`-Regeln (`allow create`/`allow update`), `qualitaetsauswertung.js`/`berechneQualitaet()` (nachträgliche Auswertung), UI-Rendering in `spiel.html` (Kartenanzeige nach `elementId`).
+- **Reihenfolge:** Host löst Rundenstart aus → `starteRundeVier()` zieht clientseitig sechs (ggf. künftig eindeutige) Länder und schreibt alle 12 Elemente + 5 Fortschritt-Dokumente in EINER Transaktion → `firestore.rules` prüft beim Schreiben nur `istHost` + `typ`/`position` (keine Land-Prüfung) → jeder Client liest die Elemente per `onSnapshot` und rendert sie nach `elementId` → während der Runde reicht jede Person Karten über `gibElementWeiter()` weiter, was ausschliesslich vorhandene Dokumente per `elementId` aktualisiert (kein erneutes Ziehen/Zuweisen von Land) → nach Rundenende liest `berechneQualitaet()` alle sechs Karten-Dokumente unabhängig von ihrem `land`-Wert und dedupliziert Städte-Einträge über alle sechs Karten hinweg.
+- **Kombinationen, die zu einem Fehler führen könnten:** (a) Ein Fix, der nur clientseitig (Host-Browser) „ohne Zurücklegen" zieht, aber nicht auch die Node-Referenz anpasst → Node-Tests bleiben grün, obwohl das Produktivverhalten sich geändert hat (siehe Pre-Mortem 1). (b) Zwei Host-Geräte/Tabs lösen `starteRundeVier()` quasi gleichzeitig aus → die zweite Transaktion gewinnt und überschreibt die erste vollständig (`tx.set()`), unabhängig davon, ob die Länderziehung eindeutig ist oder nicht (siehe Pre-Mortem 3) — das ist kein durch diesen Fix eingeführtes Risiko, aber ein bereits heute bestehendes, das bei jeder Änderung an `starteRundeVier()` mitgeprüft werden sollte.
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):** Ausschliesslich die Länder-Ziehungslogik beim Rundenstart in `src/game/rundeVier/elemente.js` (Node-Referenz) und `public/js/game/rundeVier.js` (Browser-Produktivcode, `starteRundeVier()`); kein Datenmodell-Wechsel, keine neue Firestore-Collection, keine Änderung an `firestore.rules` notwendig (die Ziehung bleibt wie bisher vollständig host-/client-seitig vertrauenswürdig, analog zur bereits getroffenen Architekturentscheidung, die Land-/Stadt-Prüfung selbst auch nicht regelseitig zu verifizieren). Betroffene Tests: `tests/game-round4.logic.test.js` (neuer Test „sechs gezogene Länder sind paarweise verschieden"), keine notwendige Änderung an `tests/game-round4.security.rules.test.js`.
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-004 (In Progress, nicht Done — dieses Ticket blockiert dessen Gate 3 direkt; jede Änderung an `starteRundeVier()`/`erzeugeElemente()` muss gegen die bestehenden 32 Node-Referenz-Tests und 28 Sicherheitsregel-Tests aus FEATURE-004 regressionsgetestet werden, insbesondere den bestehenden Test „`expect(LAENDER_LISTE).toContain(karte.land)`", der weiterhin gelten muss). Kein weiteres Done-Ticket berührt `src/game/rundeVier/*` oder `public/js/game/rundeVier.js` direkt (FEATURE-006/Mehrsprachigkeit hat zwar `STADT_ALIAS` bereits in `laenderStaedte.js` ergänzt, ist aber laut Backlog noch nicht als eigenes Ticket freigegeben/Done — die Alias-Logik ist von der Länder-Ziehung unabhängig und wird durch einen Ziehungs-Fix nicht berührt).
+
+**Regressionshinweis FEATURE-004 Gate 3 (Freigabe-Entscheidung Stephan, 2026-07-27):** Die Zahlen aus dem FEATURE-004-Gate-3-Durchlauf vom 2026-07-27 (14/30 korrekt, 12× falsches Land, 7× Dublette) werden verworfen und gelten nicht mehr als valide, da sie auf der fehlerhaften Mehrfachziehung (Ziehung mit Zurücklegen statt ohne, siehe Kernbefund oben) beruhen. Gate 3 muss nach Abschluss dieses Bugfixes zwingend mit einem frischen Mehrpersonen-Durchlauf wiederholt werden, bevor FEATURE-004 final freigegeben werden kann.
+
+**Implementierungsoptionen (nur relevant, falls Stephan Frage 1 mit „ohne Zurücklegen" beantwortet):**
+
+- **Option A – Ziehung ohne Zurücklegen (Fisher-Yates-Shuffle der Acht-Länder-Liste, erste sechs verwenden), in Node-Referenz UND Browser-Produktivcode identisch:** Minimale Änderung, kein Architektur-/Kostenwechsel, bleibt vollständig im bereits etablierten „host-seitig vertrauenswürdig, nicht regelseitig geprüft"-Muster (analog zur Land-/Stadt-Validierung selbst). Vorteil: kleinstmöglicher Diff, kein Regressionsrisiko für `firestore.rules`. Nachteil: Eindeutigkeit bleibt weiterhin nicht serverseitig erzwungen (ein manipulierter Host-Client könnte theoretisch weiterhin Duplikate erzeugen) — das ist aber konsistent mit der bereits getroffenen Architekturentscheidung, dass die gesamte Land-/Stadt-Logik dem Host-Client vertraut, nicht der Regel.
+- **Option B – Eindeutigkeit zusätzlich in `firestore.rules` als Schreib-Voraussetzung beim `create` erzwingen:** Würde verlangen, beim Anlegen jeder Karte gegen die bereits angelegten Geschwisterkarten zu prüfen (`get()` auf bis zu 5 weitere Dokumente je Karte) — analog zur bereits an anderer Stelle dokumentierten Einschätzung, dass sammlungsweite Eindeutigkeitsprüfungen mit der Firestore-Regelsprache nur mit hohem Get-Budget-Aufwand praktikabel sind (vgl. Pre-Mortem-Risiko 6 der FEATURE-004-Spec). Nicht empfohlen: unnötig teuer/komplex für ein Problem, das rein host-seitig (eine einzige Transaktion, ein einziger Autor) bereits korrekt lösbar ist.
+- **Option C (nur falls Frage 1 „nein, bleibt wie bisher" beantwortet wird) – Kommunikations-/Anzeige-Fix statt Datenmodell-Fix:** Kartennummer sichtbar ergänzen (z. B. „Länderkarte 3 von 6"), damit zwei gleichnamige Länderkarten in der Live-Beobachtung nicht für dieselbe gehalten werden. Kein Bugfix im engeren Sinn, eigenes kleines Ticket.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Zuerst 🔴 Frage 1 klären — das ist keine Implementierungsfrage, sondern ändert eine bereits freigegebene Produktentscheidung aus FEATURE-004. Falls „ja, eindeutig ziehen" gewünscht: **Option A**. Sie ist die einzige, die zum bestehenden Vertrauensmodell passt (host-seitige Ziehung, keine Regeländerung nötig) und lässt sich mit minimalem Diff in genau zwei bereits bekannten Dateien umsetzen. Falls „nein, bleibt wie bisher" die Antwort ist: Dieses Ticket sollte NICHT als Bugfix implementiert, sondern mit der Begründung „kein Bug, Verhalten war immer so vorgesehen" geschlossen werden — die eigentliche, dahinterliegende Sorge (Verwechslungsgefahr bei Live-Beobachtung) ließe sich dann optional über Option C separat adressieren.
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Klärung von Frage 1 und Freigabe dieser Spec):**
+
+- Given Rundenstart wird ausgelöst, When alle sechs Länderkarten angelegt werden, Then sind ihre sechs `land`-Werte paarweise verschieden (neuer Test, ergänzt `tests/game-round4.logic.test.js`).
+- Given derselbe Rundenstart, When er viele Male wiederholt wird (z. B. 500 simulierte Durchläufe), Then bleibt die Auswahl der sechs Länder statistisch zufällig verteilt (kein systematischer Bias auf bestimmte Länder) — Regressionsschutz gegen eine zu einfache, immer gleiche Teilmenge.
+- Regressionstest: bestehender Test „`expect(LAENDER_LISTE).toContain(karte.land)`" bleibt unverändert grün.
+- Regressionstest: alle 28 bestehenden Sicherheitsregel-Testfälle aus `tests/game-round4.security.rules.test.js` bleiben unverändert grün (Ziehungslogik wird von den Regeln nicht geprüft, siehe Betroffene Architektur).
+- Kein neuer Test für `firestore.rules` nötig (keine Regel-Änderung vorgesehen, siehe Empfehlung Option A).
+- Given „Karte X von 6"-Anzeige (Freigabe-Entscheidung 2, AK5), When alle sechs Länderkarten gerendert werden, Then zeigt jede Karte sichtbar ihre Position an (z. B. „Karte 1 von 6" … „Karte 6 von 6"), unabhängig vom zugeordneten Land und unabhängig davon, ob zwei Karten zufällig dasselbe Land tragen könnten (neuer Test, UI-/Text-Fundstelle in `public/spiel.html`).
+- Regressionstest: Die „Karte X von 6"-Anzeige beeinflusst nicht die Land-/Stadt-Zuordnung, die Weiterreichlogik (`gibElementWeiter()`) oder die Qualitätsauswertung (`berechneQualitaet()`) — rein zusätzliche, unabhängige Anzeige.
+
+---
+
+**Freigabe-Entscheidungen (Stephan, 2026-07-27):**
+
+1. **Frage 1 (Eindeutigkeit) entschieden – Option A:** Ab sofort werden die sechs Länderkarten **ohne Zurücklegen** aus den acht möglichen Ländern gezogen (garantiert paarweise verschiedene Länder pro Spiel). Umgesetzt wird **Option A** (Fisher-Yates-Shuffle der Acht-Länder-Liste, erste sechs Elemente verwenden), identisch in `src/game/rundeVier/elemente.js` (`zufaelligesLand()`, Node-Referenz) UND `public/js/game/rundeVier.js` (Browser-Produktivcode), da beide Stellen laut bestehender Konvention synchron gehalten werden müssen. Damit ist FEATURE-004s bisherige Spec-Aussage („Zwei verschiedene Länderkarten mit demselben Land laufen parallel durch die Kette" ist ein erwartetes Szenario) für künftige Spiele überholt und wird durch dieses Ticket ersetzt.
+2. **Zusätzlicher Scope: „Karte X von 6"-Anzeige.** Über die Eindeutigkeits-Korrektur hinaus soll jede Länderkarte zusätzlich sichtbar anzeigen, um welche der sechs Karten es sich handelt (z. B. „Karte 3 von 6"), damit Fortschritt/Einordnung für Spielende und Live-Beobachtende jederzeit erkennbar bleibt. Das ist Teil des Scopes dieses Tickets (eigenes Akzeptanzkriterium, siehe AK5 oben) – nicht mehr Option C bzw. ein separates Ticket.
+3. **Bisherige Gate-3-Zahlen verworfen.** Die im FEATURE-004-Gate-3-Durchlauf vom 2026-07-27 ermittelten Zahlen (14/30 korrekt, 12× falsches Land, 7× Dublette) gelten nicht mehr als valide, da sie auf der fehlerhaften Mehrfachziehung (Ziehung mit Zurücklegen, siehe Kernbefund oben) beruhen. **Regressionshinweis:** FEATURE-004 Gate 3 muss nach Abschluss dieses Bugfixes zwingend mit einem frischen Mehrpersonen-Durchlauf wiederholt werden; die alten Zahlen vom 2026-07-27 dürfen nicht als Referenzwerte weiterverwendet werden.
+
+Damit ist die Spec freigegeben. **Status bleibt ToDo** (der Start der Umsetzung ist eine separate, noch ausstehende Entscheidung Stephans). Nächster Schritt: BDD-Tests (`flow-game-bdd`).
+
+**Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-27):** Sieben neue Testfälle in `tests/game-round4.logic.test.js` ergänzt (bestehende 32 Tests unverändert gelassen).
+
+*Neue Testfälle:*
+- „Zu Rundenbeginn tragen alle sechs Länderkarten paarweise unterschiedliche Länder — auch wenn der Zufallsgenerator wiederholt denselben Wert liefert (AK1)" — `Math.random()` deterministisch auf einen konstanten Wert gemockt, damit der Test unabhängig vom Zufall zuverlässig die Ziehungsart selbst prüft (Ziehung mit Zurücklegen liefert dabei garantiert 6× dasselbe Land, Ziehung ohne Zurücklegen bleibt auch so eine Permutation).
+- „Über 500 simulierte Rundenstarts hinweg tritt niemals ein doppelt vergebenes Land auf einer der sechs Karten auf (AK1, echter Zufallsgenerator, kein Test-Glück)" — 500 echte Durchläufe, kein Mock.
+- „Über viele Rundenstarts hinweg bleibt die Länderauswahl weiterhin zufällig verteilt — jedes der acht Länder kommt vor, kein systematischer Bias auf eine feste Teilmenge (AK2)" — 800 echte Durchläufe, Häufigkeitszählung je Land mit großzügiger unterer Schranke.
+- „Der bestehende Regressionstest ... bleibt die einzige Prüfung auf Zugehörigkeit — hier zusätzlich mit ohne-Zurücklegen-Ziehung erneut gegen viele Durchläufe abgesichert" — 50 Durchläufe, prüft `LAENDER_LISTE.toContain(karte.land)` bleibt erfüllt.
+- „Der Quelltext zeigt für Länderkarten sichtbar eine Positionsanzeige 'Karte X von 6' an, unabhängig vom Land (AK5)" — Textmuster-Prüfung gegen `public/spiel.html` (kein DOM/jsdom im Projekt).
+- „Regressionsschutz: Die neue 'Karte X von 6'-Anzeige ist nicht in der Bewegungs-/Datenlogik (`gibElementWeiter()` in `rundeVier.js`) verankert, sondern bleibt reine Anzeige" — statische Extraktion des Funktionskörpers, erwartungsgemäß bereits GRÜN.
+- „Regressionsschutz: `berechneQualitaet()` bleibt von der neuen Anzeige unberührt" — erwartungsgemäß bereits GRÜN.
+
+*Tatsächliches Ergebnis (echter Testlauf `npx jest tests/game-round4.logic.test.js`, 2026-07-27):* **3 rot, 36 grün, 39 Tests gesamt.** Rot (erwartungsgemäß, da die Ziehungs-/Anzeigelogik noch nicht geändert ist): die beiden AK1-Eindeutigkeitstests (Mock-Test und 500-Durchläufe-Test) sowie der AK5-Anzeigetest. Grün: die 32 bestehenden Tests (unverändert, inkl. `expect(LAENDER_LISTE).toContain(karte.land)`) plus die 4 neuen, bewusst bereits grünen Tests (AK2-Verteilungstest — die heutige Ziehung mit Zurücklegen ist pro Karte bereits gleichverteilt, daher kein roter Befund hier nötig/erwartet —, der 50-Durchläufe-Zugehörigkeitstest sowie die beiden Regressionsschutz-Tests für `gibElementWeiter()`/`berechneQualitaet()`). Die 28 Sicherheitsregel-Tests aus `tests/game-round4.security.rules.test.js` wurden nicht verändert (kein Regel-Bezug, siehe Betroffene Architektur) und sind von dieser BDD-Phase nicht betroffen.
+
+Übergabe an `flow-game-impl`: Status bleibt **ToDo**.
+
+---
+
+**Implementierung (flow-game-impl, 2026-07-27):**
+
+**Geänderte Dateien:**
+- `src/game/rundeVier/elemente.js` (Node-Referenz): `zufaelligesLand()` durch `fisherYatesShuffle()` ersetzt; `erzeugeElemente()` zieht jetzt einmal pro Rundenstart einen Fisher-Yates-Shuffle der 8-Länder-Liste (`LAENDER_LISTE`) und weist die ersten sechs Elemente des Shuffles den sechs Länderkarten zu (`gezogeneLaender[i - 1]`) — garantiert paarweise verschiedene Länder, keine Ziehung mit Zurücklegen mehr.
+- `public/js/game/rundeVier.js` (Browser-Produktivcode): identische Änderung — `zufaelligesLand()` durch dieselbe `fisherYatesShuffle()`-Implementierung ersetzt, `starteRundeVier()` zieht vor der Elemente-Schleife einmal `gezogeneLaender = fisherYatesShuffle(LAENDER_LISTE).slice(0, 6)` und weist `land: gezogeneLaender[i - 1]` je Karte zu. Beide Dateien wie in den Datei-Kopfkommentaren gefordert synchron gehalten (Diff gegengelesen).
+- `public/spiel.html`: In `renderRundeVierFokusCard()` (Länderkarten-Zweig) neue „Karte X von 6"-Positionsanzeige ergänzt (`kartenNr` aus `element.id` abgeleitet, `positionsAnzeige.textContent = 'Karte ' + kartenNr + ' von 6'`), reine Anzeige ohne Einfluss auf Bewegungs-/Datenlogik oder Qualitätsauswertung; zugehörige CSS-Klasse `.rv-karten-position` ergänzt.
+- `firestore.rules`: keine Änderung (laut Spec nicht nötig — die Ziehung bleibt vollständig host-/client-seitig vertrauenswürdig).
+
+**Testergebnis `tests/game-round4.logic.test.js`:** 39/39 Tests grün (`npx jest tests/game-round4.logic.test.js`), inklusive aller 7 neuen BUGFIX-009-Testfälle (die 3 zuvor erwartungsgemäß roten Tests — die beiden AK1-Eindeutigkeitstests und der AK5-Anzeigetest — sind jetzt grün). Kein Test wurde abgeschwächt oder verändert, um ihn grün zu bekommen.
+
+**Pflicht-Regressionslauf gegen Done-Tickets (2026-07-27):** Alle Testdateien im Projekt, die ohne Firestore-Emulator lauffähig sind (15 von 24 Dateien, per Prüfung auf `rules-unit-testing`/`initializeTestEnvironment`/`firebase-admin`-Importe identifiziert), real gegen Jest ausgeführt: **145/147 Tests grün über 13/15 Suiten.** Die 2 fehlschlagenden Tests (`tests/deploy-regression.test.js`, `tests/feature-002-deploy-regression.test.js`, zusammen zu TASK-001/FEATURE-002 gehörig) scheitern beide ausschließlich an `getaddrinfo EAI_AGAIN flow-game-19f01.web.app` — die Geräte-Werkstatt-VM hat laut `device-access-conventions` keinen freien Internetzugang, das ist ein vorbestehendes, von diesem Ticket unabhängiges Sandbox-Limit (beide Testdateien berühren `rundeVier.js`/`elemente.js`/`spiel.html` nicht). Kein durch diese Änderung verursachter Bruch.
+
+Bekannte, in dieser Sandbox nicht ausführbare Suiten (Firestore-Emulator nötig, `firebase emulators:exec` scheitert am Emulator-Jar-Download durch dieselbe Netzwerk-Sperre): `game-rooms.logic.test.js`, `game-rooms.security.rules.test.js`, `game-round.logic.test.js`, `game-round.security.rules.test.js`, `game-round.stapel-zaehlung.test.js`, `game-evaluation.security.rules.test.js`, `game-i18n.logic.test.js`, `game-i18n.security.rules.test.js`, `game-rejoin.logic.test.js`, `game-round4.security.rules.test.js` — bekanntes, dokumentiertes Sandbox-Limit, kein neuer Fehler.
+
+**Status NICHT auf Done gesetzt** — das ist Gate 3, das Stephan nach Vorlage des Ergebnisses vorbehalten bleibt (u. a. muss FEATURE-004 Gate 3 laut obigem Regressionshinweis mit einem frischen Mehrpersonen-Durchlauf wiederholt werden).
+
+---
+
+### FEATURE-016 Name und Rolle der eigenen Person durchgängig auf jeder Spielseite sichtbar
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Aktuell ist nicht auf jedem Bildschirm im Spiel durchgängig sichtbar, mit welchem Namen und welcher Rolle man selbst gerade angemeldet ist. Betrifft alle Ansichten (Lobby, laufende Runde, Auswertung), nicht nur einen einzelnen Screen.
+
+**User Story:** Als Spielender, möchte ich auf jeder Seite im Spiel meinen eigenen Namen und meine Rolle sehen, sodass ich jederzeit sicher bin, als wer ich gerade angemeldet bin.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Abzugrenzen von BUGFIX-003c (dort geht es um die Namen ÜBER den Stationsspalten in Runde 1–3, hier um die eigene Identität durchgängig auf jeder Seite, unabhängig von Runde/Ansicht).
+
+---
+
+### BUGFIX-010 Würfelanzeige in Runde 4: kein echter grafischer Würfel, Ergebnis vor neuem Versuch nicht sichtbar
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** FEATURE-004s Akzeptanzkriterium 10 verlangt eine „kurze Wurf-Animation" analog zur `RollButton`-Komponente aus CatTube. Im echten Test (2026-07-27) wirkte die Anzeige nicht wie ein echter grafischer Würfel, und das Ergebnis eines nicht ausreichenden Wurfs (≤3) war nicht klar sichtbar, bevor der nächste Wurfversuch gestartet werden konnte.
+
+**User Story:** Als Spielender, möchte ich einen erkennbaren Würfel sehen und das Ergebnis eines Wurfs deutlich erkennen können, bevor ich erneut würfle, sodass nachvollziehbar ist, warum ein weiterer Versuch nötig ist.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Betrifft die bestehende Würfel-Umsetzung aus FEATURE-004 (AK 10), kein neuer Mechanismus.
+
+---
+
+### FEATURE-017 Warteschlangen-Anzeige in Runde 4 auf tatsächlich bei mir wartende Elemente begrenzen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Im echten Test (2026-07-27) zeigte die Warteschlangen-Ansicht alle sechs Länderkarten und alle sechs Würfel mit dem Hinweis „waiting until it reaches you" an, auch für Elemente, die noch gar nicht bei dieser Person angekommen sind. Als Spielender ist dadurch nicht erkennbar, was konkret gerade bei der eigenen Station liegt und was nur theoretisch später ankommen könnte.
+
+**User Story:** Als Spielender, möchte ich in der Warteschlangen-Ansicht nur die Elemente sehen, die tatsächlich schon bei mir angekommen sind und auf Bearbeitung warten, sodass ich nicht zwischen echten und rein theoretisch zukünftigen Elementen unterscheiden muss.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. **Wichtiger Klärungsbedarf für die Analysephase:** FEATURE-004s eigene Spec hält ausdrücklich fest, dass Verwirrung/Unübersichtlichkeit beim Nachverfolgen „was habe ich, was kommt als Nächstes" gewollte spielerische Friktion ist, kein zu behebendes UX-Problem (Zitat Stephan: „Verwirrung und Irritationen sind erwünscht, da sie die Realität widerspiegeln."). Vor der Umsetzung muss geklärt werden, ob dieser Beobachtungspunkt eine Verfeinerung des ursprünglichen Wunsches ist (nur die eigene, tatsächlich wartende Warteschlange zeigen, aber weiterhin ohne Vorschau/Führung) oder ob er der ursprünglichen Design-Entscheidung inhaltlich widerspricht.
+
+---
+
+### FEATURE-018 Spiel auch ohne separaten Gastgeber spielbar (Host kann mitspielen)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Aktuell braucht jedes Spiel einen separaten Host, der nicht gleichzeitig eine Spielstation besetzt. Gewünscht: Der Host soll wahlweise auch selbst als Spielender teilnehmen können, statt zwingend eine eigenständige, nicht-spielende Rolle zu sein. Falls der Host gleichzeitig mitspielt, sollen die Rundenergebnisse automatisch direkt nach jeder Runde für alle sichtbar freigegeben werden, statt auf eine bewusste Freigabe-Aktion des Hosts zu warten (da diese Person ja gerade selbst mitspielt und nicht separat moderiert).
+
+**User Story:** Als Gruppe ohne separate moderierende Person, möchten wir das Spiel auch mit einem mitspielenden Gastgeber durchführen können, sodass wir keine zusätzliche, nicht mitspielende Person brauchen.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Betrifft das bestehende Freigabe-Muster `ergebnisseFreigegeben` (Host-only, FEATURE-003) sowie die Rollenzuweisung aus FEATURE-001 — vor einer Analyse zu klären, wie sich „Host spielt mit" mit der bestehenden Host-Erkennung (`istHost()`) und der Stationszuweisung verträgt.
+
+---
+
+### FEATURE-019 Qualitätsauswertung zeigt Details (welche Stadt, welches Land, warum falsch)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Hoch |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Die Qualitätsauswertung aus FEATURE-004 (AK 16) zeigt aktuell nur aggregierte Zahlen (z. B. „14/30 korrekt", „12× falsches Land", „7× Dublette"), aber nicht, welche konkreten Städte-Einträge betroffen waren und warum genau sie als fehlerhaft gewertet wurden. Ohne diese Detailanzeige bleibt der eigentliche Lerneffekt der Runde (siehe FEATURE-004-Beschreibung: „Viel Kontextsprung führt zu niedrigen Qualität durch Fehler... das gilt es zu lernen") abstrakt und nicht konkret nachvollziehbar.
+
+**User Story:** Als Spielender, möchte ich nach der Runde sehen, welche konkreten Einträge falsch waren und warum (falsches Land vs. Dublette), sodass die Gruppe den Zusammenhang zwischen Kontextwechsel und Fehlern konkret nachvollziehen kann, statt nur eine abstrakte Zahl zu sehen.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Eng verwandt mit FEATURE-004 selbst (AK 15/16) — vor einer Analyse zu klären, ob dies als Erweiterung von FEATURE-004 vor dessen Done-Setzung mit aufgenommen wird, oder als eigenständiges Folgeticket danach.
 
 ---
 

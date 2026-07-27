@@ -86,6 +86,11 @@
   .brett{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:10px;margin-top:10px;overflow-x:auto;padding-bottom:6px}
   .spalte{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:170px;display:flex;flex-direction:column;gap:8px}
   .spalte-titel{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:center;line-height:1.3}
+  /* BUGFIX-003 (c/d): Personenname als eigene Zeile unterhalb der
+     Stationsbezeichnung - einheitliche Ein-Zeilen-Darstellung mit Kürzung
+     (Ellipsis), damit unterschiedlich lange Namen nicht zu uneinheitlichem
+     Umbruch zwischen den fünf Spalten führen (Pre-Mortem-Risiko 4). */
+  .spalte-person{font-size:11px;font-weight:700;color:var(--text);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .spalte-tor{font-size:11px;color:var(--dim);text-align:center}
   .spalte-tor.offen{color:var(--green);font-weight:700}
   .karten-liste{display:flex;flex-direction:column;gap:6px}
@@ -119,6 +124,7 @@
   .rv-fokus-bereich{display:flex;justify-content:center;margin-top:10px}
   .rv-fokus-card{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:26px;text-align:center;max-width:440px;width:100%}
   .rv-fokus-typ{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800}
+  .rv-karten-position{font-size:13px;font-weight:700;color:var(--muted);margin-top:6px}
   .rv-wuerfel-anzeige{font-size:68px;font-weight:900;font-variant-numeric:tabular-nums;margin:16px 0;color:var(--amber)}
   .rv-land{font-size:22px;font-weight:800;margin:8px 0 14px;color:var(--blue)}
   .rv-staedte-liste{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:6px;text-align:left}
@@ -218,7 +224,14 @@
       <div id="lobby-rolle-hinweis" class="muted"></div>
       <div class="code-display" id="lobby-code"></div>
       <div class="muted" id="lobby-eigene-station"></div>
+      <!-- BUGFIX-003 (a): Erläuterung der Startbedingung (Host löst aus,
+           Mindestbesetzung 5 Spielende + 1 Host) plus automatisch
+           aktualisierender Live-Zähler direkt unter der Teilnehmendenliste.
+           Beide Texte laufen über t()/UEBERSETZUNGEN, siehe
+           wendeSpracheAufStatischeTexteAn() bzw. renderTeilnehmerListe(). -->
+      <p class="muted" id="lobby-start-hinweis"></p>
       <ul class="teilnehmer-liste" id="teilnehmer-liste"></ul>
+      <p class="muted" id="lobby-live-zaehler"></p>
       <div class="row" id="host-rundenstart-bereich" hidden>
         <button type="button" class="btn primary" id="btn-runde-starten">Aufgabe vorstellen (Runde 1 starten)</button>
       </div>
@@ -392,6 +405,11 @@
   const lobbyRolleHinweis = document.getElementById('lobby-rolle-hinweis');
   const lobbyEigeneStation = document.getElementById('lobby-eigene-station');
   const teilnehmerListe = document.getElementById('teilnehmer-liste');
+  // BUGFIX-003 (a): Live-Zähler, wird ausschliesslich in renderTeilnehmerListe()
+  // aktualisiert (siehe dort), damit er bei jeder Änderung der
+  // Teilnehmendenliste automatisch mitzieht, ohne Reload.
+  const lobbyLiveZaehler = document.getElementById('lobby-live-zaehler');
+  const MINDESTBESETZUNG_SPIELENDE = 5;
   const hostRundenstartBereich = document.getElementById('host-rundenstart-bereich');
   const btnRundeStarten = document.getElementById('btn-runde-starten');
 
@@ -515,6 +533,10 @@
     setText('btn-ergebnisse-freigeben', t('kennzahlen.ergebnisseFreigeben'));
     setText('spiel-fertig-hinweis', t('kennzahlen.spielFertigHinweis'));
     setText('label-auswertung-titel', t('auswertung.titel'));
+    // BUGFIX-003 (a): rein statischer Erläuterungstext (hängt nicht von
+    // teilnehmendeCache ab) - der Live-Zähler direkt darunter wird dagegen in
+    // renderTeilnehmerListe() gesetzt (dort ist der Beitritts-Stand bekannt).
+    setText('lobby-start-hinweis', t('lobby.startHinweis'));
 
     // Absenden-Buttons: nur neu setzen, solange kein Wartezustand
     // (BUGFIX-002, aria-busy) aktiv ist - sonst würde ein Sprachwechsel
@@ -546,20 +568,43 @@
   }
 
   // Siehe Kommentar oben in wendeSpracheAufStatischeTexteAn() - #untertitel
-  // wird in genau zwei Bedeutungen wiederverwendet: die Tagline vor
-  // Spielbeginn (Normalfall) und die Fehlermeldung, falls init() insgesamt
-  // fehlschlägt (siehe init().catch() ganz unten). untertitelModus hält
-  // fest, welche der beiden gerade aktiv ist, damit ein Sprachwechsel den
-  // jeweils RICHTIGEN Text neu übersetzt statt immer auf die Tagline
-  // zurückzufallen.
-  let untertitelModus = 'tagline'; // 'tagline' | 'fehler'
+  // wird in mehreren Bedeutungen wiederverwendet: die Tagline vor
+  // Spielbeginn (Normalfall, bevor überhaupt eine Lobby betreten wurde), die
+  // Fehlermeldung, falls init() insgesamt fehlschlägt (siehe init().catch()
+  // ganz unten), sowie - BUGFIX-003 (b) - der Lobby-Zwischenzustand
+  // (zeigeLobby()) und der automatisch generierte Rundenkontext
+  // (renderRundenStatus()/wechsleZuRunde()), der den alten Landingpage-Satz
+  // während einer laufenden Runde ersetzt. untertitelModus hält fest, welcher
+  // der vier Zustände gerade aktiv ist, damit ein Sprachwechsel JEDERZEIT den
+  // jeweils RICHTIGEN Text neu übersetzt statt auf die Tagline zurückzufallen.
+  let untertitelModus = 'tagline'; // 'tagline' | 'fehler' | 'lobby' | 'runde'
   let untertitelFehlerNachricht = '';
+  // BUGFIX-003 (b): nur relevant, solange untertitelModus === 'runde'. Rohe
+  // Rundennummer/Phase (nicht bereits übersetzt) - aktualisiereUntertitel()
+  // übersetzt bei JEDEM Aufruf neu (über phaseLabel()), damit ein
+  // Sprachwechsel auch den Rundenkontext-Text korrekt mitübersetzt.
+  let untertitelRundenNummer = null;
+  let untertitelPhaseRoh = null;
 
+  // BUGFIX-003 (b): Reihenfolge der Zweige unten bewusst so gewählt
+  // (Regressionsschutz tests/game-i18n.manual-checks.test.js, Bugfix 2a: prüft
+  // die ersten 400 Zeichen dieser Funktion auf 'fehler.ladenFehlgeschlagen'
+  // UND 'lobby.untertitel') - 'fehler' und 'tagline' zuerst (unverändert
+  // gegenüber FEATURE-006), die beiden neuen BUGFIX-003-Zustände ('lobby' =
+  // Lobby-Zwischenzustand aus zeigeLobby(), 'runde' = automatisch generierter
+  // Rundenkontext aus wechsleZuRunde()/renderRundenStatus()) danach.
   function aktualisiereUntertitel() {
     if (untertitelModus === 'fehler') {
       untertitel.textContent = t('fehler.ladenFehlgeschlagen', { nachricht: untertitelFehlerNachricht });
-    } else {
+    } else if (untertitelModus === 'tagline') {
       untertitel.textContent = t('lobby.untertitel');
+    } else if (untertitelModus === 'lobby') {
+      untertitel.textContent = t('lobby.untertitelInLobby');
+    } else {
+      const phaseText = untertitelPhaseRoh ? phaseLabel(untertitelPhaseRoh) : '';
+      untertitel.textContent = phaseText
+        ? t('spielbrett.rundeKontextMitPhase', { rundenNummer: untertitelRundenNummer, phase: phaseText })
+        : t('spielbrett.rundeKontextOhnePhase', { rundenNummer: untertitelRundenNummer });
     }
   }
 
@@ -787,6 +832,14 @@
     lobbyRolleHinweisArt = rolleHinweisArt;
     lobbyRolleHinweis.textContent = berechneLobbyRolleHinweisText();
 
+    // BUGFIX-003 (b): #untertitel zeigt ab jetzt den Lobby-Zwischenzustand
+    // statt weiterhin des Landingpage-Satzes ('lobby.untertitel') - zentral
+    // hier verankert, gilt dadurch automatisch für alle vier Aufrufstellen
+    // von zeigeLobby() (Host nach Erstellen, Host nach Wiederbetreten,
+    // Beitritt, automatisches Wiederbetreten).
+    untertitelModus = 'lobby';
+    aktualisiereUntertitel();
+
     aktuellerSpielCode = code;
     aktuelleDbInstanz = db;
     // FEATURE-006 (AK 8/9): sobald bekannt ist, ob diese Person Host ist,
@@ -826,6 +879,20 @@
 
     function verarbeiteTeilnehmerDoc(uid, daten) {
       teilnehmendeNamenMap[uid] = daten.anzeigename;
+
+      // BUGFIX-003 (c/d): zusätzlich zur bestehenden uid->Name-Zuordnung eine
+      // Stationsnummer(1-5)->Name-Zuordnung ablegen (Namensraum 'station:' + N,
+      // kollisionssicher zu echten Firebase-uids) - Grundlage für die
+      // Personennamen-Anzeige in renderBrett() und renderVergleichsTabelle().
+      // Nutzt dieselbe stationsNummerVon()-Konvertierung wie eigeneStationsNummer
+      // unten, gilt für JEDE Person (nicht nur die eigene), da hier - anders als
+      // beim eigeneStationsNummer-Zweig - keine Migration ausgelöst wird.
+      if (daten.station != null) {
+        const stationsNummerFuerName = window.FlowGame.stationsNummerVon(daten.station);
+        if (stationsNummerFuerName != null) {
+          teilnehmendeNamenMap['station:' + stationsNummerFuerName] = daten.anzeigename;
+        }
+      }
 
       // FEATURE-002: die eigene Stationsnummer (numerisch, Voraussetzung
       // für Kartenbewegung) sicherstellen - siehe Kopfkommentar in
@@ -873,6 +940,25 @@
         li.appendChild(name);
         li.appendChild(badge);
         teilnehmerListe.appendChild(li);
+      });
+
+      // BUGFIX-003 (a): Live-Zähler nach dem Muster t('lobby.liveZaehler')
+      // (z. B. "N Spielende von der Mindestbesetzung beigetreten", ohne hier
+      // ein konkretes Zahlenbeispiel hartzucodieren) - ausschliesslich aus der
+      // bereits geladenen teilnehmendeCache berechnet (kein zusätzlicher
+      // Firestore-Zugriff), zentral hier verankert statt an den
+      // zeigeLobby()-Aufrufstellen dupliziert zu werden. Zählt nur
+      // 'spielende' (nicht 'host'/'beobachtende'), weil die Mindestbesetzung
+      // laut Ticket "mindestens 5 Spielende" lautet - so bleibt der Zähler
+      // unabhängig davon konsistent, ob die aufrufende Person selbst Host ist
+      // (deren eigenes Dokument sonst zu einer Verzerrung um 1 führen würde,
+      // da nur der Host das eigene Host-Dokument überhaupt lesen darf).
+      const anzahlSpielendeBeigetreten = Object.keys(teilnehmendeCache).filter(function (uid) {
+        return teilnehmendeCache[uid].rolle === 'spielende';
+      }).length;
+      lobbyLiveZaehler.textContent = t('lobby.liveZaehler', {
+        aktuell: anzahlSpielendeBeigetreten,
+        minimum: MINDESTBESETZUNG_SPIELENDE,
       });
     }
     // FEATURE-006: über die äussere Variable auch von einem Sprachwechsel
@@ -1007,6 +1093,19 @@
 
     aktuelleRundenNummer = rundenNummer;
     aktuelleRundenDaten = null;
+
+    // BUGFIX-003 (b): #untertitel wechselt SOFORT auf den Rundenkontext
+    // (statt weiterhin den Lobby-Zwischenzustand oder gar den alten
+    // Landingpage-Text zu zeigen) - noch OHNE Phase, da das Runden-Dokument
+    // an dieser Stelle noch nicht geladen ist (siehe untersubRundenDoc weiter
+    // unten). renderRundenStatus() überschreibt dies gleich mit der echten
+    // Phase, sobald der erste Snapshot eintrifft (AK7: kein leerer/
+    // widersprüchlicher Zwischenzustand).
+    untertitelModus = 'runde';
+    untertitelRundenNummer = rundenNummer;
+    untertitelPhaseRoh = null;
+    aktualisiereUntertitel();
+
     aktuelleKartenListe = [];
     bewegungsLog = [];
     aktuelleElementeListe = []; // FEATURE-004
@@ -1156,6 +1255,17 @@
     rundePhaseBadge.className = 'badge phase-' + (runde.phase || '');
     rundePhaseBadge.textContent = phaseLabel(runde.phase);
 
+    // BUGFIX-003 (b): #untertitel bei JEDEM Runden-Snapshot (echter
+    // Rundenwechsel UND jeder weitere Phasenwechsel innerhalb derselben
+    // Runde, z. B. Definition of Ready abgeschlossen) mit dem automatisch
+    // generierten Rundenkontext überschreiben, analog zum bestehenden
+    // PHASE_LABEL-Muster oben - bleibt dadurch über den gesamten
+    // Rundenverlauf hinweg korrekt (kein Zurückfallen auf den alten Text).
+    untertitelModus = 'runde';
+    untertitelRundenNummer = aktuelleRundenNummer;
+    untertitelPhaseRoh = runde.phase || null;
+    aktualisiereUntertitel();
+
     dorBereich.hidden = Boolean(runde.dorAbgeschlossen);
 
     // FEATURE-004: Runde 4 nutzt die "Fokus + Warteschlange"-Ansicht
@@ -1239,6 +1349,21 @@
       titel.className = 'spalte-titel';
       titel.textContent = positionLabelsAktuell[position];
       spalte.appendChild(titel);
+
+      // BUGFIX-003 (c): Personenname als EIGENE Zeile unterhalb der
+      // Stationsbezeichnung - Position 0 (Auftragseingang) und 6 (Ziel) bleiben
+      // bewusst unverändert ohne Namenszusatz (dort gibt es keine zuständige
+      // Person). positionLabelsAktuell/titel.textContent bleiben unverändert
+      // (Regressionsschutz aria-label des Bewegen-Buttons weiter unten,
+      // FEATURE-005 AK15/game-a11y-static.test.js) - der Name kommt in einem
+      // separaten Element, keine String-Verkettung mit dem Stationstitel.
+      if (position >= 1 && position <= 5) {
+        const person = document.createElement('div');
+        person.className = 'spalte-person';
+        const zustaendigePerson = teilnehmendeNamenMap['station:' + position];
+        person.textContent = zustaendigePerson || t('spielbrett.stationUnbesetzt');
+        spalte.appendChild(person);
+      }
 
       // Stapel-Tor-Status: nur für Stationen relevant, die weitergeben
       // (Position 1-5) - Auftragseingang/Ziel haben kein eigenes Tor.
@@ -1466,6 +1591,16 @@
       });
       rvFokusCard.appendChild(btn);
     } else {
+      // BUGFIX-009 (2026-07-27, AK5, Spec freigegeben): "Karte X von 6"-
+      // Positionsanzeige, unabhängig vom Land - reine Anzeige, keine
+      // Bewegungs-/Datenlogik (siehe Regressionsschutz-Test in
+      // tests/game-round4.logic.test.js).
+      const kartenNr = parseInt(element.id.replace('karte-', ''), 10);
+      const positionsAnzeige = document.createElement('div');
+      positionsAnzeige.className = 'rv-karten-position';
+      positionsAnzeige.textContent = 'Karte ' + kartenNr + ' von 6';
+      rvFokusCard.appendChild(positionsAnzeige);
+
       const landAnzeige = document.createElement('div');
       landAnzeige.className = 'rv-land';
       landAnzeige.textContent = element.land;
@@ -1696,6 +1831,15 @@
       zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.beteiligungsspanne'), function (r) {
         const eintrag = r.proStation && r.proStation[station];
         return eintrag ? formatiereZeit(eintrag.beteiligungsspanne) : '00:00';
+      });
+      // BUGFIX-003 (d): additive dritte Zeile - ersetzt die beiden
+      // bestehenden Zeilen oben NICHT, liest denselben
+      // teilnehmendeNamenMap['station:' + N]-Wert wie renderBrett() (Punkt
+      // c), damit beide Ansichten konsistent denselben Namen zeigen. Bewusst
+      // dieselbe live-aktuelle Zuordnung (nicht rundenspezifisch historisch
+      // gespeichert) - der Wert ist deshalb für jede Spalte/Runde identisch.
+      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.zustaendigePerson'), function () {
+        return teilnehmendeNamenMap['station:' + station] || t('spielbrett.stationUnbesetzt');
       });
     });
 

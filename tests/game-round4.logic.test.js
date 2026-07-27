@@ -54,6 +54,20 @@
  * bestehende, fertige FEATURE-003-Module und sind deshalb bewusst schon JETZT
  * GRÜN — sie belegen, dass die in der Spec behauptete Erweiterbarkeit ohne
  * Strukturumbau real funktioniert, nicht nur behauptet wird.
+ *
+ * NACHTRAG (flow-game-bdd, BUGFIX-009, 2026-07-27, Spec von Stephan
+ * freigegeben): Die Ziehungslogik in erzeugeElemente() (Node-Referenz) UND im
+ * Browser-Produktivcode (public/js/game/rundeVier.js, starteRundeVier())
+ * zieht bislang jedes der sechs Länder unabhängig UND MIT Zurücklegen aus der
+ * 8-Länder-Liste (ca. 92 % Dubletten-Wahrscheinlichkeit pro Rundenstart).
+ * Freigegebene Lösung: Ziehung OHNE Zurücklegen (Fisher-Yates-Shuffle der
+ * 8-Länder-Liste, erste 6 Elemente verwenden), identisch in BEIDEN Dateien.
+ * Zusätzlich (Freigabe-Entscheidung 2, AK5): eine "Karte X von 6"-Anzeige in
+ * public/spiel.html, unabhängig vom Land. Die neuen Testfälle dazu stehen am
+ * Ende dieser Datei (BUGFIX-009-Abschnitte) und sind zum Zeitpunkt des
+ * Schreibens ERWARTUNGSGEMÄSS ROT (Ziehungslogik/Anzeige noch nicht
+ * geändert) — mit Ausnahme des explizit als "bereits GRÜN" markierten
+ * Regressionsschutz-Tests.
  */
 
 function ladeOderUndefined(pfad, exportName) {
@@ -77,6 +91,19 @@ const istWurfErfolgreich = ladeOderUndefined('../src/game/rundeVier/wuerfelLogik
 // wäre (anders als die neuen Runde-4-Module oben), kein erwartetes Rot.
 const { berechneKennzahlen } = require('../src/game/kennzahlen');
 const { erstelleVergleichsansicht } = require('../src/game/vergleichsansicht');
+
+// BUGFIX-009 (flow-game-bdd, 2026-07-27): kein neues Modul/kein Firestore-
+// Emulator nötig für die AK5-Anzeige — reine Textmuster-Prüfung gegen den
+// echten Quelltext, gleiches Vorgehen wie tests/game-form-loading-state.static.test.js
+// und tests/game-a11y-static.test.js (kein DOM/jsdom im Projekt, siehe package.json).
+const fs = require('fs');
+const path = require('path');
+
+const SPIEL_HTML_PFAD = path.join(__dirname, '..', 'public', 'spiel.html');
+const spielHtmlInhalt = fs.readFileSync(SPIEL_HTML_PFAD, 'utf8');
+
+const RUNDE_VIER_JS_PFAD = path.join(__dirname, '..', 'public', 'js', 'game', 'rundeVier.js');
+const rundeVierJsInhalt = fs.readFileSync(RUNDE_VIER_JS_PFAD, 'utf8');
 
 const LAENDER_LISTE = ['USA', 'UK', 'Germany', 'India', 'Spain', 'France', 'Italy', 'Canada'];
 
@@ -436,5 +463,103 @@ describe('FEATURE-004 Wiederverwendungsnachweis: Vergleichsansicht/Kennzahlen la
     expect(kennzahlen.bearbeitungszeit).toBe(13500);
     expect(kennzahlen.zeitBisErsterLieferung).toBe(3000);
     expect(kennzahlen.zeitBisLetzterLieferung).toBe(15000);
+  });
+});
+
+describe('BUGFIX-009 Spiellogik: Länderziehung OHNE Zurücklegen (AK1, AK2, Freigabe-Entscheidung 1 – Fisher-Yates statt Ziehung mit Zurücklegen)', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('Szenario: Zu Rundenbeginn tragen alle sechs Länderkarten paarweise unterschiedliche Länder — auch wenn der Zufallsgenerator wiederholt denselben Wert liefert (AK1)', async () => {
+    // Given: Math.random() liefert deterministisch immer denselben Wert (0).
+    // Eine Ziehung MIT Zurücklegen (bisheriges, fehlerhaftes Verhalten) würde
+    // dadurch garantiert sechsmal dasselbe Land ('USA', erstes Element von
+    // LAENDER_LISTE) liefern. Eine korrekte Ziehung OHNE Zurücklegen
+    // (Fisher-Yates-Shuffle) bleibt dagegen auch bei einem konstanten
+    // Zufallswert eine Permutation mit paarweise verschiedenen Elementen —
+    // dieser Test gilt deshalb unabhängig von der konkreten
+    // Shuffle-Implementierung, solange sie tatsächlich ohne Zurücklegen zieht.
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+
+    // When
+    const elemente = await erzeugeElemente({ code: 'BUGFIX009-1' });
+    const laender = elemente.filter((e) => e.typ === 'laenderkarte').map((k) => k.land);
+
+    // Then
+    expect(laender).toHaveLength(6);
+    expect(new Set(laender).size).toBe(6);
+  });
+
+  test('Szenario: Über 500 simulierte Rundenstarts hinweg tritt niemals ein doppelt vergebenes Land auf einer der sechs Karten auf (AK1, echter Zufallsgenerator, kein Test-Glück)', async () => {
+    const ANZAHL_DURCHLAEUFE = 500;
+    for (let i = 0; i < ANZAHL_DURCHLAEUFE; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const elemente = await erzeugeElemente({ code: `BUGFIX009-2-${i}` });
+      const laender = elemente.filter((e) => e.typ === 'laenderkarte').map((k) => k.land);
+      expect(new Set(laender).size).toBe(6);
+    }
+  });
+
+  test('Szenario: Über viele Rundenstarts hinweg bleibt die Länderauswahl weiterhin zufällig verteilt — jedes der acht Länder kommt vor, kein systematischer Bias auf eine feste Teilmenge (AK2)', async () => {
+    const ANZAHL_DURCHLAEUFE = 800;
+    const haeufigkeit = {};
+    LAENDER_LISTE.forEach((land) => { haeufigkeit[land] = 0; });
+
+    for (let i = 0; i < ANZAHL_DURCHLAEUFE; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const elemente = await erzeugeElemente({ code: `BUGFIX009-3-${i}` });
+      elemente.filter((e) => e.typ === 'laenderkarte').forEach((karte) => { haeufigkeit[karte.land] += 1; });
+    }
+
+    // Then: Jedes der acht Länder kommt vor — kein Land wird systematisch
+    // ausgeschlossen (z. B. weil eine falsche Shuffle-Implementierung immer
+    // dieselben sechs von acht Ländern bevorzugt). Erwartungswert pro Land bei
+    // Gleichverteilung: 800 * 6 / 8 = 600 — großzügige untere Schranke (200),
+    // um Flakiness durch reinen Zufall auszuschließen, aber einen groben
+    // systematischen Bias trotzdem zuverlässig aufzudecken.
+    LAENDER_LISTE.forEach((land) => {
+      expect(haeufigkeit[land]).toBeGreaterThan(200);
+    });
+  });
+
+  test('Szenario: Der bestehende Regressionstest "LAENDER_LISTE enthält karte.land" (siehe oben, unverändert) bleibt die einzige Prüfung auf Zugehörigkeit — hier zusätzlich mit ohne-Zurücklegen-Ziehung erneut gegen viele Durchläufe abgesichert', async () => {
+    for (let i = 0; i < 50; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const elemente = await erzeugeElemente({ code: `BUGFIX009-4-${i}` });
+      const karten = elemente.filter((e) => e.typ === 'laenderkarte');
+      karten.forEach((karte) => {
+        expect(LAENDER_LISTE).toContain(karte.land);
+      });
+    }
+  });
+});
+
+describe('BUGFIX-009 UI: "Karte X von 6"-Anzeige (AK5, public/spiel.html)', () => {
+  // Bewusst ein allgemeines Muster (siehe flow-game-bdd, Schritt 3b): geprüft
+  // wird NUR, dass der Quelltext irgendwo eine Positionsanzeige "Karte ... von 6"
+  // berechnet (Textliteral "Karte", gefolgt von einer Kartennummer, gefolgt von
+  // "von 6") — nicht, WIE (Template-Literal, String-Konkatenation, eigene
+  // Hilfsfunktion) das geschieht. Das lässt eine spätere Extraktion in eine
+  // gemeinsame Hilfsfunktion zu, ohne diesen Test unnötig rot laufen zu lassen.
+  const KARTE_VON_SECHS_MUSTER = /Karte[^\n]{0,20}von\s*6/;
+
+  test('Szenario: Der Quelltext zeigt für Länderkarten sichtbar eine Positionsanzeige "Karte X von 6" an, unabhängig vom Land (AK5)', () => {
+    expect(KARTE_VON_SECHS_MUSTER.test(spielHtmlInhalt)).toBe(true);
+  });
+
+  test('Regressionsschutz: Die neue "Karte X von 6"-Anzeige ist nicht in der Bewegungs-/Datenlogik (window.FlowGame.gibElementWeiter in rundeVier.js) verankert, sondern bleibt reine Anzeige (erwartungsgemäß bereits GRÜN)', () => {
+    const start = rundeVierJsInhalt.indexOf('async function gibElementWeiter(');
+    const ende = rundeVierJsInhalt.indexOf('async function schreibeWuerfelZwischenwurf(');
+    expect(start).toBeGreaterThan(-1);
+    expect(ende).toBeGreaterThan(start);
+    const funktionsKoerper = rundeVierJsInhalt.slice(start, ende);
+    expect(KARTE_VON_SECHS_MUSTER.test(funktionsKoerper)).toBe(false);
+  });
+
+  test('Regressionsschutz: berechneQualitaet() bleibt von der neuen Anzeige unberührt — bestehende Qualitätsauswertungs-Tests (siehe oben, unverändert) sind weiterhin die alleinige Prüfung dieser Funktion (erwartungsgemäß bereits GRÜN)', async () => {
+    const karten = [{ land: 'France', staedte: [{ stadt: 'Paris', am: 1000 }] }];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.korrekt).toBe(1);
   });
 });

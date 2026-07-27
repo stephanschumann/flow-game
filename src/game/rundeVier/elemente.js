@@ -10,13 +10,34 @@
  * tatsächliche Erzeugung der zugehörigen Firestore-Dokumente (und deren
  * Absicherung) passiert über den Host-Client + `firestore.rules`
  * (`allow create` unter `spiele/{spielId}/runden/{runde}/elemente/{elementId}`).
+ *
+ * BUGFIX-009 (2026-07-27, Spec von Stephan freigegeben): Die Länderziehung
+ * für die sechs Länderkarten erfolgt seit diesem Ticket OHNE Zurücklegen
+ * (Fisher-Yates-Shuffle der 8-Länder-Liste, erste sechs Elemente verwenden) –
+ * vorher zog jede der sechs Karten unabhängig UND MIT Zurücklegen aus der
+ * 8-Länder-Liste (ca. 92 % Dubletten-Wahrscheinlichkeit pro Rundenstart).
+ * WICHTIG: `public/js/game/rundeVier.js` (Browser-Produktivcode) muss laut
+ * Datei-Kopfkommentar dort inhaltlich synchron gehalten werden – dieselbe
+ * Shuffle-Implementierung ist dort in `starteRundeVier()` identisch
+ * eingebaut.
  */
 
 const { LAENDER_LISTE } = require('./laenderStaedte');
 
-function zufaelligesLand() {
-  const index = Math.floor(Math.random() * LAENDER_LISTE.length);
-  return LAENDER_LISTE[index];
+// Fisher-Yates-Shuffle: liefert eine zufällige Permutation der übergebenen
+// Liste, OHNE die Originalliste zu verändern. Ziehung ohne Zurücklegen für
+// die sechs Länderkarten entsteht dadurch, dass die ersten sechs Elemente
+// der geshuffelten Liste verwendet werden (garantiert paarweise verschieden,
+// da eine Permutation nie ein Element mehrfach enthält).
+function fisherYatesShuffle(liste) {
+  const kopie = [...liste];
+  for (let i = kopie.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = kopie[i];
+    kopie[i] = kopie[j];
+    kopie[j] = temp;
+  }
+  return kopie;
 }
 
 async function erzeugeElemente({ code } = {}) {
@@ -26,6 +47,10 @@ async function erzeugeElemente({ code } = {}) {
 
   const elemente = [];
   let reihenfolge = 1;
+
+  // Einmal pro Rundenstart: die acht Länder mischen und die ersten sechs
+  // den sechs Länderkarten zuweisen (Ziehung ohne Zurücklegen, BUGFIX-009).
+  const gezogeneLaender = fisherYatesShuffle(LAENDER_LISTE).slice(0, 6);
 
   for (let i = 1; i <= 6; i += 1) {
     elemente.push({
@@ -43,7 +68,7 @@ async function erzeugeElemente({ code } = {}) {
       typ: 'laenderkarte',
       reihenfolge,
       position: 1,
-      land: zufaelligesLand(),
+      land: gezogeneLaender[i - 1],
       // staedte startet hier als LEERES ARRAY – bewusst nur diese Node-seitige
       // Referenzform (siehe tests/game-round4.logic.test.js, "startet ohne
       // Städte-Einträge"). Das tatsächliche Firestore-Dokument speichert

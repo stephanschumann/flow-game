@@ -94,8 +94,20 @@
     return liste.some(function (kandidat) { return normalisiereStadt(kandidat) === eingabeSchluessel; });
   }
 
-  function zufaelligesLand() {
-    return LAENDER_LISTE[Math.floor(Math.random() * LAENDER_LISTE.length)];
+  // BUGFIX-009 (2026-07-27, Spec freigegeben): Fisher-Yates-Shuffle statt
+  // Ziehung mit Zurücklegen – identische Implementierung wie im Node-Modul
+  // src/game/rundeVier/elemente.js (Datei-Kopfkommentar dort verlangt
+  // Synchronhaltung). Liefert eine zufällige Permutation der übergebenen
+  // Liste, ohne die Originalliste zu verändern.
+  function fisherYatesShuffle(liste) {
+    const kopie = liste.slice();
+    for (var i = kopie.length - 1; i > 0; i -= 1) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var temp = kopie[i];
+      kopie[i] = kopie[j];
+      kopie[j] = temp;
+    }
+    return kopie;
   }
 
   // ---- Würfel-Regel (Browser-Port von src/game/rundeVier/wuerfelLogik.js) ----
@@ -246,6 +258,10 @@
       });
 
       let reihenfolge = 1;
+      // Einmal pro Rundenstart: die acht Länder mischen und die ersten
+      // sechs den sechs Länderkarten zuweisen (Ziehung ohne Zurücklegen,
+      // BUGFIX-009) – garantiert paarweise verschiedene Länder.
+      const gezogeneLaender = fisherYatesShuffle(LAENDER_LISTE).slice(0, 6);
       for (let i = 1; i <= 6; i += 1) {
         tx.set(rundenRef.collection('elemente').doc('wuerfel-' + i), {
           typ: 'wuerfel',
@@ -262,7 +278,7 @@
           reihenfolge: reihenfolge,
           position: 1,
           angekommenAm: firebase.firestore.Timestamp.fromMillis(basisMillis + reihenfolge),
-          land: zufaelligesLand(),
+          land: gezogeneLaender[i - 1],
           staedte: {},
         });
         reihenfolge += 1;
