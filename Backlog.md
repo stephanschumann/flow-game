@@ -920,8 +920,10 @@ Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Än
 | **Typ** | Bug |
 | **Priorität** | Hoch |
 | **Erstellt** | 2026-07-27 |
-| **Status** | In Progress |
+| **Status** | Done |
 | **In Progress seit** | 2026-07-27 |
+| **Done seit** | 2026-07-27 |
+| **Release-Commit** | b991287 (GitHub Actions grün, live auf https://flow-game-19f01.web.app bestätigt) |
 
 **Beschreibung:** Während des FEATURE-004-Gate-3-Mehrpersonen-Durchlaufs (2026-07-27) beobachtet: Mindestens zwei Länderkarten, die bereits mehrere Städte-Einträge trugen (eine Indien-Karte mit bereits fünf eingetragenen Städten, eine Deutschland-Karte mit mehreren Einträgen), erschienen bei anderen Spielenden erneut als scheinbar „neue", leere bzw. fast leere Karte desselben Landes. Nach dem Grundmodell aus FEATURE-004 darf es pro Land in einer Runde nur eine einzige Länderkarte geben (sechs Länderkarten insgesamt, jede durchläuft alle fünf Spielenden genau einmal) — eine Wiederverwendung/erneutes Ausspielen eines bereits in Bearbeitung befindlichen Landes verletzt dieses Grundmodell und verfälscht sowohl den Spielablauf als auch die anschließende Qualitätsauswertung (die gezeigten Zahlen 14/30 korrekt, 12× falsches Land, 7× Dublette aus demselben Durchlauf sind dadurch mit Vorbehalt zu betrachten, bis die Ursache geklärt ist).
 
