@@ -418,6 +418,16 @@
       falschesLand: qualitaetRoh.gesamt.falschesLand,
       dublette: qualitaetRoh.gesamt.dublette,
       gesamtStaedte: qualitaetRoh.gesamt.korrekt + qualitaetRoh.gesamt.fehlerhaft,
+      // FEATURE-019: proKarte wurde bislang berechnet, aber vor dem
+      // Schreiben verworfen (siehe "Zentraler Befund" im FEATURE-019-
+      // Abschnitt von Backlog.md) - jetzt zusätzlich zur Zusammenfassung im
+      // selben Update mitgeschrieben (Option A, keine neue Zugriffsregel
+      // noetig, da proKarte im selben Rundendokument denselben Schutz erbt).
+      // Enthaelt bewusst weiterhin das rohe "von"-Feld pro Eintrag - das
+      // Verbergen der eintragenden Person ist Aufgabe der ANZEIGE (siehe
+      // zeigeKennzahlen()/renderVergleichsTabelle() in spiel.html), nicht
+      // der Persistenz.
+      proKarte: qualitaetRoh.proKarte,
     };
 
     const rundenRef = db.collection('spiele').doc(code).collection('runden').doc(String(rundenNummer));

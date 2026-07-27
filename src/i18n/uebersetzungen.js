@@ -84,6 +84,30 @@ const UEBERSETZUNGEN = {
   'lobby.deineStation': { de: 'Deine Station:', en: 'Your station:' },
   'lobby.duBistBeobachtende': { de: 'Du bist als Beobachtende dabei.', en: 'You are taking part as an observer.' },
 
+  // ---- BUGFIX-003: Lobby-Erläuterung + Live-Zähler, Rundenkontext --------
+  // (a) Erläuterungstext in der Lobby: dass das Spiel erst mit
+  // Host-Auslösung beginnt und mindestens 5 Spielende + 1 Host gebraucht
+  // werden. Kein hartcodiertes Zahlenbeispiel - der eigentliche Stand kommt
+  // ausschliesslich über lobby.liveZaehler (aus teilnehmendeCache berechnet).
+  'lobby.startHinweis': {
+    de: 'Das Spiel beginnt erst, wenn der Host es startet. Dafür werden mindestens 5 Spielende und 1 Host benötigt – wer beitritt, wartet hier in der Lobby, bis es losgeht.',
+    en: 'The game only begins once the host starts it. That requires at least 5 players and 1 host – everyone who joins waits here in the lobby until it begins.',
+  },
+  // Live-Zähler nach dem Muster "3 von 5 beigetreten" - {aktuell}/{minimum}
+  // werden von renderTeilnehmerListe() bei jeder Änderung der
+  // Teilnehmendenliste neu berechnet und eingesetzt.
+  'lobby.liveZaehler': {
+    de: '{aktuell} von {minimum} Spielenden beigetreten',
+    en: '{aktuell} of {minimum} players joined',
+  },
+  // (b) #untertitel-Zwischenzustand, solange sich eine Person in der Lobby
+  // befindet (vor Rundenstart) - ersetzt den bisherigen Landingpage-Satz
+  // ('lobby.untertitel'), siehe zeigeLobby()/aktualisiereUntertitel().
+  'lobby.untertitelInLobby': {
+    de: 'Du bist in der Lobby – das Spiel beginnt, sobald der Host startet.',
+    en: 'You are in the lobby – the game will begin once the host starts it.',
+  },
+
   // ---- Rollen (auch für Badges/Anzeigetexte) ------------------------------
   'rollen.host': { de: 'Host', en: 'Host' },
   'rollen.spielende': { de: 'Spielende', en: 'Players' },
@@ -117,6 +141,19 @@ const UEBERSETZUNGEN = {
     en: 'You are an observer - you watch the team play.',
   },
   'spielbrett.karteWeiterbewegen': { de: 'Weiterbewegen', en: 'Move forward' },
+  // BUGFIX-003 (c/d): Platzhaltertext für eine noch nicht besetzte Station
+  // (Spaltenkopf renderBrett() bzw. Vergleichsansicht renderVergleichsTabelle()),
+  // statt eines leeren oder "undefined" wirkenden Felds.
+  'spielbrett.stationUnbesetzt': { de: 'noch nicht besetzt', en: 'not yet assigned' },
+  // BUGFIX-003 (b): automatisch generierter Rundenkontext für #untertitel,
+  // ersetzt während einer laufenden Runde den alten Landingpage-Text -
+  // analog zum bestehenden PHASE_LABEL-Muster (phase.*-Schlüssel unten).
+  // "MitPhase" ist der Normalfall (Rundendaten bereits geladen); "OhnePhase"
+  // deckt den kurzen Zwischenzustand direkt nach dem Rundenwechsel ab, bevor
+  // der erste Runden-Snapshot eingetroffen ist (kein leerer/widersprüchlicher
+  // Text, siehe wechsleZuRunde()).
+  'spielbrett.rundeKontextMitPhase': { de: 'Runde {rundenNummer} läuft – {phase}', en: 'Round {rundenNummer} in progress – {phase}' },
+  'spielbrett.rundeKontextOhnePhase': { de: 'Runde {rundenNummer} wird geladen …', en: 'Round {rundenNummer} is loading …' },
 
   // ---- Phasen-Anzeige ------------------------------------------------------
   'phase.aufgabeVorgestellt': { de: 'Aufgabe vorgestellt', en: 'Task presented' },
@@ -161,6 +198,11 @@ const UEBERSETZUNGEN = {
   'kennzahlen.beteiligungTitel': { de: 'Beteiligung je Station:', en: 'Participation per station:' },
   'kennzahlen.bewegungen': { de: 'Bewegungen', en: 'moves' },
   'kennzahlen.beteiligungsspanne': { de: 'Beteiligungsspanne', en: 'participation span' },
+  // BUGFIX-003 (d): additive dritte Zeile pro Station in
+  // renderVergleichsTabelle(), zeigt denselben Personennamen wie der
+  // Spaltenkopf im Spielbrett (Punkt c), ersetzt keine der beiden
+  // bestehenden Zeilen.
+  'kennzahlen.zustaendigePerson': { de: 'Zuständige Person', en: 'Person in charge' },
   'kennzahlen.hostVorschauTitel': {
     de: 'Vorschau – nur für dich als Host sichtbar',
     en: 'Preview – visible only to you as host',
@@ -195,6 +237,20 @@ const UEBERSETZUNGEN = {
   'vergleich.qualitaet': { de: 'Qualität (korrekt/gesamt)', en: 'Quality (correct/total)' },
   'vergleich.qualitaetFalschesLand': { de: 'Qualität – falsches Land', en: 'Quality – wrong country' },
   'vergleich.qualitaetDubletten': { de: 'Qualität – Dubletten', en: 'Quality – duplicates' },
+
+  // ---- FEATURE-019: Qualitätsauswertung zeigt Details (Land/Stadt/Grund je
+  // Eintrag, als Tabelle, ALLE 30 Einträge, ohne Personenzuordnung) --------
+  'vergleich.qualitaetDetailTitel': { de: 'Detailauswertung je Stadt', en: 'Detailed results per city' },
+  'vergleich.qualitaetDetailLand': { de: 'Land', en: 'Country' },
+  'vergleich.qualitaetDetailStadt': { de: 'Stadt', en: 'City' },
+  'vergleich.qualitaetDetailErgebnis': { de: 'Ergebnis', en: 'Result' },
+  'vergleich.qualitaetDetailKorrekt': { de: 'korrekt', en: 'correct' },
+  'vergleich.qualitaetDetailFalschesLand': { de: 'falsches Land', en: 'wrong country' },
+  'vergleich.qualitaetDetailDublette': { de: 'Dublette', en: 'duplicate' },
+  'vergleich.qualitaetDetailFalschesLandUndDublette': {
+    de: 'falsches Land + Dublette',
+    en: 'wrong country + duplicate',
+  },
 
   // ---- Fehlermeldungen (AK 7, sprachneutrale Fehlercodes) ------------------
   'fehler.ungueltigerCode': { de: 'Ungültiger oder unbekannter Code.', en: 'Invalid or unknown code.' },

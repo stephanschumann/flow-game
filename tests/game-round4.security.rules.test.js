@@ -708,3 +708,103 @@ describe('FEATURE-004 Wiederverwendungs-/Regressionsnachweis: bestehende runden/
     await assertSucceeds(zug);
   });
 });
+
+describe('FEATURE-019 Wiederverwendungs-/Regressionsnachweis: Das proKarte-Detail teilt sich die bestehende Zugriffsregel des Runden-Dokuments — kein neuer Regeltest nötig (AK 6, Testplan-Grundgerüst; erwartungsgemäß bereits GRÜN)', () => {
+  // Diese Tests prüfen bewusst KEINE neue firestore.rules-Regel (siehe
+  // FEATURE-019-Spec, "Betroffene Architektur": "keine neue Zugriffsregel
+  // absehbar nötig" — das Detail landet im selben Dokument wie die
+  // Zusammenfassung und erbt dadurch automatisch denselben Zugriffsschutz).
+  // Sie belegen genau diese Behauptung gegen den echten Emulator, statt sie
+  // nur zu behaupten.
+
+  async function seedeBeendeteRundeVier({ code, ergebnisseFreigegeben }) {
+    const { spielerUids } = await seedRundeVier({ code, dorAbgeschlossen: true });
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, `spiele/${code}`), { ergebnisseFreigegeben });
+      // Rundendokument in den bereits ausgewerteten Endzustand versetzen —
+      // das eigentliche automatische Setzen von phase == 'beendet' inkl.
+      // servergesetztem Zeitstempel UND des neuen proKarte-Details ist NICHT
+      // Gegenstand dieses Regeltests (siehe eigener Test unten), hier geht es
+      // ausschließlich um die LESE-Sichtbarkeit eines bereits befüllten
+      // Dokuments.
+      await updateDoc(doc(db, `spiele/${code}/runden/4`), {
+        phase: 'beendet',
+        durchlaufzeitEnde: new Date(),
+        qualitaet: {
+          korrekt: 21,
+          fehlerhaft: 9,
+          falschesLand: 5,
+          dublette: 4,
+          gesamtStaedte: 30,
+          proKarte: [
+            { land: 'France', staedte: [{ stadt: 'Paris', wertung: 'korrekt' }] },
+          ],
+        },
+      });
+    });
+    return spielerUids;
+  }
+
+  test('Szenario: Vor der Gesamtfreigabe kann der Host das Runden-Dokument samt proKarte-Detail lesen (identisch zum bestehenden Verhalten der Zusammenfassung)', async () => {
+    const code = 'RV4DET01';
+    await seedeBeendeteRundeVier({ code, ergebnisseFreigegeben: false });
+    const host = testEnv.authenticatedContext('host-1');
+
+    const lesevorgang = getDoc(doc(host.firestore(), `spiele/${code}/runden/4`));
+    await assertSucceeds(lesevorgang);
+
+    // Inhaltliche Kontrolle (Regel-Prüfung oben ist bereits abgeschlossen):
+    // proKarte tatsächlich Teil des gelesenen Dokuments, unter Umgehung der
+    // Regeln erneut gelesen, um die Assertion nicht vom obigen Leseergebnis
+    // abhängig zu machen.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const snap = await getDoc(doc(context.firestore(), `spiele/${code}/runden/4`));
+      expect(snap.data().qualitaet.proKarte).toBeDefined();
+    });
+  });
+
+  test('Szenario: Vor der Gesamtfreigabe bleibt das Runden-Dokument samt proKarte-Detail für eine spielende Person (nicht Host) weiterhin gesperrt', async () => {
+    const code = 'RV4DET02';
+    const spielerUids = await seedeBeendeteRundeVier({ code, ergebnisseFreigegeben: false });
+    const spieler = testEnv.authenticatedContext(spielerUids[0]);
+
+    await assertFails(getDoc(doc(spieler.firestore(), `spiele/${code}/runden/4`)));
+  });
+
+  test('Szenario: Nach der Gesamtfreigabe kann eine spielende Person (nicht Host) das Runden-Dokument samt proKarte-Detail lesen — dieselbe Freigabe wie für die Zusammenfassung, keine zusätzliche Sperre', async () => {
+    const code = 'RV4DET03';
+    const spielerUids = await seedeBeendeteRundeVier({ code, ergebnisseFreigegeben: true });
+    const spieler = testEnv.authenticatedContext(spielerUids[0]);
+
+    const lesevorgang = getDoc(doc(spieler.firestore(), `spiele/${code}/runden/4`));
+    await assertSucceeds(lesevorgang);
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const snap = await getDoc(doc(context.firestore(), `spiele/${code}/runden/4`));
+      expect(snap.data().qualitaet.proKarte).toBeDefined();
+    });
+  });
+
+  test('Szenario: Ein größeres qualitaet-Objekt inklusive proKarte-Detail lässt sich mit der bestehenden Rundenende-Update-Regel schreiben, ohne dass eine neue Regel nötig ist (Pre-Mortem-Risiko 3/4)', async () => {
+    const code = 'RV4DET04';
+    await seedRundeVier({ code, dorAbgeschlossen: true });
+    const spieler = testEnv.authenticatedContext('spieler-p1');
+
+    const aktion = updateDoc(doc(spieler.firestore(), `spiele/${code}/runden/4`), {
+      phase: 'beendet',
+      durchlaufzeitEnde: serverTimestamp(),
+      qualitaet: {
+        korrekt: 21,
+        fehlerhaft: 9,
+        falschesLand: 5,
+        dublette: 4,
+        gesamtStaedte: 30,
+        proKarte: [
+          { land: 'France', staedte: [{ stadt: 'Paris', wertung: 'korrekt' }] },
+        ],
+      },
+    });
+    await assertSucceeds(aktion);
+  });
+});

@@ -115,6 +115,16 @@
   .vergleichs-tabelle th[scope="row"]{text-align:left;color:var(--text);text-transform:none;font-size:13px;letter-spacing:0;background:transparent;white-space:normal}
   .vergleichs-tabelle tbody tr:nth-child(even) td{background:rgba(255,255,255,.02)}
   .host-vorschau{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
+
+  /* FEATURE-019: Detailtabelle je Karte (Land/Stadt/Ergebnis, ALLE Einträge).
+     Fehlerhafte Zeilen werden zusätzlich zum sichtbaren Ergebnis-Text (nie
+     nur über Farbe, siehe FEATURE-005) farblich hervorgehoben - dieselbe
+     Fehler-Farbpalette wie .hinweis.fehler oben, damit Fehlerfarben
+     konsistent im ganzen Spiel bleiben. */
+  .qualitaets-detail-tabelle{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  .qualitaets-detail-tabelle th,.qualitaets-detail-tabelle td{border:1px solid var(--line);padding:6px 10px;text-align:left}
+  .qualitaets-detail-tabelle thead th{background:var(--panel2);color:var(--muted);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+  .qualitaets-detail-fehler td{background:rgba(248,81,73,.12);color:#ffb4af;font-weight:700}
   .host-vorschau h3{font-size:14px;margin:0 0 4px;color:var(--amber);text-transform:uppercase;letter-spacing:.06em}
 
   /* FEATURE-004: Runde 4 (Kontextwechsel) - "Fokus + Warteschlange"-Ansicht
@@ -293,6 +303,10 @@
 
         <div id="kennzahlen-grid" class="kennzahlen-grid"></div>
         <div id="kennzahlen-beteiligung"></div>
+        <!-- FEATURE-019: Detailtabelle (Land/Stadt/Ergebnis, ALLE Einträge)
+             der Runde-4-Qualitätsauswertung - nur befüllt/sichtbar, wenn
+             runde.qualitaet vorhanden ist (siehe zeigeKennzahlen() unten). -->
+        <div id="kennzahlen-qualitaet-detail"></div>
 
         <!-- FEATURE-003: Nur für den Host sichtbar - eigene Vorschau auf den
              Rundenvergleich, bevor er für alle freigegeben wird (der Host
@@ -437,6 +451,7 @@
   const kennzahlenPanel = document.getElementById('kennzahlen-panel');
   const kennzahlenGrid = document.getElementById('kennzahlen-grid');
   const kennzahlenBeteiligung = document.getElementById('kennzahlen-beteiligung');
+  const kennzahlenQualitaetDetail = document.getElementById('kennzahlen-qualitaet-detail');
   const hostNaechsteRundeBereich = document.getElementById('host-naechste-runde-bereich');
   const btnNaechsteRunde = document.getElementById('btn-naechste-runde');
   const spielFertigHinweis = document.getElementById('spiel-fertig-hinweis');
@@ -1754,6 +1769,7 @@
     kennzahlenGrid.hidden = true;
     kennzahlenGrid.innerHTML = '';
     kennzahlenBeteiligung.innerHTML = '';
+    kennzahlenQualitaetDetail.innerHTML = '';
     hostVorschauBereich.hidden = true;
     hostNaechsteRundeBereich.hidden = true;
     hostFreigabeBereich.hidden = true;
@@ -1773,6 +1789,65 @@
       }
     }
     return window.FlowGame.erstelleVergleichsansicht({ runden: rohdaten });
+  }
+
+  // FEATURE-019: Übersetzt eine proKarte-Wertung ('korrekt'/'falschesLand'/
+  // 'dublette'/'falschesLandUndDublette') in den passenden, zweisprachigen
+  // Anzeigetext (FEATURE-006: über die zentrale Übersetzungstabelle, kein
+  // literaler Text). Wird von beiden Anzeigeorten unten geteilt.
+  function qualitaetWertungLabel(wertung) {
+    if (wertung === 'falschesLandUndDublette') return t('vergleich.qualitaetDetailFalschesLandUndDublette');
+    if (wertung === 'falschesLand') return t('vergleich.qualitaetDetailFalschesLand');
+    if (wertung === 'dublette') return t('vergleich.qualitaetDetailDublette');
+    return t('vergleich.qualitaetDetailKorrekt');
+  }
+
+  // FEATURE-019: Füllt eine bereits erzeugte <table> mit der Detailliste
+  // (Land, Stadt, Ergebnis) aus dem bereits serverseitig berechneten und
+  // gespeicherten qualitaet.proKarte (AK 1, AK 8, AK 11 - ALLE Einträge
+  // jeder Karte, nicht nur die fehlerhaften; keine eigene Neuberechnung,
+  // siehe Pre-Mortem-Risiko 6 "Server bleibt die Wahrheit"). Bewusst OHNE
+  // das "von"-Feld der eintragenden Person (Frage 1, "ohne Namen").
+  // Fehlerhafte Zeilen sind sowohl über den sichtbaren Ergebnis-Text als
+  // auch über eine CSS-Klasse erkennbar (Pre-Mortem-Risiko 2, nie nur über
+  // Farbe siehe FEATURE-005).
+  function fuelleQualitaetsDetailTabelle(tabelle, proKarte) {
+    tabelle.className = 'qualitaets-detail-tabelle';
+
+    const thead = document.createElement('thead');
+    const kopfZeile = document.createElement('tr');
+    [
+      t('vergleich.qualitaetDetailLand'),
+      t('vergleich.qualitaetDetailStadt'),
+      t('vergleich.qualitaetDetailErgebnis'),
+    ].forEach(function (text) {
+      const th = document.createElement('th');
+      th.textContent = text;
+      kopfZeile.appendChild(th);
+    });
+    thead.appendChild(kopfZeile);
+    tabelle.appendChild(thead);
+
+    const detailTbody = document.createElement('tbody');
+    (Array.isArray(proKarte) ? proKarte : []).forEach(function (karte) {
+      (Array.isArray(karte.staedte) ? karte.staedte : []).forEach(function (eintrag) {
+        const tr = document.createElement('tr');
+        if (eintrag.wertung !== 'korrekt') {
+          tr.className = 'qualitaets-detail-fehler';
+        }
+        const tdLand = document.createElement('td');
+        tdLand.textContent = karte.land;
+        const tdStadt = document.createElement('td');
+        tdStadt.textContent = eintrag.stadt;
+        const tdErgebnis = document.createElement('td');
+        tdErgebnis.textContent = qualitaetWertungLabel(eintrag.wertung);
+        tr.appendChild(tdLand);
+        tr.appendChild(tdStadt);
+        tr.appendChild(tdErgebnis);
+        detailTbody.appendChild(tr);
+      });
+    });
+    tabelle.appendChild(detailTbody);
   }
 
   // FEATURE-003: Baut die Vergleichstabelle - iteriert über die Runden-LISTE
@@ -1864,6 +1939,28 @@
       zeile(t('vergleich.qualitaetDubletten'), function (r) {
         return r.qualitaet ? String(r.qualitaet.dublette) : '–';
       });
+
+      // FEATURE-019 (AK 1-6, 8, 11): Detailtabelle je Runde mit proKarte -
+      // eine eigene, volle Breite einnehmende Zeile je Runde, die tatsächlich
+      // ein proKarte-Detail mitbringt (in der Praxis ausschließlich Runde 4).
+      // Bewusst INNERHALB dieses bestehenden Wächter-Blocks (AK 7-Regression:
+      // Runde 1-3 bleiben dadurch unverändert ohne jede Detailzeile).
+      vergleich.forEach(function (runde) {
+        if (!runde.qualitaet || !Array.isArray(runde.qualitaet.proKarte)) return;
+        const detailZeile = document.createElement('tr');
+        const detailZelle = document.createElement('td');
+        detailZelle.colSpan = vergleich.length + 1;
+        const detailTitel = document.createElement('div');
+        detailTitel.className = 'muted';
+        detailTitel.style.margin = '6px 0';
+        detailTitel.textContent = t('vergleich.qualitaetDetailTitel') + ' – ' + t('spielbrett.runde') + ' ' + runde.rundenNummer;
+        const detailTabelle = document.createElement('table');
+        fuelleQualitaetsDetailTabelle(detailTabelle, runde.qualitaet.proKarte);
+        detailZelle.appendChild(detailTitel);
+        detailZelle.appendChild(detailTabelle);
+        detailZeile.appendChild(detailZelle);
+        tbody.appendChild(detailZeile);
+      });
     }
 
     tabelle.appendChild(tbody);
@@ -1954,6 +2051,24 @@
       box.appendChild(wert);
       box.appendChild(label);
       kennzahlenGrid.appendChild(box);
+    }
+
+    // FEATURE-019 (AK 1-6, 8, 11): Detailtabelle (Land, Stadt, Ergebnis) mit
+    // ALLEN Einträgen der Qualitätsauswertung - dieselbe Bedingung wie oben
+    // (nur vorhanden bei runde.qualitaet, also ausschließlich Runde 4;
+    // AK 7-Regression: Runde 1-3 bleiben unverändert ohne Detailtabelle).
+    // Liest ausschließlich das bereits serverseitig berechnete
+    // qualitaet.proKarte, keine eigene Neuberechnung (Pre-Mortem-Risiko 6).
+    kennzahlenQualitaetDetail.innerHTML = '';
+    if (runde.qualitaet && Array.isArray(runde.qualitaet.proKarte)) {
+      const detailTitel = document.createElement('div');
+      detailTitel.className = 'muted';
+      detailTitel.style.marginTop = '10px';
+      detailTitel.textContent = t('vergleich.qualitaetDetailTitel');
+      const detailTabelle = document.createElement('table');
+      fuelleQualitaetsDetailTabelle(detailTabelle, runde.qualitaet.proKarte);
+      kennzahlenQualitaetDetail.appendChild(detailTitel);
+      kennzahlenQualitaetDetail.appendChild(detailTabelle);
     }
 
     kennzahlenBeteiligung.innerHTML = '';

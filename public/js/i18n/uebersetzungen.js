@@ -63,6 +63,22 @@
     'lobby.deineStation': { de: 'Deine Station:', en: 'Your station:' },
     'lobby.duBistBeobachtende': { de: 'Du bist als Beobachtende dabei.', en: 'You are taking part as an observer.' },
 
+    // BUGFIX-003: Lobby-Erläuterung + Live-Zähler, Rundenkontext - siehe
+    // Kommentare in src/i18n/uebersetzungen.js (diese Datei muss inhaltlich
+    // synchron gehalten werden, siehe Kopfkommentar oben).
+    'lobby.startHinweis': {
+      de: 'Das Spiel beginnt erst, wenn der Host es startet. Dafür werden mindestens 5 Spielende und 1 Host benötigt – wer beitritt, wartet hier in der Lobby, bis es losgeht.',
+      en: 'The game only begins once the host starts it. That requires at least 5 players and 1 host – everyone who joins waits here in the lobby until it begins.',
+    },
+    'lobby.liveZaehler': {
+      de: '{aktuell} von {minimum} Spielenden beigetreten',
+      en: '{aktuell} of {minimum} players joined',
+    },
+    'lobby.untertitelInLobby': {
+      de: 'Du bist in der Lobby – das Spiel beginnt, sobald der Host startet.',
+      en: 'You are in the lobby – the game will begin once the host starts it.',
+    },
+
     'rollen.host': { de: 'Host', en: 'Host' },
     'rollen.spielende': { de: 'Spielende', en: 'Players' },
     'rollen.beobachtende': { de: 'Beobachtende', en: 'Observers' },
@@ -94,6 +110,10 @@
       en: 'You are an observer - you watch the team play.',
     },
     'spielbrett.karteWeiterbewegen': { de: 'Weiterbewegen', en: 'Move forward' },
+    // BUGFIX-003 (c/d/b): siehe Kommentare in src/i18n/uebersetzungen.js.
+    'spielbrett.stationUnbesetzt': { de: 'noch nicht besetzt', en: 'not yet assigned' },
+    'spielbrett.rundeKontextMitPhase': { de: 'Runde {rundenNummer} läuft – {phase}', en: 'Round {rundenNummer} in progress – {phase}' },
+    'spielbrett.rundeKontextOhnePhase': { de: 'Runde {rundenNummer} wird geladen …', en: 'Round {rundenNummer} is loading …' },
 
     'phase.aufgabeVorgestellt': { de: 'Aufgabe vorgestellt', en: 'Task presented' },
     'phase.dorAbgeschlossen': { de: 'Bereit – Karten können bewegt werden', en: 'Ready – cards can be moved' },
@@ -135,6 +155,8 @@
     'kennzahlen.beteiligungTitel': { de: 'Beteiligung je Station:', en: 'Participation per station:' },
     'kennzahlen.bewegungen': { de: 'Bewegungen', en: 'moves' },
     'kennzahlen.beteiligungsspanne': { de: 'Beteiligungsspanne', en: 'participation span' },
+    // BUGFIX-003 (d): siehe Kommentar in src/i18n/uebersetzungen.js.
+    'kennzahlen.zustaendigePerson': { de: 'Zuständige Person', en: 'Person in charge' },
     'kennzahlen.hostVorschauTitel': {
       de: 'Vorschau – nur für dich als Host sichtbar',
       en: 'Preview – visible only to you as host',
@@ -169,6 +191,20 @@
     'vergleich.qualitaet': { de: 'Qualität (korrekt/gesamt)', en: 'Quality (correct/total)' },
     'vergleich.qualitaetFalschesLand': { de: 'Qualität – falsches Land', en: 'Quality – wrong country' },
     'vergleich.qualitaetDubletten': { de: 'Qualität – Dubletten', en: 'Quality – duplicates' },
+
+    // FEATURE-019: Qualitätsauswertung zeigt Details (Land/Stadt/Grund je
+    // Eintrag, als Tabelle, ALLE 30 Einträge, ohne Personenzuordnung).
+    'vergleich.qualitaetDetailTitel': { de: 'Detailauswertung je Stadt', en: 'Detailed results per city' },
+    'vergleich.qualitaetDetailLand': { de: 'Land', en: 'Country' },
+    'vergleich.qualitaetDetailStadt': { de: 'Stadt', en: 'City' },
+    'vergleich.qualitaetDetailErgebnis': { de: 'Ergebnis', en: 'Result' },
+    'vergleich.qualitaetDetailKorrekt': { de: 'korrekt', en: 'correct' },
+    'vergleich.qualitaetDetailFalschesLand': { de: 'falsches Land', en: 'wrong country' },
+    'vergleich.qualitaetDetailDublette': { de: 'Dublette', en: 'duplicate' },
+    'vergleich.qualitaetDetailFalschesLandUndDublette': {
+      de: 'falsches Land + Dublette',
+      en: 'wrong country + duplicate',
+    },
 
     'fehler.ungueltigerCode': { de: 'Ungültiger oder unbekannter Code.', en: 'Invalid or unknown code.' },
     'fehler.spielVoll': {

@@ -68,6 +68,42 @@
  * Schreibens ERWARTUNGSGEMÄSS ROT (Ziehungslogik/Anzeige noch nicht
  * geändert) — mit Ausnahme des explizit als "bereits GRÜN" markierten
  * Regressionsschutz-Tests.
+ *
+ * NACHTRAG (flow-game-bdd, FEATURE-019, 2026-07-27, Spec von Stephan
+ * freigegeben — Detaildarstellung ohne Namen, als Tabelle, mit ALLEN
+ * Einträgen statt nur den fehlerhaften): Die Qualitätsauswertung
+ * (berechneQualitaet(), oben) liefert bereits heute in `proKarte` alles
+ * fachlich Nötige (Land, Stadt, Wertung je Eintrag), verwirft es aber im
+ * bestehenden Rundenende-Schreibvorgang (public/js/game/rundeVier.js,
+ * pruefeUndSetzeRundenEndeRundeVier()) vollständig, bevor irgendetwas
+ * gespeichert wird — siehe "Zentraler Befund der Code-Verifikation" im
+ * FEATURE-019-Abschnitt von Backlog.md. Dieses Ticket ist damit überwiegend
+ * eine Anzeige-/Persistenz-Erweiterung, keine neue Berechnungslogik.
+ *
+ * NAMENSGEBUNG (eigene, begründete Festlegung dieser BDD-Phase, da die Spec
+ * bewusst nur beobachtbares Verhalten + grobe Architektur beschreibt, siehe
+ * "Betroffene Architektur" im FEATURE-019-Abschnitt): Für die Aufbereitung
+ * der rohen `proKarte`-Struktur zu anzeige-/persistenzfertigen Tabellenzeilen
+ * (Land, Stadt, Wertung, Fehlergründe — OHNE das `von`-Feld der eintragenden
+ * Person, siehe Frage 1/Pre-Mortem-Risiko 1) wird ein neues, eigenständig
+ * testbares Node-Referenzmodul angenommen, analog zum bestehenden Muster
+ * (qualitaetsauswertung.js, vergleichsansicht.js):
+ *
+ *   - src/game/rundeVier/detailliste.js – bereiteDetailzeilenVor({ proKarte }):
+ *       liefert eine flache Liste von Zeilen { land, stadt, wertung, gruende }
+ *       über ALLE Einträge aller Karten hinweg (AK 1, AK 8, AK 11), ohne
+ *       `von`/`am` aus den Rohdaten zu übernehmen (Frage 1, ohne Namen).
+ *       `gruende` ist ein Array ('falschesLand'/'dublette', beide bei
+ *       gleichzeitigem Fehler, leer bei 'korrekt') — Grundlage für AK 2/3/4.
+ *
+ * Falls flow-game-impl einen anderen Modulnamen/eine andere Rückgabeform
+ * wählt, bitte diese Tests entsprechend anpassen statt sie stillschweigend zu
+ * ignorieren (gleiches Vorgehen wie beim NAMENSGEBUNG-Hinweis oben für die
+ * FEATURE-004-Module). Die neuen FEATURE-019-Testfälle stehen als eigene
+ * Abschnitte am Ende dieser Datei und sind zum Zeitpunkt des Schreibens
+ * ERWARTUNGSGEMÄSS ROT — mit Ausnahme der explizit als "bereits GRÜN"
+ * markierten Wiederverwendungsnachweise gegen die bestehende
+ * berechneQualitaet().
  */
 
 function ladeOderUndefined(pfad, exportName) {
@@ -85,6 +121,10 @@ const bewegeElement = ladeOderUndefined('../src/game/rundeVier/elementBewegung',
 const pruefeRundenEndeRundeVier = ladeOderUndefined('../src/game/rundeVier/rundenEnde', 'pruefeRundenEndeRundeVier');
 const berechneQualitaet = ladeOderUndefined('../src/game/rundeVier/qualitaetsauswertung', 'berechneQualitaet');
 const istWurfErfolgreich = ladeOderUndefined('../src/game/rundeVier/wuerfelLogik', 'istWurfErfolgreich');
+
+// FEATURE-019 (flow-game-bdd, 2026-07-27): neues Modul, siehe NACHTRAG/
+// NAMENSGEBUNG oben — existiert erst nach flow-game-impl.
+const bereiteDetailzeilenVor = ladeOderUndefined('../src/game/rundeVier/detailliste', 'bereiteDetailzeilenVor');
 
 // Bereits bestehende, fertige FEATURE-003-Module — bewusst NICHT über
 // ladeOderUndefined() geladen, weil ihr Fehlen ein echter Regressions-Fehler
@@ -561,5 +601,276 @@ describe('BUGFIX-009 UI: "Karte X von 6"-Anzeige (AK5, public/spiel.html)', () =
     const karten = [{ land: 'France', staedte: [{ stadt: 'Paris', am: 1000 }] }];
     const ergebnis = await berechneQualitaet({ karten });
     expect(ergebnis.gesamt.korrekt).toBe(1);
+  });
+});
+
+describe('FEATURE-019 Wiederverwendungsnachweis: berechneQualitaet() liefert bereits alle für die Detailliste nötigen Rohdaten (AK 1, AK 8, AK 11, Pre-Mortem-Risiko 1 — erwartungsgemäß bereits GRÜN)', () => {
+  // WICHTIG: Diese Tests ändern/erweitern berechneQualitaet() NICHT und
+  // importieren ausschließlich die bereits bestehende, fertige Funktion von
+  // oben. Sie belegen den "Zentraler Befund"-Satz der FEATURE-019-Spec ("die
+  // pro-Eintrag-Detailinformation ... wird bereits vollständig ermittelt, nur
+  // nicht weiterverwendet") — und ziehen zugleich die Scope-Grenze zur neuen
+  // Aufbereitungsfunktion unten: das Verbergen des `von`-Feldes ist NICHT
+  // Aufgabe von berechneQualitaet() (das bleibt unverändert), sondern von
+  // bereiteDetailzeilenVor().
+
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test('Szenario: proKarte enthält für eine Karte mit gemischten Ergebnissen ALLE fünf Einträge, nicht nur die fehlerhaften (AK 1, AK 11)', async () => {
+    const karten = [
+      karteMit('France', [
+        { stadt: 'Paris', am: 1000 }, // korrekt
+        { stadt: 'Rom', am: 2000 }, // falschesLand
+        { stadt: 'Lyon', am: 3000 }, // korrekt
+        { stadt: 'Paris', am: 4000 }, // dublette (Paris schon vergeben)
+        { stadt: 'Berlin', am: 5000 }, // falschesLand
+      ]),
+    ];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.proKarte[0].staedte).toHaveLength(5);
+    expect(ergebnis.proKarte[0].staedte.map((e) => e.wertung)).toEqual([
+      'korrekt', 'falschesLand', 'korrekt', 'dublette', 'falschesLand',
+    ]);
+  });
+
+  test('Szenario: Eine Länderkarte ganz ohne Fehler erscheint in proKarte trotzdem vollständig mit allen Einträgen, jeweils als "korrekt" markiert — kein Leerzustand auf Berechnungsebene (AK 8)', async () => {
+    const karten = [
+      karteMit('Spain', [
+        { stadt: 'Madrid', am: 1000 }, { stadt: 'Barcelona', am: 2000 }, { stadt: 'Valencia', am: 3000 },
+      ]),
+    ];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.proKarte[0].land).toBe('Spain');
+    expect(ergebnis.proKarte[0].staedte).toHaveLength(3);
+    expect(ergebnis.proKarte[0].staedte.every((e) => e.wertung === 'korrekt')).toBe(true);
+  });
+
+  test('Szenario: berechneQualitaet() reicht ein in den Rohdaten vorhandenes "von"-Feld (eintragende Person) unverändert durch — das Verbergen ist NICHT Aufgabe dieser Funktion, sondern von bereiteDetailzeilenVor() unten', async () => {
+    const karten = [
+      karteMit('Germany', [{ stadt: 'Berlin', am: 1000, von: 'spieler-p1' }]),
+    ];
+    const ergebnis = await berechneQualitaet({ karten });
+    // Dokumentiert bewusst den Ist-Zustand (GRÜN): das Rohergebnis trägt "von"
+    // noch mit sich, weil berechneQualitaet() jeden Eintrag unverändert
+    // spreadet (siehe Kopfkommentar/Quelltext). Genau deshalb braucht es eine
+    // separate Aufbereitung vor Anzeige/Persistenz (siehe Testblock unten).
+    expect(ergebnis.proKarte[0].staedte[0].von).toBe('spieler-p1');
+  });
+});
+
+describe('FEATURE-019 Spiellogik: Detailzeilen für Anzeige/Persistenz aufbereiten — bereiteDetailzeilenVor() (AK 1–4, 8, 11; Frage 1 "ohne Namen"; Pre-Mortem-Risiko 1/2) — neues Modul, erwartungsgemäß ROT', () => {
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test('Szenario: Für eine Karte mit fünf Einträgen liefert die Aufbereitung fünf Zeilen, je mit Land und Stadt (AK 1)', async () => {
+    const karten = [
+      karteMit('France', [
+        { stadt: 'Paris', am: 1000 }, { stadt: 'Lyon', am: 2000 }, { stadt: 'Marseille', am: 3000 },
+        { stadt: 'Nice', am: 4000 }, { stadt: 'Toulouse', am: 5000 },
+      ]),
+    ];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const zeilen = bereiteDetailzeilenVor({ proKarte });
+    expect(zeilen).toHaveLength(5);
+    zeilen.forEach((zeile) => {
+      expect(zeile.land).toBe('France');
+      expect(typeof zeile.stadt).toBe('string');
+    });
+  });
+
+  test('Szenario: Über sechs Karten mit je fünf Einträgen liefert die Aufbereitung alle 30 Zeilen — korrekte UND fehlerhafte, nicht nur die fehlerhaften (AK 1, AK 11)', async () => {
+    const laender = ['USA', 'UK', 'Germany', 'India', 'Spain', 'France'];
+    const karten = laender.map((land, kartenIndex) => karteMit(
+      land,
+      Array.from({ length: 5 }, (_, i) => ({ stadt: `Stadt-${kartenIndex}-${i}`, am: 1000 * (i + 1) })),
+    ));
+    const { proKarte } = await berechneQualitaet({ karten });
+    const zeilen = bereiteDetailzeilenVor({ proKarte });
+    expect(zeilen).toHaveLength(30);
+    // Alle Städte hier sind erfunden ("Stadt-x-y") und liegen daher in keinem
+    // der Länder -> ausschließlich "falschesLand". Trotzdem müssen alle 30
+    // Zeilen erscheinen, nicht nur eine gefilterte Teilmenge.
+    expect(zeilen.every((z) => z.wertung === 'falschesLand')).toBe(true);
+  });
+
+  test('Szenario: Eine korrekte Stadt ist in der aufbereiteten Zeile als "korrekt" erkennbar und trägt keinen Fehlergrund (AK 2)', async () => {
+    const karten = [karteMit('Germany', [{ stadt: 'Berlin', am: 1000 }])];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const [zeile] = bereiteDetailzeilenVor({ proKarte });
+    expect(zeile.wertung).toBe('korrekt');
+    expect(zeile.gruende).toEqual([]);
+  });
+
+  test('Szenario: Eine Stadt außerhalb des zugeordneten Landes zeigt in der aufbereiteten Zeile den Fehlergrund "falschesLand" (AK 3)', async () => {
+    const karten = [karteMit('Germany', [{ stadt: 'Rom', am: 1000 }])];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const [zeile] = bereiteDetailzeilenVor({ proKarte });
+    expect(zeile.wertung).toBe('falschesLand');
+    expect(zeile.gruende).toEqual(['falschesLand']);
+  });
+
+  test('Szenario: Eine bereits im Spiel verwendete Stadt zeigt in der aufbereiteten Zeile den Fehlergrund "dublette" (AK 3)', async () => {
+    const karten = [
+      karteMit('Germany', [{ stadt: 'Berlin', am: 1000 }]),
+      karteMit('Germany', [{ stadt: 'Berlin', am: 5000 }]),
+    ];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const zeilen = bereiteDetailzeilenVor({ proKarte });
+    expect(zeilen[0].gruende).toEqual([]);
+    expect(zeilen[1].wertung).toBe('dublette');
+    expect(zeilen[1].gruende).toEqual(['dublette']);
+  });
+
+  test('Szenario: Ein gleichzeitig falsches-Land-UND-Dublette-Eintrag erscheint als EINE Zeile mit BEIDEN erkennbaren Gründen (AK 4, Grenzfall AK 12/13 aus FEATURE-004)', async () => {
+    const karten = [
+      karteMit('Germany', [{ stadt: 'Rom', am: 1000 }]), // falsches Land, zuerst
+      karteMit('Germany', [{ stadt: 'Rom', am: 5000 }]), // falsches Land UND Dublette
+    ];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const zeilen = bereiteDetailzeilenVor({ proKarte });
+    // Genau eine Zeile für den zweiten Eintrag, nicht zwei separate Zeilen
+    // für "falschesLand" und "dublette".
+    const zweiteZeile = zeilen[1];
+    expect(zweiteZeile.wertung).toBe('falschesLandUndDublette');
+    expect(zweiteZeile.gruende).toEqual(expect.arrayContaining(['falschesLand', 'dublette']));
+    expect(zweiteZeile.gruende).toHaveLength(2);
+  });
+
+  test('Szenario: Das "von"-Feld der eintragenden Person ist in der aufbereiteten Zeile NICHT enthalten, obwohl es in den Rohdaten vorhanden war (Frage 1, geklärt: ohne Namen; Pre-Mortem-Risiko 1 Blame-Risiko)', async () => {
+    const karten = [
+      karteMit('Germany', [{ stadt: 'Berlin', am: 1000, von: 'spieler-p1' }]),
+    ];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const [zeile] = bereiteDetailzeilenVor({ proKarte });
+    expect(zeile.von).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(zeile, 'von')).toBe(false);
+    expect(Object.keys(zeile).some((schluessel) => schluessel.toLowerCase().includes('von'))).toBe(false);
+  });
+
+  test('Szenario: Eine Länderkarte ganz ohne Fehler erscheint auch nach der Aufbereitung vollständig mit allen ihren Einträgen, jeweils erkennbar korrekt — kein separater Leerzustand pro Karte (AK 8)', async () => {
+    const karten = [
+      karteMit('Spain', [
+        { stadt: 'Madrid', am: 1000 }, { stadt: 'Barcelona', am: 2000 }, { stadt: 'Valencia', am: 3000 },
+      ]),
+    ];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const zeilen = bereiteDetailzeilenVor({ proKarte });
+    expect(zeilen).toHaveLength(3);
+    expect(zeilen.every((z) => z.land === 'Spain' && z.wertung === 'korrekt' && z.gruende.length === 0)).toBe(true);
+  });
+
+  test('Szenario: Über mehrere Karten hinweg bleibt jede Zeile ihrer eigenen Karte zugeordnet — keine Vermischung von Land/Stadt zwischen Karten', async () => {
+    const karten = [
+      karteMit('France', [{ stadt: 'Paris', am: 1000 }]),
+      karteMit('Italy', [{ stadt: 'Rom', am: 2000 }]),
+      karteMit('Canada', [{ stadt: 'Toronto', am: 3000 }]),
+    ];
+    const { proKarte } = await berechneQualitaet({ karten });
+    const zeilen = bereiteDetailzeilenVor({ proKarte });
+    expect(zeilen).toEqual([
+      expect.objectContaining({ land: 'France', stadt: 'Paris', wertung: 'korrekt' }),
+      expect.objectContaining({ land: 'Italy', stadt: 'Rom', wertung: 'korrekt' }),
+      expect.objectContaining({ land: 'Canada', stadt: 'Toronto', wertung: 'korrekt' }),
+    ]);
+  });
+});
+
+describe('FEATURE-019 Persistenz: Das proKarte-Detail landet im selben Rundenende-Schreibvorgang wie die Zusammenfassung (Browser-Port, public/js/game/rundeVier.js, AK 5/6/9, Pre-Mortem-Risiko 3/4) — Textmuster-Test, erwartungsgemäß ROT', () => {
+  // Bewusst ein allgemeines Textmuster (siehe flow-game-bdd, Schritt 3b): der
+  // Rundenende-Schreibvorgang (pruefeUndSetzeRundenEndeRundeVier) muss das aus
+  // berechneQualitaet() gelieferte proKarte-Ergebnis irgendwie referenzieren,
+  // statt es wie bisher ausschließlich über qualitaetRoh.gesamt zu verwerfen —
+  // WIE genau (eigenes Feld, eingebettet in "qualitaet", eigene Hilfsfunktion)
+  // bleibt bewusst offen.
+  function funktionsKoerper(quelltext, startMarker, endMarker) {
+    const start = quelltext.indexOf(startMarker);
+    const ende = quelltext.indexOf(endMarker, start);
+    expect(start).toBeGreaterThan(-1);
+    expect(ende).toBeGreaterThan(start);
+    return quelltext.slice(start, ende);
+  }
+
+  test('Szenario: Der Rundenende-Schreibvorgang für Runde 4 referenziert proKarte (bislang wird nur "gesamt" verwendet, proKarte wird verworfen)', () => {
+    const koerper = funktionsKoerper(
+      rundeVierJsInhalt,
+      'async function pruefeUndSetzeRundenEndeRundeVier(',
+      'global.FlowGame = global.FlowGame || {};',
+    );
+    expect(koerper).toMatch(/proKarte/);
+  });
+
+  // Bereits JETZT grün (Ausnahme in diesem Testblock, wie im Kopfkommentar
+  // dieser Datei bei BUGFIX-009 vorgemacht): es gibt schon heute genau einen
+  // Update-Aufruf, der bereits "qualitaet" referenziert — das darf durch die
+  // Ergänzung um proKarte nicht zu einem zweiten, separaten Schreibvorgang
+  // werden (reiner Regressionsschutz, keine neue Funktionalität).
+  test('Szenario: Innerhalb genau EINES Update-Aufrufs auf das Runden-Dokument werden Zusammenfassung UND Detail zusammen geschrieben — kein zweiter, separater Schreibvorgang (Pre-Mortem-Risiko 4)', () => {
+    const koerper = funktionsKoerper(
+      rundeVierJsInhalt,
+      'async function pruefeUndSetzeRundenEndeRundeVier(',
+      'global.FlowGame = global.FlowGame || {};',
+    );
+    const updateAufrufe = koerper.match(/rundenRef\.update\(/g) || [];
+    expect(updateAufrufe).toHaveLength(1);
+    // Der eine Update-Aufruf muss sowohl die bestehende Zusammenfassung
+    // (qualitaet) als auch das neue Detail referenzieren.
+    const updateStart = koerper.indexOf('rundenRef.update(');
+    const updateBereich = koerper.slice(updateStart, updateStart + 400);
+    expect(updateBereich).toMatch(/qualitaet/);
+  });
+});
+
+describe('FEATURE-019 Anzeige: Detailtabelle (Land, Stadt, Fehlergrund je Zeile) an beiden bestehenden Anzeigeorten, öffentlich in public/spiel.html (AK 1–7; Tabellendarstellung, Stephan nach Prototyp-Test 2026-07-27) — Textmuster-Tests, erwartungsgemäß ROT', () => {
+  function funktionsKoerper(quelltext, startMarker, endMarker) {
+    const start = quelltext.indexOf(startMarker);
+    const ende = quelltext.indexOf(endMarker, start);
+    expect(start).toBeGreaterThan(-1);
+    expect(ende).toBeGreaterThan(start);
+    return quelltext.slice(start, ende);
+  }
+
+  test('Szenario: Die eigene Rundenansicht (zeigeKennzahlen()) enthält Code, der die proKarte-Detailliste in einer Tabelle darstellt (AK 5, eigene Rundenansicht)', () => {
+    const koerper = funktionsKoerper(spielHtmlInhalt, 'function zeigeKennzahlen(runde)', '\n  btnRundeStarten.addEventListener(');
+    expect(koerper).toMatch(/proKarte/);
+    expect(koerper).toMatch(/createElement\(['"]table['"]\)/);
+  });
+
+  test('Szenario: Die Vergleichsansicht (renderVergleichsTabelle(), gemeinsam für Host-Vorschau und finale Auswertung) enthält Code, der die proKarte-Detailliste zusätzlich zu den bestehenden Kennzahlen-Zeilen in einer Tabelle darstellt (AK 5)', () => {
+    const koerper = funktionsKoerper(spielHtmlInhalt, 'function renderVergleichsTabelle(container, vergleich)', 'async function ladeUndRenderHostVorschau');
+    expect(koerper).toMatch(/proKarte/);
+  });
+
+  test('Regression (AK 7): Die neue Detaildarstellung in renderVergleichsTabelle() bleibt innerhalb der bestehenden Bedingung "mindestens eine Runde bringt qualitaet mit" — für Runde 1–3 erscheint dadurch weiterhin keine Detailzeile', () => {
+    const koerper = funktionsKoerper(spielHtmlInhalt, 'function renderVergleichsTabelle(container, vergleich)', 'async function ladeUndRenderHostVorschau');
+    const wächterStart = koerper.indexOf("vergleich.some(function (r) { return r.qualitaet != null; })");
+    expect(wächterStart).toBeGreaterThan(-1);
+    // Das schließende "}" dieses bestehenden if-Blocks steht vor dem
+    // "tabelle.appendChild(tbody);" am Ende der Funktion (siehe bestehender
+    // Quelltext) — die neue proKarte-Darstellung muss VOR dieser Stelle,
+    // also innerhalb des Wächter-Blocks liegen.
+    const wächterBereich = koerper.slice(wächterStart);
+    const abschlussIndex = wächterBereich.indexOf('tabelle.appendChild(tbody);');
+    const proKarteIndex = wächterBereich.indexOf('proKarte');
+    expect(proKarteIndex).toBeGreaterThan(-1);
+    expect(proKarteIndex).toBeLessThan(abschlussIndex);
+  });
+
+  test('Szenario: Fehlerhafte Zeilen der Detailtabelle sind über eine bedingte Kennzeichnung (z. B. CSS-Klasse) optisch von korrekten Zeilen unterscheidbar (Pre-Mortem-Risiko 2 Gegenmaßnahme)', () => {
+    // Bewusst allgemein (Schritt 3b): geprüft wird nur, dass IRGENDWO eine
+    // Fallunterscheidung nach Wertung ungleich "korrekt" zu einer sichtbaren
+    // Kennzeichnung (className/classList/aria-Attribut) führt — nicht WELCHE
+    // konkrete Klasse/Farbe gewählt wird.
+    const MUSTER = /wertung\s*[!=]==?\s*['"]korrekt['"][\s\S]{0,200}(className|classList|setAttribute)/;
+    expect(MUSTER.test(spielHtmlInhalt)).toBe(true);
+  });
+
+  test('Szenario: Das "von"-Feld der eintragenden Person taucht im Anzeige-Code der Detailtabelle nicht auf (Frage 1, geklärt: ohne Namen)', () => {
+    const zeigeKennzahlenKoerper = funktionsKoerper(spielHtmlInhalt, 'function zeigeKennzahlen(runde)', '\n  btnRundeStarten.addEventListener(');
+    const vergleichsTabelleKoerper = funktionsKoerper(spielHtmlInhalt, 'function renderVergleichsTabelle(container, vergleich)', 'async function ladeUndRenderHostVorschau');
+    expect(zeigeKennzahlenKoerper).not.toMatch(/\.von\b/);
+    expect(vergleichsTabelleKoerper).not.toMatch(/\.von\b/);
   });
 });
