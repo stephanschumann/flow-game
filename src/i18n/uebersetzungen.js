@@ -36,16 +36,31 @@ const UEBERSETZUNGEN = {
     de: 'Ein Lernspiel zu Flow, Batchsizing und Kontextwechsel',
     en: 'A learning game about flow, batch sizing, and context switching',
   },
-  'startseite.tag': {
-    de: 'Grundgerüst live — die eigentliche Spiellogik folgt in den nächsten Phasen.',
-    en: 'Basic setup live — the actual game logic follows in the next phases.',
-  },
   'startseite.cta': { de: 'Spiel erstellen oder beitreten', en: 'Create or join a game' },
-  'startseite.hinweisPanel': {
-    de: 'Diese Seite bestätigt: Hosting, Deploy-Pipeline und Design-Übernahme aus „Agent Contract" funktionieren (Phase 0, Teil 1).',
-    en: 'This page confirms: hosting, deploy pipeline and design carried over from "Agent Contract" all work (Phase 0, Part 1).',
-  },
   'startseite.zurStartseite': { de: 'Zur Startseite', en: 'Back to homepage' },
+
+  // FEATURE-007 (2026-07-28): ersetzt die beiden bisherigen internen
+  // Entwicklerhinweis-Schlüssel startseite.tag/startseite.hinweisPanel
+  // (Baustellen-/Bauphasen-Text, siehe Backlog.md AK6 - deckt auch TASK-006
+  // vollständig ab) durch drei inhaltlich erklärende Panels (Layout-Variante 1, siehe
+  // Backlog.md "Entscheidung (Stephan, 2026-07-28)"). Wortlaut ist final und
+  // verbindlich freigegeben (Backlog.md "Finaler Wortlaut der drei Panels") -
+  // keine eigenmächtigen Formulierungsänderungen.
+  'startseite.zweckUeberschrift': { de: 'Warum dieses Spiel?', en: 'Why this game?' },
+  'startseite.zweckText': {
+    de: 'In diesem Spiel erlebt ihr live, wie eure Arbeitsweise Tempo und Qualität beeinflusst – oft auf überraschende Weise. Ihr bearbeitet gemeinsam Aufgaben in mehreren kurzen Runden und probiert dabei unterschiedliche Herangehensweisen aus, die auf Lean- und Flow-Prinzipien beruhen (dem Denken hinter modernen, schlanken Arbeitsprozessen). Am Ende vergleicht ihr eure Ergebnisse und diskutiert gemeinsam, was das für eure eigene Arbeit bedeutet.',
+    en: "In this game, you'll experience live how your way of working affects speed and quality – often in surprising ways. Together you'll tackle tasks across several short rounds, trying out different approaches rooted in lean and flow thinking (the ideas behind modern, streamlined ways of working). At the end, you'll compare your results and discuss together what it means for how you work.",
+  },
+  'startseite.spieleranzahlUeberschrift': { de: 'Wie viele Personen braucht ihr?', en: 'How many people do you need?' },
+  'startseite.spieleranzahlText': {
+    de: 'Ihr braucht mindestens fünf Mitspielende an den Stationen sowie einen Host, der/die das Spiel moderiert und steuert – insgesamt also mindestens sechs Personen. Wer zusätzlich zuschauen möchte, kann als Beobachter(in) live dabei sein, ohne selbst einzugreifen.',
+    en: "You need at least five players at the stations, plus a host who moderates and runs the game – so at least six people in total. Anyone who'd like to watch can join as an observer, following along live without taking part.",
+  },
+  'startseite.ablaufUeberschrift': { de: 'Wie läuft es ab?', en: 'How does it work?' },
+  'startseite.ablaufText': {
+    de: 'Ihr durchlauft gemeinsam vier kurze Runden an denselben fünf Arbeitsstationen. In den ersten Runden verändert sich, wie groß die Arbeitspakete sind, die ihr gemeinsam bearbeitet; in der letzten Runde probiert ihr eine ganz andere Arbeitsweise aus. Dabei seht ihr live und in Zahlen, wie sich das jeweils auf euer Tempo und die Qualität eurer Ergebnisse auswirkt. Die genauen Regeln jeder Runde erklärt euch der Host direkt im Spiel.',
+    en: "Together you'll play four short rounds at the same five work stations. In the first rounds, what changes is how big the work packages are that you handle together; in the final round, you'll try a completely different way of working. Along the way you'll see live, in real numbers, how each approach affects your speed and the quality of your results. Your host will walk you through the exact rules of each round as you play.",
+  },
 
   // ---- Beitritts-/Erstellungsformular -------------------------------------
   // BUGFIX (2026-07-21, live von Stephan im Browser gefunden, siehe

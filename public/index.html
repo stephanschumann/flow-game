@@ -23,7 +23,6 @@
   .hero{text-align:center;padding:38px 0 6px}
   .hero .logo{font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--amber);font-weight:800}
   .hero h1{font-size:54px;line-height:1;margin:14px 0 8px;font-weight:900;letter-spacing:-.02em}
-  .hero .tag{font-size:20px;color:var(--muted);max-width:660px;margin:0 auto}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px;margin-top:22px;box-shadow:var(--shadow)}
   .btn{appearance:none;border:0;border-radius:12px;padding:14px 22px;font-size:16px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}
   .btn.primary{background:linear-gradient(180deg,#2b6fd8,#1a56c4);color:#fff;box-shadow:0 6px 20px rgba(63,127,240,.35)} .btn.primary:hover{transform:translateY(-1px)}
@@ -53,13 +52,27 @@
     <div class="hero">
       <div class="logo" id="label-kicker">Ein Lernspiel zu Flow, Batchsizing und Kontextwechsel</div>
       <h1 id="label-titel">FLOW&nbsp;GAME</h1>
-      <div class="tag" id="label-tag">Grundgerüst live — die eigentliche Spiellogik folgt in den nächsten Phasen.</div>
       <div style="margin-top:22px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
         <a href="spiel.html" class="btn primary" id="label-cta" style="text-decoration:none;display:inline-block">Spiel erstellen oder beitreten</a>
       </div>
     </div>
-    <div class="panel" style="text-align:center;color:var(--muted);font-size:15px" id="label-hinweis-panel">
-      Diese Seite bestätigt: Hosting, Deploy-Pipeline und Design-Übernahme aus „Agent Contract" funktionieren (Phase 0, Teil 1).
+    <!-- FEATURE-007: Layout-Variante 1 (Entscheidung Stephan, 2026-07-28) -
+         drei gleich gestaltete Panels untereinander, unterhalb des
+         unveränderten Hero-Bereichs (Titel + CTA-Knopf bleiben oben, genauso
+         prominent wie zuvor, siehe AK7/Pre-Mortem-Risiko 1). Ersetzt das
+         bisherige einzelne #label-hinweis-panel vollständig (deckt TASK-006
+         mit ab). -->
+    <div class="panel" id="label-panel-zweck">
+      <h2 id="label-panel-zweck-titel" style="margin:0 0 10px;font-size:19px"></h2>
+      <p id="label-panel-zweck-text" style="margin:0;color:var(--muted)"></p>
+    </div>
+    <div class="panel" id="label-panel-spieleranzahl">
+      <h2 id="label-panel-spieleranzahl-titel" style="margin:0 0 10px;font-size:19px"></h2>
+      <p id="label-panel-spieleranzahl-text" style="margin:0;color:var(--muted)"></p>
+    </div>
+    <div class="panel" id="label-panel-ablauf">
+      <h2 id="label-panel-ablauf-titel" style="margin:0 0 10px;font-size:19px"></h2>
+      <p id="label-panel-ablauf-text" style="margin:0;color:var(--muted)"></p>
     </div>
   </div>
 </div>
@@ -100,9 +113,13 @@
     setText('sprach-label', t('sprachumschalter.label'));
     setText('label-kicker', t('startseite.kicker'));
     setText('label-titel', t('startseite.titel'));
-    setText('label-tag', t('startseite.tag'));
     setText('label-cta', t('startseite.cta'));
-    setText('label-hinweis-panel', t('startseite.hinweisPanel'));
+    setText('label-panel-zweck-titel', t('startseite.zweckUeberschrift'));
+    setText('label-panel-zweck-text', t('startseite.zweckText'));
+    setText('label-panel-spieleranzahl-titel', t('startseite.spieleranzahlUeberschrift'));
+    setText('label-panel-spieleranzahl-text', t('startseite.spieleranzahlText'));
+    setText('label-panel-ablauf-titel', t('startseite.ablaufUeberschrift'));
+    setText('label-panel-ablauf-text', t('startseite.ablaufText'));
   }
 
   sprachAuswahl.addEventListener('change', function () {
