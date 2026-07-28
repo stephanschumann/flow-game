@@ -196,11 +196,12 @@ Hinweis zur Verwechslungsgefahr: Bei sieben gleichzeitig offenen Fenstern ist es
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-17 |
 | **Analyse am** | 2026-07-20 |
 | **Spec freigegeben am** | 2026-07-20 |
 | **In Progress seit** | 2026-07-20 |
+| **Done seit** | 2026-07-27 |
 
 **Beschreibung:** Zwei Aufgabentypen (Würfel-Aufgabe, Stadt-Aufgabe), erzwungener Wechsel zwischen beiden pro Person, sechs gemischte Ergebnisse wie in Runde 3, Fehler zulassen ohne Live-Korrektur (Stand 2026-07-20 – ersetzt frühere Annahme „Pflicht-Nacharbeit bis alles korrekt ist"): Eine falsch eingegebene Stadt bleibt einfach stehen, die Runde endet, sobald alle sechs Ergebnisse einmal geliefert sind. Erst danach wird ausgewertet, wie viele Städte tatsächlich korrekt waren – das ergibt eine neue Kennzahl-Kategorie „Qualität" zusätzlich zu den bestehenden Zeit-Kennzahlen.
 
@@ -401,6 +402,18 @@ Ticket bleibt „In Progress" – die eigentliche Spieler-Oberfläche für Runde
 **Nicht angetastet (Scope-Disziplin):** `src/game/kennzahlen.js`, `src/game/vergleichsansicht.js`, alle Runde-1–3-Regeln/-Module, `package.json` (nur das bereits von `flow-game-bdd` angelegte `test:emulator:feature-004`-Skript wird genutzt, keine bestehenden Sammelskripte verändert).
 
 **Deploy bestätigt (2026-07-20):** Commit `9735800` (Backend, Sicherheitsregeln, Spieler-Oberfläche) gepusht und live — Hosting-Deploy über GitHub Actions erfolgreich (32s), Firestore-Regeln zusätzlich von Stephan separat veröffentlicht (`npx firebase deploy --only firestore:rules`, erfolgreich, eine harmlose Compiler-Warnung zu einer ungenutzten Variable `kartenId` in Zeile 183 — keine Fehlfunktion, sollte bei Gelegenheit aufgeräumt werden). Live-URL: https://flow-game-19f01.web.app/spiel.html. Ausstehend: manueller Mehrpersonen-Durchlauf durch Runde 4 durch Stephan.
+
+---
+
+#### Gate-3-Abschluss (2026-07-27)
+
+**Verlauf bis zum Abschluss:** Der erste reale Mehrpersonen-Durchlauf (2026-07-27, sieben Chrome-Profile) deckte BUGFIX-009 auf (Länderkarten wurden mit Zurücklegen gezogen, dadurch teils doppelt vergebene Länder) — dieser Fund führte zu einer Produktentscheidung (Länder künftig ohne Zurücklegen, eindeutig je Spiel) und einer zusätzlichen „Karte X von 6"-Anzeige, beides umgesetzt, released (Commit `b991287`/`90a0fbb`) und live bestätigt. Die dabei ermittelten Gate-3-Zahlen wurden verworfen, ein frischer Durchlauf war laut Stephans eigener Freigabe-Entscheidung zwingend erforderlich.
+
+**Frischer, vollständiger Mehrpersonen-Durchlauf (Stephan, 2026-07-27, nach BUGFIX-009 + FEATURE-019 live):** Sieben-Chrome-Profile-Durchlauf komplett bis Rundenende von Runde 4 durchgespielt — „Round finished", Lead Time 07:39, Quality 21/30 korrekt, detaillierte Ergebnisliste (Land/Stadt/Ergebnis) sichtbar (FEATURE-019 live bestätigt), Kartenbewegung (BUGFIX-008-Fix) fehlerfrei, keine erneute Länderkarten-Dopplung (BUGFIX-009-Fix hält). Das erfüllt die zentrale Gate-3-Anforderung: ein echter, funktionierender Mehrpersonen-Durchlauf durch alle vier Runden.
+
+**Dabei neu gefunden, bewusst nicht als Gate-3-Blocker behandelt (Stephans ausdrückliche Entscheidung, 2026-07-27):** Zwei weitere reale Probleme wurden im selben Durchlauf entdeckt und bereits code-verifiziert als eigene Tickets dokumentiert — **BUGFIX-011** (Bearbeitungszeit/Cycle Time wird in Runde 4 nie berechnet, da zwei Aufrufstellen in `spiel.html` fehlen) und **BUGFIX-012** (Städteprüfung erkennt nur eine kleine, kuratierte Liste von 5–7 Städten je Land, weist dadurch reale, korrekte Städte fälschlich als „falsches Land" zurück – Stephans Entscheidung: künftig Live-Liste, mehrsprachig mindestens Landessprache/Deutsch/Englisch). Beide sind vollständig im Backlog dokumentiert (Root Cause, teils bereits Analyse-Spec) und werden **separat, zu einem späteren Zeitpunkt** umgesetzt – ausdrücklich kein Grund, FEATURE-004 offen zu halten.
+
+**Status von Stephan am 2026-07-27 explizit auf Done bestätigt.**
 
 ---
 
@@ -641,7 +654,7 @@ Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Än
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
-| **Status** | ToDo |
+| **Status** | In Progress |
 | **Erstellt** | 2026-07-21 |
 
 **Beschreibung:** Die Landingpage (Startseite vor Spielerstellung/-beitritt) erklärt das Spiel inhaltlich nicht. Es fehlen: Zweck und Lernziel des Spiels, Kontext/Mehrwert für die Spielenden, die zugrundeliegende Theorie (Lean-/Flow-Prinzipien), die benötigte Spieleranzahl sowie ein grober Überblick über den Spielablauf.
@@ -649,6 +662,264 @@ Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Än
 **User Story:** Als jemand, der zum ersten Mal auf die Startseite kommt (egal ob als Host oder als beitretende Person), möchte ich verstehen, worum es in diesem Spiel geht und was ich lernen soll, sodass ich informiert entscheiden kann, ob und wie ich teilnehme, statt blind einem Code zu folgen.
 
 **Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Bewusst getrennt von BUGFIX-003 (dort geht es um Kontext-Anzeige NACH dem Beitreten bzw. während der Runde, hier um die allererste Berührung mit dem Spiel VOR jedem Beitritt/jeder Erstellung). Inhaltlich ggf. mit `Product.md` (Spielziel/-theorie) und `Flow-Game-Entscheidungen.md` abzugleichen, um die Landingpage-Texte fachlich korrekt zu formulieren.
+
+---
+
+#### Analyse-Spec (2026-07-28)
+
+**Code-Basis dieser Analyse:** Frischer Klon von `github.com/stephanschumann/flow-game` nach `/tmp/flow-game-analyse`, HEAD real geprüft (`git log -1`): Commit `78523bd` ("FEATURE-019: Qualitätsauswertung zeigt Details (Stadt, Land, Fehlergrund)"). Alle folgenden Zeilenangaben sind gegen genau diesen Commit verifiziert, nicht angenommen.
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was heute bereits existiert (aus echtem Code, nicht angenommen):**
+
+- `public/index.html` ist eine eigenständige, sehr kleine Datei (120 Zeilen) — reine Landingpage, lädt kein Spiel-Dokument, keine Firestore-Verbindung. Sie zeigt: einen Kicker („Ein Lernspiel zu Flow, Batchsizing und Kontextwechsel", Zeile 54), den Titel „FLOW GAME" (Zeile 55), darunter im `.hero .tag`-Element (Zeile 56, `id="label-tag"`) den Platzhaltersatz „Grundgerüst live — die eigentliche Spiellogik folgt in den nächsten Phasen.", einen einzigen großen Knopf „Spiel erstellen oder beitreten" (Zeile 58, verlinkt auf `spiel.html`) und darunter ein `.panel`-Element (Zeile 61, `id="label-hinweis-panel"`) mit dem Satz „Diese Seite bestätigt: Hosting, Deploy-Pipeline und Design-Übernahme aus „Agent Contract" funktionieren (Phase 0, Teil 1)." — beides erkennbare interne Entwicklerhinweise aus der Bauphase, keine inhaltliche Erklärung des Spiels.
+- Beide Texte kommen aus der zentralen Übersetzungstabelle über die Schlüssel `startseite.tag` und `startseite.hinweisPanel` (`src/i18n/uebersetzungen.js` Zeile 39-47 sowie identisch `public/js/i18n/uebersetzungen.js`), gesetzt über `setText('label-tag', t('startseite.tag'))` und `setText('label-hinweis-panel', t('startseite.hinweisPanel'))` im IIFE am Ende von `public/index.html` (Zeile 103/105). Kein Zweck, Lernziel, keine Theorie, keine Spieleranzahl, kein Ablaufüberblick sind irgendwo auf der Seite vorhanden — exakt die im Ticket beschriebene Lücke.
+- Bestehendes Sprachsystem (FEATURE-006) ist bereits vollständig funktionsfähig für diese Seite: eine lokale, in `localStorage` gespeicherte Sprachvorliebe (Schlüssel `flowGameSpracheVorliebe`, Default `'en'`), ein Umschalter (`#sprach-auswahl`, Zeile 43-48) und `wendeSpracheAn()` (Zeile 90-107), das bei jedem Sprachwechsel alle Text-Elemente per `setText()`/`t()` neu setzt. Jedes neue Textfeld muss in genau dieser Funktion mitgepflegt werden, sonst bleibt es beim Sprachwechsel stehen (siehe Pre-Mortem).
+- Bestehender, etablierter visueller Stil (dunkles Design aus „Agent Contract", siehe `Product.md` Abschnitt „Design und Look & Feel"): CSS-Variablen `--panel`/`--panel2`/`--line`/`--text`/`--muted`/`--amber`/`--blue`/`--green`/`--red`/`--purple` bereits definiert (Zeile 9-11), das `.panel`-Muster (abgerundete Ecken, dünner Rahmen, Schatten, Zeile 27) wird bereits für den bestehenden Hinweis-Kasten verwendet — ein natürlicher Baustein für neue Inhaltsblöcke, ohne neues Design-System.
+- `.stage{animation:rise…}` (Zeile 31) animiert den gesamten Inhaltsbereich beim Laden; es gibt in `public/index.html` **keine** `prefers-reduced-motion`-Media-Query (anders als in `public/spiel.html`, Zeile 159, dort seit FEATURE-005 vorhanden). Das ist eine vorbestehende Lücke, nicht durch dieses Ticket verursacht — wird unten unter Fundstellen-Sweep vermerkt, aber nicht automatisch in den Scope gezogen (siehe dort).
+- Alle vier Spielrunden und ihr pädagogischer Kern sind bereits vollständig und verbindlich in `Product.md` (Abschnitt 1 „Zweck und Lernziele", Abschnitt 5 „Die vier Runden") und `Flow-Game-Entscheidungen.md` (Abschnitt „Pädagogischer Kern") dokumentiert — die fachliche Grundlage für die Landingpage-Texte existiert vollständig, es fehlt nur die Übertragung auf die Seite selbst.
+- Mindestbesetzung ist ebenfalls bereits verbindlich festgelegt: „ein Host … und mindestens fünf Spielenden" (`Product.md` Abschnitt 2).
+
+**Durchgespielte Beispiele:**
+
+- Eine Führungskraft, die noch nie von „Batch Sizing" gehört hat, bekommt von einer Kollegin nur den Beitritts-Code geschickt und öffnet die Startseite direkt über den Link. Heute sieht sie sofort den großen Knopf, aber nichts, was ihr sagt, wofür sie gleich fünf bis sechs Kolleg(inn)en braucht oder was sie dabei lernen soll — sie klickt entweder blind oder zögert und fragt erst nach. Mit diesem Ticket soll sie stattdessen in wenigen Sätzen verstehen: „Wir lernen hier gemeinsam, warum kleine Arbeitspakete schneller liefern als große, und warum Multitasking Zeit und Qualität kostet."
+- Ein Host will vorab intern werben, dass sich die Teilnahme lohnt, und schickt den Link an fünf Kolleg(inn)en, bevor er das Spiel überhaupt erstellt — heute liefert die Startseite dafür nichts Zitierbares außer dem Knopf-Text.
+- Eine Gruppe von nur vier Personen öffnet die Seite und will wissen, ob das reicht — heute erfährt sie das nirgends, bevor sie beitritt oder ein Spiel erstellt (erst in der Lobby zeigt BUGFIX-003 künftig einen Live-Zähler, aber das ist bereits NACH dem Beitreten, nicht vorher).
+- Jemand öffnet die Seite auf Englisch (Sprachumschalter) — der neue Erklärungstext muss genauso vollständig auf Englisch stehen wie der bestehende Kicker/Titel/Knopf-Text, nicht nur auf Deutsch nachgezogen werden.
+- Jemand mit sehr wenig Zeit klickt sofort auf den Knopf, ohne den neuen Text überhaupt zu lesen — das darf weiterhin genauso einfach funktionieren wie heute (Erstnutzer-Test-Bericht lobte ausdrücklich die sofortige Eindeutigkeit des einzelnen großen Knopfs); die neue Erklärung darf diesen Weg nicht erschweren oder verstecken.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe Annahmen-Protokoll unten): der genaue Ton/die Länge der Texte, die konkrete visuelle/strukturelle Darstellung (ein Fließtext vs. mehrere Panels vs. eine Schritt-Kette für den Ablauf vs. ein Auf-/Zuklapp-Bereich), und ob das separate Ticket TASK-006 in diesem Ticket aufgehen soll.
+
+---
+
+**Annahmen-Protokoll (Pflicht):**
+
+1. 🔴 **Funktional kritisch — Scope-Überlappung mit TASK-006:** `TASK-006` („Interne Entwicklerhinweise von der öffentlichen Startseite entfernen", ToDo, keine Analyse) beschreibt exakt denselben Text-Slot (`#label-hinweis-panel` / Schlüssel `startseite.hinweisPanel`, „Basic setup live…", „Phase 0, Part 1", „Agent Contract"), den auch FEATURE-007 zwangsläufig ersetzen muss, um den Zweck/das Lernziel darzustellen. Eine unabhängige Umsetzung beider Tickets würde entweder doppelte Arbeit oder einen Konflikt erzeugen (wer schreibt zuletzt in denselben Schlüssel?). **Empfehlung dieser Analyse:** TASK-006 nicht separat umsetzen, sondern als in FEATURE-007 automatisch mit erledigt behandeln — die neue Erklärung ersetzt den Baustellen-Hinweis ohnehin vollständig. Stephan müsste das vor `flow-game-bdd` bestätigen (z. B. TASK-006 im Zuge dessen auf Done setzen mit Verweis auf FEATURE-007, oder ausdrücklich anders entscheiden). Diese Spec geht im Folgenden von der empfohlenen Zusammenlegung aus.
+2. ⚪ **Ton/Stil der Texte:** Default — sachlich-einladend in Alltagssprache, keine Marketing-Übertreibung, Begriffe wie „Lean" oder „Flow" werden benutzt, aber sofort mit einem Alltagsbeispiel erklärt (kein vorausgesetztes Fachvokabular). ⚠️ Annahme: bitte bestätigen.
+3. ⚪ **Umfang des Ablaufüberblicks:** Default — eine knappe, laienverständliche Zusammenfassung der vier Runden (z. B. „ihr durchlauft mehrere kurze Runden, in denen sich nur ändert, wie groß die Arbeitspakete sind — dabei seht ihr live, wie sich das auf Tempo und Qualität auswirkt"), **ohne** die vollständigen Detailregeln jeder Runde vorwegzunehmen (die bleiben Teil der mündlichen Moderation und der In-Spiel-Anzeige). ⚠️ Annahme: bitte bestätigen.
+4. ✅ **Zweisprachigkeit (DE/EN) über das bestehende i18n-System:** klar aus dem etablierten Muster (FEATURE-006) ableitbar, keine Rückfrage nötig.
+5. ✅ **Spieleranzahl exakt aus `Product.md` übernehmen** (mindestens fünf Spielende + ein Host, `Product.md` Abschnitt 2/3): klar aus dem Produktdokument ableitbar, keine Ermessensfrage, keine Rückfrage nötig.
+6. 🔴 **Funktional kritisch — visuelle/strukturelle Darstellung:** Wie die fünf geforderten Inhalte (Zweck, Lernziel, Kontext/Mehrwert, Theorie, Spieleranzahl, Ablaufüberblick — genaugenommen sechs Punkte) auf der Seite angeordnet werden, ist eine echte UI/UX-Entscheidung mit mehreren plausiblen, sich in der Wirkung deutlich unterscheidenden Varianten. Siehe eigener Abschnitt „Offene UI/UX-Frage" weiter unten — nicht durch diese Analyse allein entschieden.
+
+---
+
+**Fundstellen-Sweep (Pflicht):** Suchbegriffe `startseite.tag` und `startseite.hinweisPanel` (je 2 Fundstellen in den beiden i18n-Dateien `src/i18n/uebersetzungen.js`/`public/js/i18n/uebersetzungen.js`, DE+EN, identisch synchron) plus die zugehörigen 2 statischen Fallback-Textstellen direkt im Markup von `public/index.html` (Zeile 56 und 62, dienen nur als kurzer Anzeige-Fallback bevor das Sprachscript beim Laden läuft) — macht 6 Fundstellen insgesamt, alle betreffen exakt die zwei Text-Slots, die dieses Ticket ersetzt. Zusätzlich geprüft: `Phase 0`/`Agent Contract`/`next phases` kommt im gesamten Repo (`public/`, `src/`) ausschließlich an genau diesen 6 Stellen vor — keine weiteren versteckten Vorkommen des Baustellen-Hinweises. Separat geprüft und bewusst **nicht** in den Scope gezogen: `prefers-reduced-motion` fehlt in `public/index.html` komplett (anders als in `public/spiel.html`), das ist aber eine vorbestehende, vom Ticket unabhängige Lücke der ursprünglichen Landingpage-Umsetzung — falls die Umsetzung neue animierte Elemente ergänzt, sollte sie diese bestehende Lücke nicht vergrößern, aber eine nachträgliche Behebung der bestehenden `.stage`-Animation ist nicht Teil dieses Tickets (eigener möglicher Task, hier nur vermerkt).
+
+**Zustands-Check (Pflicht) – Warte-, Leer- und Fehlerfall:** `public/index.html` lädt kein Firestore-Dokument und keine externen Daten — alle neuen Erklärungsinhalte sind rein statischer Text, der sofort beim Laden vollständig vorhanden ist. **Wartezustand:** keiner, da kein Serverzugriff nötig (kein eigenes AK notwendig, aber als eigenes AK unten festgehalten, damit es nicht stillschweigend übergangen wird). **Leerzustand:** entfällt strukturell (es gibt keine Liste/kein Ergebnis, das leer sein könnte) — einzige Ausnahme ist der Sonderfall „`localStorage` nicht verfügbar" (z. B. eingeschränkter privater Browsing-Modus): die bestehende Logik fängt das bereits per `try/catch` ab und bleibt beim Default `'en'` (Zeile 78-81) — neue Textfelder müssen denselben, bereits vorhandenen Fallback-Pfad nutzen, keinen eigenen ungeprüften Zugriff. **Fehlerfall:** kein neuer Fehlerfall möglich, da keine Netzwerk-/Serveraktion stattfindet; die bestehende Fehlerbehandlung anderswo im Spiel ist hier nicht relevant.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Wer die Startseite zum ersten Mal öffnet, findet dort in einfachen Worten erklärt, worum es in dem Spiel geht und was die Gruppe dabei über ihre eigene Arbeitsweise lernen soll (der Unterschied zwischen gutem, fließendem Arbeiten und schädlichem Multitasking).
+2. Die Startseite erklärt zusätzlich, welchen Nutzen die Teilnahme für die Spielenden hat — nicht nur „was" das Spiel ist, sondern warum es sich lohnt mitzumachen.
+3. **(angepasst 2026-07-28, siehe Wortlaut-Freigabe unten):** Die Startseite weckt Neugier auf die dahinterliegende Idee (Lean-/Flow-Prinzipien), ohne die eigentliche Schlussfolgerung (kleine statt große Arbeitspakete, weniger Kontextwechsel) bereits vorwegzunehmen — der „Aha-Effekt" soll im Spiel selbst entstehen, nicht schon auf der Startseite verraten werden. Fachbegriffe werden dabei weiterhin nicht ohne Erklärung vorausgesetzt.
+4. Die Startseite zeigt an, wie viele Personen für ein Spiel gebraucht werden (mindestens fünf Mitspielende plus eine moderierende Person), sodass eine Gruppe vorab einschätzen kann, ob sie groß genug ist.
+5. Die Startseite gibt einen kurzen, verständlichen Überblick über den groben Ablauf (mehrere aufeinanderfolgende, kurze Runden, in denen sich zeigt, wie sich die Arbeitsweise auf Tempo und Qualität auswirkt), ohne bereits alle Detailregeln jeder einzelnen Runde vorwegzunehmen.
+6. Der bisher sichtbare interne Entwicklungshinweis („Basic setup live…", „Phase 0, Part 1", „Agent Contract") ist für normale Besuchende nicht mehr zu sehen — an seiner Stelle steht ausschließlich der neue, inhaltlich erklärende Text (schließt TASK-006 ein, siehe Annahme 1).
+7. Der bisher sofort erkennbare „Spiel erstellen oder beitreten"-Knopf bleibt weiterhin genauso schnell auffindbar und eindeutig wie heute — die neue Erklärung verdrängt ihn nicht aus dem unmittelbaren Blickfeld und macht das Beitreten nicht komplizierter oder langsamer für jemanden, der sofort loslegen will.
+8. Die neuen Inhalte sind sowohl auf Deutsch als auch auf Englisch vollständig und verständlich zu lesen.
+9. Wechselt eine Person die Sprache über den bestehenden Umschalter, wechseln alle neuen Erklärungstexte sofort mit — kein Text bleibt in der vorherigen Sprache stehen, und kein Neuladen der Seite ist dafür nötig.
+10. Alle neuen Erklärungsinhalte sind sofort beim Laden der Seite vollständig lesbar, unabhängig davon, ob schon irgendwer sonst irgendwo im Spiel aktiv ist — es gibt keine Wartezeit, keinen Ladezustand und keinen möglichen Fehlerzustand für diese Inhalte, da sie nicht vom Server nachgeladen werden.
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Zu viel Text vor dem Knopf schwächt den bisher gelobten „ein Knopf, kein Zweifel"-Ersteindruck** (Erstnutzer-Test-Bericht 2026-07-23 lobte ausdrücklich die Eindeutigkeit). Gegenmaßnahme: Reihenfolge/Prominenz des CTA-Knopfs bewusst erhalten (Titel + Knopf bleiben wie heute ganz oben unmittelbar sichtbar), neue Erklärungsinhalte kommen sichtbar, aber nicht verdrängend, darunter — siehe auch die offene UI/UX-Frage unten, die genau diesen Zielkonflikt betrifft.
+2. **Scope-Kollision mit TASK-006, falls beide Tickets unabhängig voneinander bearbeitet werden** (siehe Annahmen-Protokoll Punkt 1) — ohne Abstimmung könnten sich zwei spätere Umsetzungen gegenseitig überschreiben oder widersprechen. Gegenmaßnahme: Stephans Bestätigung der empfohlenen Zusammenlegung einholen, bevor `flow-game-bdd` beginnt.
+3. **Inhaltliche Drift von `Product.md`/`Flow-Game-Entscheidungen.md`:** Wird der Text frei formuliert statt aus den Quelldokumenten abgeleitet, können fachliche Unschärfen entstehen (z. B. falsche Rundenanzahl, falsche Mindestbesetzung, verwässerte pädagogische Kernaussage). Gegenmaßnahme: jede Tatsachenbehauptung auf der Landingpage muss auf `Product.md` Abschnitt 1/2/3/5 oder `Flow-Game-Entscheidungen.md` zurückführbar sein; das wird als eigener Prüfpunkt in den Testplan aufgenommen.
+4. **i18n-Duplizierung (Node/Browser) läuft auseinander:** Neue/geänderte Schlüssel müssen synchron in `src/i18n/uebersetzungen.js` UND `public/js/i18n/uebersetzungen.js` gepflegt werden. Wird nur eine der beiden Dateien aktualisiert, funktioniert die Produktivseite (die die `public/`-Kopie lädt) nicht, obwohl ein gegen `src/` laufender Test grün wäre — dieselbe Fehlerklasse wie bei BUGFIX-011 (dort allerdings für Spiellogik, nicht i18n). Gegenmaßnahme: nach der Umsetzung einen Schlüssel-für-Schlüssel-Abgleich beider Dateien (wie beim BUGFIX-003-Umsetzungsschritt bereits vorgemacht: 123/123 Schlüssel identisch verifiziert) erneut durchführen und ins Testplan-Grundgerüst aufnehmen.
+5. **Bestehender Kontrast-Regressionstest bricht ungewollt:** `tests/game-a11y-static.test.js` prüft per `test.each` explizit auch `public/index.html` gegen das exakte CSS-Muster `.btn.primary{background:linear-gradient(180deg,#…,#…)}` (mindestens 4.5:1 Kontrast gegen Weiß). Wird der CTA-Knopf im Zuge der Neugestaltung umbenannt/umstrukturiert (neue Klasse, anderes Verlaufsformat), schlägt dieser bestehende Test fehl, obwohl visuell nichts falsch sein muss. Gegenmaßnahme: bestehenden Selektor/Farbverlauf für den CTA-Knopf unverändert lassen, oder den Test bewusst mit anpassen, statt ihn versehentlich rot werden zu lassen.
+6. **Übersetzungsqualität statt reiner Wort-für-Wort-Übertragung:** Der neue, deutlich längere Text muss in Deutsch und Englisch gleichwertig verständlich sein, gerade bei den Fachbegriffen „Flow"/„Batch Sizing"/„Kontextwechsel" — eine zu wörtliche Übersetzung könnte im Englischen holprig wirken. Gegenmaßnahme: beide Sprachfassungen explizit im Testplan gegenlesen (analog zum bestehenden Muster `game-i18n.manual-checks.test.js`).
+7. **Keine Live-Multiplayer-/Race-Condition-relevanten Risiken in diesem Ticket:** `public/index.html` lädt kein Spiel-Dokument, keine Firestore-Verbindung, keine Zeitmessung — reine statische Anzeige-/Text-/Layout-Änderung, analog zu BUGFIX-003. Bewusst hier vermerkt (Pflicht-Rubrik „Mehrspieler/Zeitmessung"), damit das Fehlen solcher Risiken als geprüftes Ergebnis dasteht, nicht als vergessene Prüfung.
+
+---
+
+**Zusammenspiel bestehender Bausteine (Pflicht):**
+
+- **Betroffene Bausteine:** `public/index.html` (Markup + CSS + das IIFE-Sprachscript), die zentrale i18n-Tabelle in zwei synchron zu haltenden Kopien (`src/i18n/uebersetzungen.js`, `public/js/i18n/uebersetzungen.js`), die lokale Sprachvorliebe in `localStorage` (`flowGameSpracheVorliebe`). Kein Backend, keine Cloud Function, keine Firestore-Sicherheitsregel ist beteiligt.
+- **Reihenfolge des Zusammenwirkens:** Seite lädt → IIFE liest `localStorage`-Sprachvorliebe (Fallback `'en'`, falls nicht gesetzt/nicht verfügbar) → `wendeSpracheAn()` läuft einmalig beim Laden und setzt **jedes** Text-Element per `setText(id, t(schluessel))` → Nutzer(in) kann über `#sprach-auswahl` die Sprache wechseln → `wendeSpracheAn()` läuft erneut vollständig. Kein Server-Roundtrip an irgendeiner Stelle dieser Kette.
+- **Zustandskombinationen, die zu einem Fehler führen könnten:**
+  1. Ein neues Markup-Element wird ergänzt, aber die zugehörige `setText(...)`-Zeile in `wendeSpracheAn()` fehlt → das Element bleibt beim Sprachwechsel stur in der zuletzt gerenderten Sprache stehen bzw. zeigt beim allerersten Laden gar keinen Text, falls es nicht auch ein statisches Fallback-Markup hat. Strukturell identisch mit dem in BUGFIX-003 Punkt (b) gefundenen Bug-Muster (`untertitel` wurde dort nie aktualisiert).
+  2. Ein neuer i18n-Schlüssel wird nur in einer der beiden Kopien ergänzt (`src/` oder `public/js/`) → die Produktivseite lädt ausschließlich `public/js/i18n/uebersetzungen.js`, ein rein gegen `src/` laufender Test würde diese Lücke nicht erkennen (Pre-Mortem-Risiko 4).
+  3. `localStorage` ist nicht verfügbar (eingeschränkter privater Modus) → bestehender `try/catch`-Fallback greift bereits und bleibt bei Default `'en'`; ein neues Textfeld, das versehentlich außerhalb dieses etablierten Musters eigene Zugriffe auf `localStorage` vornimmt, könnte diesen Fallback umgehen und einen Fehler werfen, statt sauber auf Englisch zu bleiben.
+
+---
+
+**Reichweite-Einschätzung (Pflicht bei „Implementierungsdetail"-Festlegungen):** Der genaue Wortlaut des Ablaufüberblicks (Annahme 3 oben) wird bewusst nicht bis ins letzte Detail vorgeschrieben, sondern der Umsetzung überlassen. Diese Festlegung betrifft **100 % der Seitenaufrufe der Startseite** — jede einzelne Person, die die Seite vor jedem Spiel besucht, sieht genau diesen Text; es ist kein seltener Randfall, sondern der zentrale Inhalt dieses gesamten Tickets. Entsprechend hoch ist die Sorgfaltspflicht: Der finale Wortlaut sollte vor dem Release von Stephan gegengelesen werden (nicht nur automatisiert getestet), auch wenn die Akzeptanzkriterien testbar bleiben.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/index.html` — Markup (neue/erweiterte Inhaltsblöcke unterhalb des bestehenden Hero-Bereichs bzw. Ersatz der beiden bestehenden Platzhalter-Elemente), CSS (voraussichtlich unter Wiederverwendung der bestehenden `--panel`/`--line`/`--text`/`--muted`-Variablen und des `.panel`-Musters, keine neue Farbwelt), das bestehende IIFE-Sprachscript (neue `setText()`-Aufrufe für jedes neue Textfeld).
+- `src/i18n/uebersetzungen.js` UND `public/js/i18n/uebersetzungen.js` — neue bzw. erweiterte Schlüssel im Abschnitt „Startseite / Landingpage" (DE+EN), inhaltlicher Ersatz von `startseite.tag` und `startseite.hinweisPanel` bzw. Ergänzung weiterer Schlüssel für Zweck/Spieleranzahl/Ablauf (genaue Schlüsselbenennung ist Implementierungsdetail).
+- Explizit NICHT betroffen: `public/spiel.html` (eigene Datei, siehe BUGFIX-003-Abgrenzung), alle `src/game/*.js`-Logikmodule, `firestore.rules`, das Firestore-Datenmodell, jede Form von Zeitmessung oder Mehrspieler-Zustand.
+
+**Node-Referenz/Browser-Sync-Check (Pflicht):** Für dieses Ticket existiert **keine** Node-Referenzimplementierung mit separatem Browser-Duplikat im Sinne von `src/game/...` vs. `public/js/game/...` (dort geht es um Spiellogik, hier um reinen Anzeigetext). Die einzige tatsächlich vorhandene Duplizierung betrifft die i18n-Tabelle (`src/i18n/uebersetzungen.js` vs. `public/js/i18n/uebersetzungen.js`) — für diese wurde geprüft (Zeilenzahl 382 vs. 325, Schlüssel-Diff `grep`-basiert): **keine Abweichung der vorhandenen Schlüssel**, beide Dateien sind aktuell synchron. Das entbindet die Umsetzung aber nicht davon, neue Schlüssel in beide Dateien einzutragen (siehe Pre-Mortem-Risiko 4).
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-006 (Mehrsprachigkeit — das bestehende Sprachumschalter-/`t()`-Muster darf nicht brechen; `game-i18n.logic.test.js` prüft u. a. den Pflichtschlüssel `startseite.titel` als Stellvertreter für „zentrale Tabelle vollständig", dieser Schlüssel bleibt unverändert bestehen), FEATURE-005 (Barrierefreiheit — `game-a11y-static.test.js` Kontrast-Test gegen den `.btn.primary`-Verlauf explizit auch in `public/index.html`, siehe Pre-Mortem-Risiko 5), TASK-006 (siehe Annahmen-Protokoll Punkt 1 — Scope-Überlappung, keine unabhängige Parallel-Umsetzung). Keine Emulator-/Firestore-Regressionsrisiken, da `public/index.html` keine Firestore-Zugriffe hat.
+
+---
+
+**Cross-Ticket-Abgrenzung (TASK-006, FEATURE-012, FEATURE-014, BUGFIX-003):**
+
+- **TASK-006** („Interne Entwicklerhinweise von der öffentlichen Startseite entfernen", ToDo): siehe Annahmen-Protokoll Punkt 1 — echte Deckungsgleichheit mit einem Teil dieses Tickets (AK6 deckt TASK-006 vollständig ab). Empfehlung: TASK-006 im Rahmen von FEATURE-007 miterledigen statt separat umzusetzen.
+- **FEATURE-012** („Zentrale Spielbegriffe im Spiel selbst erklären — Gate, Definition of Ready", ToDo, Priorität Hoch): keine Scope-Überschneidung. FEATURE-012 erklärt einzelne Spielbegriffe **während** des laufenden Spiels in `public/spiel.html` (z. B. was „Gate: 0/6 closed" bedeutet, in dem Moment, in dem der Begriff auftaucht). FEATURE-007 erklärt auf hoher Flughöhe **vor** jedem Beitritt/jeder Erstellung in `public/index.html`, worum es im Spiel insgesamt geht. Beide Tickets ergänzen sich (das „Warum spielen wir das" auf der Startseite vs. das „was bedeutet dieser Begriff gerade" im Spiel), berühren aber unterschiedliche Dateien und unterschiedliche Zeitpunkte im Spielverlauf.
+- **FEATURE-014** („Wartehinweis für beigetretene Mitspielende", ToDo): betrifft die Lobby-Phase **nach** dem Beitreten in `public/spiel.html`, keine Berührung mit `public/index.html`. Keine Scope-Überschneidung, nur zeitlich vorgelagert (Landingpage vor dem Beitritt, FEATURE-014 danach).
+- **BUGFIX-003** (In Progress, bereits im Ticket selbst als Abgrenzung vermerkt): reine Kontext-Anzeige **nach** dem Beitreten bzw. während der Runde, ausdrücklich getrennt gehalten von der allerersten Berührung vor jedem Beitritt/jeder Erstellung, um die dieses Ticket geht. Bestätigt weiterhin keine Überschneidung.
+
+---
+
+**Implementierungsoptionen mit Empfehlung:**
+
+**Option A — Minimal-Textersatz:** Nur die beiden bestehenden Text-Slots (`startseite.tag`, `startseite.hinweisPanel`) werden inhaltlich ersetzt, keine neue Struktur/kein neues Markup. Vorteil: sehr geringer Aufwand, kein Strukturrisiko, CTA-Knopf bleibt exakt so prominent wie heute. Nachteil: Bei sechs geforderten Inhalten (Zweck, Lernziel, Kontext/Mehrwert, Theorie, Spieleranzahl, Ablaufüberblick) wird ein einzelner, in zwei kleinen Textfeldern untergebrachter Absatz schnell unübersichtlich oder muss stark gekürzt werden — deckt das Ticket wahrscheinlich nur oberflächlich ab.
+
+**Option B — Strukturierte Zusatz-Sektion (empfohlen):** Der bestehende Hero-Bereich (Titel, Kicker, CTA-Knopf) bleibt unverändert an erster Stelle und genauso prominent wie heute. Darunter werden zwei bis drei klar abgegrenzte, im bestehenden `.panel`-Stil gehaltene Inhaltsblöcke ergänzt: (1) Zweck/Lernziel/Theorie in wenigen Sätzen, (2) benötigte Spieleranzahl kompakt, (3) grober Ablaufüberblick. Vorteil: deckt alle geforderten Inhalte klar strukturiert ab, nutzt ausschließlich bereits vorhandene Design-Bausteine (keine neue Farbwelt, kein neues Interaktionsmuster), bleibt vollständig statisch (kein zusätzliches JavaScript-Verhalten, also kein neues Zustands-/Barrierefreiheitsrisiko über das bereits Beschriebene hinaus). Nachteil: verlängert die Seite spürbar; die CTA-Prominenz muss bewusst durch die Reihenfolge (Hero+Knopf zuerst) erhalten bleiben.
+
+**Option C — Einklappbarer Erklärbereich:** Wie Option B inhaltlich, aber der komplette Zusatzinhalt liegt hinter einem Auf-/Zuklapp-Element („Mehr erfahren"), Startzustand eingeklappt, nur eine Kurzfassung ist immer sichtbar. Vorteil: bewahrt die im Erstnutzer-Test besonders gelobte Kompaktheit am stärksten. Nachteil: führt ein neues interaktives Bedienelement ein (Tastatur-/Screenreader-Zugänglichkeit, Standardzustand offen/zu) und birgt das Risiko, dass Personen, die eigentlich eine informierte Entscheidung treffen sollen (siehe User Story), den Klapp-Bereich schlicht übersehen und trotzdem blind beitreten — das würde dem eigentlichen Ticketziel entgegenlaufen.
+
+**Empfehlung (fachliche Einschätzung dieser Analyse, keine reine Dokumentenableitung):** Option B. Begründung: Die User Story verlangt ausdrücklich, dass Menschen **informiert entscheiden** können, „statt blind einem Code zu folgen" — das spricht gegen Option C, bei der die eigentliche Erklärung standardmäßig verborgen bliebe und leicht übersehen werden kann. Option A wird der inhaltlichen Breite des Tickets voraussichtlich nicht gerecht. Option B deckt den geforderten Inhalt vollständig und dauerhaft sichtbar ab, ohne ein neues, ungetestetes Interaktionsmuster einzuführen, und lässt sich vollständig mit den bereits vorhandenen visuellen Bausteinen umsetzen.
+
+---
+
+**Entscheidung (Stephan, 2026-07-28, nach Prototyp-Vorlage):**
+
+1. **Layout-Variante:** Variante 1 (drei gleich gestaltete Panels untereinander: Zweck/Theorie, Spieleranzahl, Ablauf) — nicht Variante 3 (Kärtchen-Kette) oder Variante 2 (Fließtext).
+2. **Zusätzliche Bedingung:** Der finale deutsche und englische Wortlaut für alle drei Panels muss Stephan **vor** der Implementierung (nicht erst vor dem Release) zur Freigabe vorgelegt werden — eigener Zwischenschritt zwischen `flow-game-bdd` und `flow-game-impl`, zusätzlich zu den drei Standard-Gates des Orchestrators.
+3. **TASK-006:** Wird nicht separat umgesetzt, sondern gilt mit diesem Ticket als miterledigt (siehe TASK-006-Ticket, dort als „Aufgegangen in FEATURE-007" vermerkt).
+
+---
+
+**Offene UI/UX-Frage — Prototyp empfohlen (Schritt 8):** **Ja**, es gibt echte, mehrdeutige Layoutvarianten für denselben Inhalt (Option B), die sich in Textbeschreibung ähnlich anhören, sich in der tatsächlichen Lese-/Scroll-Erfahrung aber spürbar unterscheiden würden:
+
+- **Variante 1:** Drei gleich gestaltete Panels untereinander (wie das bestehende `.panel`-Element), je eines mit eigener Überschrift für Zweck/Theorie, Spieleranzahl, Ablauf.
+- **Variante 2:** Ein einziger, gut strukturierter Fließtext-Block mit Zwischenüberschriften — kompakter, aber weniger „auf einen Blick erfassbar".
+- **Variante 3:** Der Ablaufteil als eine Kette von vier kleinen, nummerierten Kärtchen (eines je Runde), separat davor ein kurzer Zweck-/Theorie-Absatz in Fließtext — visuell aufwendiger, könnte durch die Kärtchen-Optik intuitiver an das spätere Spielerlebnis (Stationen/Fließband) anknüpfen.
+- **Variante 4 (= Option C):** Alles zunächst eingeklappt, nur eine Kurzfassung sichtbar, mit „Mehr erfahren"-Toggle.
+
+Diese vier Varianten unterscheiden sich in der Beschreibung nur graduell, fühlen sich aber im tatsächlichen Scrollen/Lesen (Seitenlänge, „alles auf einen Blick" vs. „aktiv aufklappen müssen", textlastig vs. bildhaft) deutlich unterschiedlich an — genau die im `flow-game-analyze`-Skill beschriebene Schwelle, ab der ein klickbarer Prototyp mehr bringt als weitere Beschreibung. **Empfehlung:** Vor der endgültigen Festlegung einen klickbaren HTML-Prototyp mit umschaltbaren Varianten (mind. Variante 1 und Variante 3, ggf. auch 2) bauen lassen (`prototype-builder`-Skill), damit Stephan das tatsächliche Lese-/Scroll-Gefühl direkt vergleichen kann. Dieser Prototyp wird **nicht** von dieser Analyse selbst gebaut — das ist laut Auftrag der nächste Schritt im Hauptthread.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`):**
+
+- Neue statische Testdatei, z. B. `tests/game-startseite-erklaerung.static.test.js` (Node `fs`, liest `public/index.html` per Mustersuche, analog zum bestehenden Muster in `game-a11y-static.test.js`/`game-lobby-und-rundenkontext.static.test.js` — kein Firestore-Emulator nötig, da rein statischer Text).
+- Prüfpunkte: Abwesenheit der alten Entwicklerhinweis-Formulierungen („Phase 0", „Agent Contract", „next phases"/„nächsten Phasen") im ausgelieferten Markup (AK6); Vorhandensein neuer, nicht-leerer i18n-Schlüssel für Zweck/Lernziel/Theorie, Spieleranzahl und Ablaufüberblick in **beiden** i18n-Dateien mit **beiden** Sprachen (AK1-5, AK8, Pre-Mortem-Risiko 4); Regressionsschutz für den bestehenden `startseite.titel`-Schlüssel und den bestehenden `.btn.primary`-Farbverlauf in `public/index.html` (Pre-Mortem-Risiko 5); Regressionsschutz, dass der CTA-Knopf weiterhin vor bzw. unmittelbar bei den neuen Inhalten erscheint, nicht danach verdrängt (AK7, grobe Reihenfolge-/Positions-Prüfung im Markup).
+- Ergänzend ein manueller Prüfpunkt (analog `game-i18n.manual-checks.test.js`/`game-feature-005-manual-checks.test.js`): echtes Gegenlesen des finalen deutschen und englischen Wortlauts durch Stephan vor Release (siehe Reichweite-Einschätzung oben — 100 % Sichtbarkeit rechtfertigt diesen zusätzlichen manuellen Schritt trotz automatisierter Tests), sowie ein visueller Eindruck („wirkt der Knopf immer noch als klar erster Schritt?").
+- Regressionslauf: mindestens `tests/game-a11y-static.test.js` und `tests/game-i18n.logic.test.js` (Pflichtschlüssel-Prüfung) erneut ausführen; kein Emulator-Testlauf nötig, da keine Firestore-Berührung.
+
+---
+
+#### BDD-Testergebnis (flow-game-bdd, 2026-07-28)
+
+**Code-Basis:** Frischer Klon von `github.com/stephanschumann/flow-game` nach `/tmp/flow-game-bdd-007`, HEAD verifiziert (`git log -1`): Commit `78523bd` — identisch zu dem Commit, gegen den die Analyse-Spec geschrieben wurde.
+
+**Neue Testdatei:** `tests/game-startseite-erklaerung.static.test.js` (Jest + Node `fs`, Textmuster-Prüfung gegen `public/index.html`, `src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js` — kein Firestore-Emulator nötig, wie im Testplan-Grundgerüst vorgesehen). TASK-006 wurde nicht separat getestet, sondern läuft vollständig über AK6 mit.
+
+**Wichtig zum Wortlaut:** Da der finale deutsche/englische Text der drei Panels noch nicht feststeht (eigener Freigabe-Schritt vor `flow-game-impl`), prüfen die Tests bewusst nur Struktur/Vorhandensein/Nicht-Leere der neuen i18n-Schlüssel sowie das vollständige Verschwinden der alten Platzhaltertexte — nicht einen bestimmten neuen Wortlaut. Einzige Ausnahme: der Spieleranzahl-Text wird auf das Vorkommen der Zahl „5" und eines Host-/Gastgeber-Hinweises geprüft, weil das laut Annahme 5 der Spec ein bereits feststehender Fakt aus `Product.md` ist (kein Ton-/Stil-Ermessen).
+
+**NAMENSGEBUNG (Annahme dieser BDD-Phase, mit `flow-game-impl` abzugleichen, nicht stillschweigend zu ändern):** Drei neue i18n-Schlüsselpaare `startseite.zweckUeberschrift`/`startseite.zweckText`, `startseite.spieleranzahlUeberschrift`/`startseite.spieleranzahlText`, `startseite.ablaufUeberschrift`/`startseite.ablaufText`; drei neue Panel-Elemente in `public/index.html` mit den IDs `#label-panel-zweck-titel`/`#label-panel-zweck-text`, `#label-panel-spieleranzahl-titel`/`#label-panel-spieleranzahl-text`, `#label-panel-ablauf-titel`/`#label-panel-ablauf-text`, die den bisherigen einzelnen `#label-hinweis-panel` ersetzen.
+
+**Testfälle (18 insgesamt, nach Szenario gruppiert):**
+
+1. Szenario „Alte interne Entwicklerhinweise sind vollständig verschwunden" (AK6, schließt TASK-006 ein) — 3 Testfälle: keine alten Platzhalter-Formulierungen mehr in `public/index.html`; keine alten Platzhalter-Formulierungen mehr in beiden i18n-Dateien; `#label-hinweis-panel` existiert nicht mehr in seiner alten Form.
+2. Szenario „Panel Zweck/Lernziel/Theorie" (AK1, AK2, AK3, AK8, AK9) — 3 Testfälle: Panel-Element existiert; `wendeSpracheAn()` setzt es über echte Übersetzungsschlüssel; beide Schlüssel nicht-leer in beiden Sprachen/beiden Dateien.
+3. Szenario „Panel Spieleranzahl" (AK4, AK8, AK9) — 4 Testfälle: Panel-Element existiert; `wendeSpracheAn()` setzt es über echte Übersetzungsschlüssel; beide Schlüssel nicht-leer in beiden Sprachen/beiden Dateien; deutscher Text erwähnt „5"/„fünf" und Host/Gastgeber.
+4. Szenario „Panel Ablaufüberblick" (AK5, AK8, AK9) — 3 Testfälle: Panel-Element existiert; `wendeSpracheAn()` setzt es über echte Übersetzungsschlüssel; beide Schlüssel nicht-leer in beiden Sprachen/beiden Dateien.
+5. Szenario „CTA-Knopf bleibt genauso schnell auffindbar" (AK7, Pre-Mortem-Risiko 1) — 2 Testfälle: Knopf steht im Markup weiterhin vor allen drei neuen Panels; bestehender Kontrast-Regressionsschutz (`.btn.primary`-Verlauf, Pre-Mortem-Risiko 5) bleibt unverändert.
+6. Szenario „Sofortiger Sprachwechsel ohne Neuladen" (AK9) — 1 Testfall: alle sechs neuen `setText()`/`t()`-Aufrufe sind Teil derselben `wendeSpracheAn()`-Funktion wie die bestehenden Aufrufe.
+7. Szenario „Keine Wartezeit, kein Lade-, kein Fehlerzustand" (AK10) — 2 Testfälle: keine Firebase/Firestore/fetch/onSnapshot-Zugriffe in `public/index.html`; weiterhin genau ein `localStorage.getItem`-Zugriff (kein zweiter, ungeprüfter Zugriff durch die neuen Panels).
+
+**Testlauf-Ergebnis:** `npx jest tests/game-startseite-erklaerung.static.test.js` → **15 rot / 3 grün, 18 gesamt**, kein Modul-/Syntaxfehler, keine Test-Suite-Abbrüche. Alle 15 roten Fälle sind echte Assertion-Fehlschläge gegen fehlende Funktionalität (Panels/Schlüssel existieren noch nicht) — das ist der erwartete, gewünschte RED-Zustand vor `flow-game-impl`. Die 3 grünen Fälle sind bewusste Regressions-/Leitplanken-Checks, die bereits heute zutreffen (kein Server-/Firestore-Zugriff, genau ein `localStorage`-Zugriff, unveränderter `.btn.primary`-Kontrastverlauf) und deshalb korrekt grün sind, nicht rot sein müssen.
+
+Ein Testfall (Kontrast-Regressionscheck) schlug im ersten Durchlauf aus einem mechanischen Grund fehl (zu strikte Regex, die eine schließende `}` direkt nach dem Verlauf erwartete, obwohl die CSS-Regel danach noch `;color:#fff;...` enthält) — nur die Regex wurde korrigiert, die eigentliche Erwartung blieb unverändert; danach lief der Fall korrekt grün.
+
+**Regressionslauf:** `tests/game-a11y-static.test.js` erneut ausgeführt → **grün** (alle Fälle bestanden, inkl. des Kontrast-Tests, der auch `public/index.html` erfasst). `tests/game-i18n.logic.test.js` (Pflichtschlüssel-Prüfung inkl. `startseite.titel`) benötigt laut `package.json` den Firestore-Emulator (`firebase emulators:exec`); der Emulator-JAR-Download war in dieser Sandbox durch die Organisations-Netzwerkrichtlinie blockiert (HTTP 403, Host nicht erlaubt) und konnte deshalb **nicht** ausgeführt werden — das ist eine Umgebungseinschränkung dieser BDD-Sitzung, kein inhaltlicher Befund. Da `public/index.html` laut Spec keinerlei Firestore-Berührung hat, betrifft diese Lücke nicht den eigentlichen FEATURE-007-Scope; dieser Regressionslauf sollte trotzdem vor `flow-game-impl`-Abschluss noch einmal nachgeholt werden (z. B. lokal bei Stephan oder in einer Umgebung mit Zugriff auf den Emulator-Download), bevor das Ticket auf Done geht.
+
+**Manueller Prüfpunkt — erledigt (2026-07-28):** Finaler deutscher und englischer Wortlaut der drei Panels wurde Stephan vorgelegt, in zwei Runden korrigiert (Panel 1 teasernd statt Clou-verratend umformuliert, „Gastgeber(in)" → „Host", Panel 3 faktisch korrigiert — Runde 4 ist keine reine Stapelgrößen-Variante der ersten drei Runden, siehe `Flow-Game-Entscheidungen.md` „Pädagogischer Kern": Runden 1–3 zeigen gute Parallelität mit einzigem Unterschied Stapelgröße, Runde 4 zeigt schlechte Parallelität/Multitasking mit grundsätzlich anderer Arbeitsweise) und final freigegeben.
+
+---
+
+#### Finaler Wortlaut der drei Panels (Stephan, freigegeben 2026-07-28)
+
+Verwendet die i18n-Schlüsselnamen und Element-IDs aus der BDD-Phase oben (`startseite.zweckUeberschrift`/`zweckText`, `startseite.spieleranzahlUeberschrift`/`spieleranzahlText`, `startseite.ablaufUeberschrift`/`ablaufText`; Elemente `#label-panel-zweck-titel`/`-text`, `#label-panel-spieleranzahl-titel`/`-text`, `#label-panel-ablauf-titel`/`-text`).
+
+**Panel 1 — Zweck/Theorie (`startseite.zweckUeberschrift` / `startseite.zweckText`)**
+
+- DE Überschrift: „Warum dieses Spiel?"
+- DE Text: „In diesem Spiel erlebt ihr live, wie eure Arbeitsweise Tempo und Qualität beeinflusst – oft auf überraschende Weise. Ihr bearbeitet gemeinsam Aufgaben in mehreren kurzen Runden und probiert dabei unterschiedliche Herangehensweisen aus, die auf Lean- und Flow-Prinzipien beruhen (dem Denken hinter modernen, schlanken Arbeitsprozessen). Am Ende vergleicht ihr eure Ergebnisse und diskutiert gemeinsam, was das für eure eigene Arbeit bedeutet."
+- EN Heading: „Why this game?"
+- EN Text: „In this game, you'll experience live how your way of working affects speed and quality – often in surprising ways. Together you'll tackle tasks across several short rounds, trying out different approaches rooted in lean and flow thinking (the ideas behind modern, streamlined ways of working). At the end, you'll compare your results and discuss together what it means for how you work."
+
+**Panel 2 — Spieleranzahl (`startseite.spieleranzahlUeberschrift` / `startseite.spieleranzahlText`)**
+
+- DE Überschrift: „Wie viele Personen braucht ihr?"
+- DE Text: „Ihr braucht mindestens fünf Mitspielende an den Stationen sowie einen Host, der/die das Spiel moderiert und steuert – insgesamt also mindestens sechs Personen. Wer zusätzlich zuschauen möchte, kann als Beobachter(in) live dabei sein, ohne selbst einzugreifen."
+- EN Heading: „How many people do you need?"
+- EN Text: „You need at least five players at the stations, plus a host who moderates and runs the game – so at least six people in total. Anyone who'd like to watch can join as an observer, following along live without taking part."
+
+**Panel 3 — Ablauf (`startseite.ablaufUeberschrift` / `startseite.ablaufText`)**
+
+- DE Überschrift: „Wie läuft es ab?"
+- DE Text: „Ihr durchlauft gemeinsam vier kurze Runden an denselben fünf Arbeitsstationen. In den ersten Runden verändert sich, wie groß die Arbeitspakete sind, die ihr gemeinsam bearbeitet; in der letzten Runde probiert ihr eine ganz andere Arbeitsweise aus. Dabei seht ihr live und in Zahlen, wie sich das jeweils auf euer Tempo und die Qualität eurer Ergebnisse auswirkt. Die genauen Regeln jeder Runde erklärt euch der Host direkt im Spiel."
+- EN Heading: „How does it work?"
+- EN Text: „Together you'll play four short rounds at the same five work stations. In the first rounds, what changes is how big the work packages are that you handle together; in the final round, you'll try a completely different way of working. Along the way you'll see live, in real numbers, how each approach affects your speed and the quality of your results. Your host will walk you through the exact rules of each round as you play."
+
+**Übergabe an `flow-game-impl`:** Dieser Wortlaut ist final und verbindlich für die Implementierung — keine eigenmächtigen Formulierungsänderungen. AK3 wurde entsprechend angepasst (siehe oben, Teaser statt Vorwegnahme). Wortwahl „Host" statt „Gastgeber(in)" gilt durchgängig für alle drei Panels und ist konsistent mit der bestehenden Terminologie in `Product.md`.
+
+**Unerwartete Beobachtung beim Schreiben der Tests (nicht in der Spec vorweggenommen):** `public/js/i18n/uebersetzungen.js` (Browser-Kopie) kann nicht per `require()` in Node geladen werden — die Datei schließt mit `})(window);` und referenziert damit direkt den globalen `window`, der in der Standard-Jest-`node`-Umgebung dieses Projekts nicht existiert (kein `module.exports`, kein jsdom). Das ist kein Bug, sondern der bereits in `tests/game-lobby-und-rundenkontext.static.test.js` etablierte, bewusste Umgang damit (Textmuster-Prüfung statt `require`) — hier nur ausdrücklich vermerkt, weil es beim ersten Entwurf der neuen Testdatei berücksichtigt werden musste und für künftige Tickets mit Browser-i18n-Bezug relevant bleibt.
+
+**Übergabe:** Bereit für `flow-game-impl` — sobald der finale Wortlaut der drei Panels von Stephan freigegeben ist (separater Zwischenschritt, siehe oben).
+
+---
+
+#### Implementierungsergebnis (flow-game-impl, 2026-07-28)
+
+**Code-Basis:** Frischer Klon von `github.com/stephanschumann/flow-game` nach `/tmp/flow-game-impl-007`, HEAD verifiziert (`git log -1`): Commit `78523bd` — identisch zu dem Commit, gegen den Analyse-Spec und BDD-Phase geschrieben wurden.
+
+**Testdatei neu erstellt (Pflichtschritt, siehe Auftrag):** Die BDD-Phase lief in einer inzwischen beendeten, separaten Sandbox-Session (`/tmp/flow-game-bdd-007`) und wurde nie ins Repo committet (Projekt-Konvention: Sandbox-Sitzungen pushen nichts). `tests/game-startseite-erklaerung.static.test.js` wurde deshalb in dieser Implementierungssitzung anhand der im Backlog dokumentierten Testfall-Spezifikation und Namenskonvention neu erstellt — 7 Szenarien, 18 Testfälle, exakt wie im BDD-Testergebnis-Abschnitt oben beschrieben.
+
+**Rot/Grün-Verlauf (echte TDD-Disziplin, kein nachträglich angepasster Test):**
+- Erster Lauf gegen den unveränderten Code (`npx jest tests/game-startseite-erklaerung.static.test.js`): **15 rot / 3 grün von 18** — deckt sich exakt mit der im BDD-Abschnitt dokumentierten Erwartung. Alle 15 roten Fälle waren echte Assertion-Fehlschläge (fehlende Panels/Schlüssel), keine Modul-/Syntaxfehler.
+- Nach der Implementierung (siehe unten): **18/18 grün**, ohne dass ein Testfall abgeschwächt, gelöscht oder in seiner Erwartung geändert wurde.
+
+**Geänderte/neue Dateien:**
+1. `public/index.html` — Markup: `#label-tag`-Element (Hero) und `#label-hinweis-panel` vollständig entfernt (inkl. der jetzt ungenutzten CSS-Regel `.hero .tag{...}`), Titel + CTA-Knopf bleiben unverändert oben im Hero-Bereich. Darunter drei neue, gleich gestaltete `.panel`-Blöcke (Layout-Variante 1, Stephans Entscheidung 2026-07-28): `#label-panel-zweck-titel`/`-text`, `#label-panel-spieleranzahl-titel`/`-text`, `#label-panel-ablauf-titel`/`-text`. `wendeSpracheAn()` um sechs neue `setText()`-Aufrufe erweitert (ersetzt die zwei alten Aufrufe für `label-tag`/`label-hinweis-panel`) — Sprachwechsel greift dadurch sofort, ohne Neuladen.
+2. `src/i18n/uebersetzungen.js` — Schlüssel `startseite.tag` und `startseite.hinweisPanel` entfernt; sechs neue Schlüssel `startseite.zweckUeberschrift`/`zweckText`, `startseite.spieleranzahlUeberschrift`/`spieleranzahlText`, `startseite.ablaufUeberschrift`/`ablaufText` mit dem von Stephan freigegebenen Wortlaut wörtlich übernommen (DE+EN, keine Umformulierung).
+3. `public/js/i18n/uebersetzungen.js` (Browser-Kopie) — identische Änderung wie in 2., inhaltlich Wort für Wort synchron gehalten.
+4. `package.json` — neues Skript `test:static:feature-007` ergänzt (analog zu den bestehenden `test:static:feature-005`/`-006`-Skripten), nur dieses eine Ticket betreffend, keine bestehenden Sammelskripte verändert.
+5. `tests/game-startseite-erklaerung.static.test.js` — neu (siehe oben), 18 Testfälle in 7 Szenarien, Jest + Node `fs`, kein Firestore-Emulator nötig.
+
+**TASK-006 automatisch mit erledigt:** Alle sechs Fundstellen der alten Entwicklerhinweis-Formulierungen ("Agent Contract", "Phase 0", "next phases"/"nächsten Phasen", "Basic setup live"/"Grundgerüst live" — verifiziert per Repo-weitem Grep vor der Umsetzung, alle sechs Stellen lagen ausschließlich in `startseite.tag`/`startseite.hinweisPanel`) sind vollständig entfernt und durch die drei neuen Panels ersetzt. Kein separater Durchlauf für TASK-006 nötig, wie in der Entscheidung vom 2026-07-28 festgelegt.
+
+**Layout-Entscheidung umgesetzt wie freigegeben:** Variante 1 (drei gleich gestaltete Panels untereinander), CTA-Knopf steht im Markup weiterhin vor allen drei neuen Panels (automatisiert geprüft), `.btn.primary`-Farbverlauf (`linear-gradient(180deg,#2b6fd8,#1a56c4)`) unverändert — bestehender Kontrast-Regressionstest bleibt grün.
+
+**Regressionslauf (Pflichtschritt vor Abnahme):**
+- `tests/game-a11y-static.test.js` (FEATURE-005, Barrierefreiheit, inkl. Kontrast-Test der auch `public/index.html` erfasst) — erneut ausgeführt: **grün, 6/6**.
+- Vollständiger Nicht-Emulator-Regressionslauf (alle 15 statischen/Logik-Testdateien ohne Firestore-Emulator-Abhängigkeit, `tests/*.static.test.js` + `*.logic.test.js` (ohne rules-unit-testing) + `*.manual-checks.test.js` + `*.integration.test.js`): **182/184 grün**. Die zwei einzigen roten Fälle (`tests/deploy-regression.test.js`, `tests/feature-002-deploy-regression.test.js`) prüfen die Erreichbarkeit der echten Live-URL `https://flow-game-19f01.web.app` per `fetch()` — verifiziert unabhängig per `curl` gegen dieselbe URL: `403 CONNECT tunnel failed` durch die Sandbox-Netzwerk-Policy dieser Umgebung, keine inhaltliche Beziehung zu den FEATURE-007-Änderungen (reine Netzwerk-Erreichbarkeitstests, keine lokale Code-/Dateiprüfung). **Kein durch dieses Ticket verursachter Regressionsfehler gefunden.**
+- `tests/game-i18n.logic.test.js` (Pflichtschlüssel-Prüfung inkl. `startseite.titel`, benötigt laut `package.json` den Firestore-Emulator): Erneuter Versuch per `npx firebase emulators:exec --only firestore "..."` in dieser Sitzung — **weiterhin blockiert**, exakt derselbe Fehler wie in der BDD-Phase dokumentiert: `Error: download failed, status 403: request rejected: host not permitted` beim Download von `cloud-firestore-emulator-v1.19.8.jar`. Das ist eine **Umgebungseinschränkung dieser Sandbox** (Organisations-Netzwerkrichtlinie), kein inhaltlicher Befund und keine neue Erkenntnis gegenüber der BDD-Phase. Da `public/index.html` laut Spec keinerlei Firestore-Berührung hat und der geprüfte Pflichtschlüssel `startseite.titel` von diesem Ticket nicht verändert wurde, ist das fachliche Risiko gering — **bleibt aber ein offener Punkt, der vor Done noch lokal bei Stephan (mit funktionierendem Emulator-Zugriff) nachgeholt werden sollte**, nicht als bestandener Test zu werten.
+
+**i18n-Schlüssel-Sync-Check (Pflichtschritt, wie BUGFIX-003-Vorbild):** Programmatischer Schlüssel-für-Schlüssel-Abgleich nach der Änderung: `src/i18n/uebersetzungen.js` enthält **135 Schlüssel**, alle 135 auch in `public/js/i18n/uebersetzungen.js` gefunden (0 fehlend in beide Richtungen), Browser-Datei enthält ebenfalls genau 135 Schlüsseldefinitionen. Für alle sechs neuen Schlüssel zusätzlich Wort-für-Wort-Vergleich der DE/EN-Werte zwischen beiden Dateien durchgeführt: **identisch**. Beide Dateien sind synchron.
+
+**Was tatsächlich automatisiert geprüft wurde vs. was Stephan noch lokal bestätigen muss:**
+- Automatisiert geprüft und grün: alle 18 neuen BDD-Testfälle, bestehender A11y-/Kontrast-Regressionstest, 182/184 des breiteren Nicht-Emulator-Regressionslaufs (die 2 roten Fälle sind reine Netzwerk-Erreichbarkeitstests der Live-URL, unabhängig vom Ticket-Code), i18n-Schlüssel-Sync (135/135).
+- NICHT automatisiert geprüft (Umgebungseinschränkung dieser Sandbox, siehe oben): `tests/game-i18n.logic.test.js` (Firestore-Emulator-Download blockiert, HTTP 403).
+- NICHT automatisierbar/bewusst manuell (siehe Testplan-Grundgerüst der Spec): echter visueller Eindruck im Browser (wirkt der CTA-Knopf weiterhin als klarer erster Schritt, wirken die drei Panels wie beabsichtigt als Variante 1), Cross-Device-/Cross-Browser-Sprachwechsel-Test, sowie noch einmal ein echtes Gegenlesen der ausgelieferten Seite durch Stephan (der Wortlaut selbst wurde bereits vor der Umsetzung freigegeben und wörtlich übernommen — hier geht es um die tatsächliche Darstellung im Browser, nicht den Text an sich).
+
+**Kein Escape-Hatch-Fall:** Kein Testfall musste an die Implementierung angepasst werden; keine Diskrepanz zwischen Test und Spec wurde während der Umsetzung festgestellt.
+
+**Offene Punkte vor Done (nicht Teil dieser Implementierungssitzung):**
+1. ~~`tests/game-i18n.logic.test.js` lokal bei Stephan ausführen~~ — **erledigt 2026-07-28.** Stephan hat `npm run test:emulator:feature-006` lokal ausgeführt (`tests/game-i18n.security.rules.test.js` + `tests/game-i18n.logic.test.js`): **2/2 Testsuiten grün, 19/19 Tests grün.** Die im Log sichtbaren `PERMISSION_DENIED`-Warnungen sind erwartetes Verhalten der Sicherheitsregel-Tests (absichtlich verweigerte Schreibversuche), kein Fehler. Damit ist der Pflichtschlüssel `startseite.titel` (FEATURE-006-Regressionsschutz) bestätigt unverändert funktionsfähig.
+2. Release (`flow-game-release`) — noch nicht erfolgt, siehe Release-vor-Done-Gate.
+3. Nach dem Release: Stephans eigene lokale/Live-Prüfung (visueller Eindruck, Cross-Device-Sprachtest) gemäß Testplan-Grundgerüst.
+
+**Status:** Ticket bleibt bewusst auf „In Progress" — Status-Änderung auf Done ist Gate 3 und dem Hauptthread/Stephan vorbehalten, zusätzlich blockiert durch das ausstehende Release. Mit dem grünen Emulator-Testlauf ist die vollständige automatisierte Testabdeckung jetzt bestätigt (18/18 neue Tests, 182/184 Nicht-Emulator-Regression mit 2 ticketfremden Netzwerk-Ausnahmen, 19/19 Emulator-Tests) — einziger verbleibender Blocker vor Done ist der Release.
+
 
 ---
 
@@ -834,8 +1105,10 @@ Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Än
 |------|------|
 | **Typ** | Task |
 | **Priorität** | Mittel |
-| **Status** | ToDo |
+| **Status** | Aufgegangen in FEATURE-007 |
 | **Erstellt** | 2026-07-23 |
+
+**Hinweis (2026-07-28):** Im Zuge der FEATURE-007-Analyse festgestellt, dass dieses Ticket denselben Text-Slot betrifft (`#label-hinweis-panel`, „Basic setup live…"/„Phase 0, Part 1"/„Agent Contract"), den FEATURE-007 ohnehin vollständig ersetzt (dort AK6). Stephan hat die Zusammenlegung bestätigt — dieses Ticket wird nicht mehr separat umgesetzt, sondern gilt mit FEATURE-007 als miterledigt. Kein eigener Durchlauf durch `flow-game-analyze`/`-bdd`/`-impl` mehr nötig.
 
 **Beschreibung:** Unter dem Hauptknopf der Startseite stehen aktuell interne Entwicklerhinweise ("Basic setup live — the actual game logic follows in the next phases.", "Phase 0, Part 1", "Agent Contract"). Für Erstnutzer(innen) wirkt das wie eine interne Testseite statt der echten Anwendung und untergräbt das Vertrauen beim ersten Eindruck. Diese Hinweise für echte Nutzende ausblenden oder durch einen normalen, verständlichen Begrüßungstext ersetzen.
 
@@ -910,6 +1183,347 @@ Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Än
 **User Story:** Als Gastgeber(in), möchte ich den Beitritts-Code mit einem Klick kopieren können, sodass ich ihn fehlerfrei weitergeben kann.
 
 **Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+### FEATURE-016 Name und Rolle der eigenen Person durchgängig auf jeder Spielseite sichtbar
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Aktuell ist nicht auf jedem Bildschirm im Spiel durchgängig sichtbar, mit welchem Namen und welcher Rolle man selbst gerade angemeldet ist. Betrifft alle Ansichten (Lobby, laufende Runde, Auswertung), nicht nur einen einzelnen Screen.
+
+**User Story:** Als Spielender, möchte ich auf jeder Seite im Spiel meinen eigenen Namen und meine Rolle sehen, sodass ich jederzeit sicher bin, als wer ich gerade angemeldet bin.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Abzugrenzen von BUGFIX-003c (dort geht es um die Namen ÜBER den Stationsspalten in Runde 1–3, hier um die eigene Identität durchgängig auf jeder Seite, unabhängig von Runde/Ansicht).
+
+---
+
+### BUGFIX-010 Würfelanzeige in Runde 4: kein echter grafischer Würfel, Ergebnis vor neuem Versuch nicht sichtbar
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** FEATURE-004s Akzeptanzkriterium 10 verlangt eine „kurze Wurf-Animation" analog zur `RollButton`-Komponente aus CatTube. Im echten Test (2026-07-27) wirkte die Anzeige nicht wie ein echter grafischer Würfel, und das Ergebnis eines nicht ausreichenden Wurfs (≤3) war nicht klar sichtbar, bevor der nächste Wurfversuch gestartet werden konnte.
+
+**User Story:** Als Spielender, möchte ich einen erkennbaren Würfel sehen und das Ergebnis eines Wurfs deutlich erkennen können, bevor ich erneut würfle, sodass nachvollziehbar ist, warum ein weiterer Versuch nötig ist.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Betrifft die bestehende Würfel-Umsetzung aus FEATURE-004 (AK 10), kein neuer Mechanismus.
+
+---
+
+### FEATURE-017 Warteschlangen-Anzeige in Runde 4 auf tatsächlich bei mir wartende Elemente begrenzen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Im echten Test (2026-07-27) zeigte die Warteschlangen-Ansicht alle sechs Länderkarten und alle sechs Würfel mit dem Hinweis „waiting until it reaches you" an, auch für Elemente, die noch gar nicht bei dieser Person angekommen sind. Als Spielender ist dadurch nicht erkennbar, was konkret gerade bei der eigenen Station liegt und was nur theoretisch später ankommen könnte.
+
+**User Story:** Als Spielender, möchte ich in der Warteschlangen-Ansicht nur die Elemente sehen, die tatsächlich schon bei mir angekommen sind und auf Bearbeitung warten, sodass ich nicht zwischen echten und rein theoretisch zukünftigen Elementen unterscheiden muss.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. **Wichtiger Klärungsbedarf für die Analysephase:** FEATURE-004s eigene Spec hält ausdrücklich fest, dass Verwirrung/Unübersichtlichkeit beim Nachverfolgen „was habe ich, was kommt als Nächstes" gewollte spielerische Friktion ist, kein zu behebendes UX-Problem (Zitat Stephan: „Verwirrung und Irritationen sind erwünscht, da sie die Realität widerspiegeln."). Vor der Umsetzung muss geklärt werden, ob dieser Beobachtungspunkt eine Verfeinerung des ursprünglichen Wunsches ist (nur die eigene, tatsächlich wartende Warteschlange zeigen, aber weiterhin ohne Vorschau/Führung) oder ob er der ursprünglichen Design-Entscheidung inhaltlich widerspricht.
+
+---
+
+### FEATURE-018 Spiel auch ohne separaten Gastgeber spielbar (Host kann mitspielen)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Mittel |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Aktuell braucht jedes Spiel einen separaten Host, der nicht gleichzeitig eine Spielstation besetzt. Gewünscht: Der Host soll wahlweise auch selbst als Spielender teilnehmen können, statt zwingend eine eigenständige, nicht-spielende Rolle zu sein. Falls der Host gleichzeitig mitspielt, sollen die Rundenergebnisse automatisch direkt nach jeder Runde für alle sichtbar freigegeben werden, statt auf eine bewusste Freigabe-Aktion des Hosts zu warten (da diese Person ja gerade selbst mitspielt und nicht separat moderiert).
+
+**User Story:** Als Gruppe ohne separate moderierende Person, möchten wir das Spiel auch mit einem mitspielenden Gastgeber durchführen können, sodass wir keine zusätzliche, nicht mitspielende Person brauchen.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Betrifft das bestehende Freigabe-Muster `ergebnisseFreigegeben` (Host-only, FEATURE-003) sowie die Rollenzuweisung aus FEATURE-001 — vor einer Analyse zu klären, wie sich „Host spielt mit" mit der bestehenden Host-Erkennung (`istHost()`) und der Stationszuweisung verträgt.
+
+---
+
+## ✅ Done
+
+### FEATURE-019 Qualitätsauswertung zeigt Details (welche Stadt, welches Land, warum falsch)
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Feature |
+| **Priorität** | Hoch |
+| **Status** | Done |
+| **Erstellt** | 2026-07-27 |
+| **Analyse am** | 2026-07-27 |
+| **In Progress seit** | 2026-07-27 |
+| **Done am** | 2026-07-27 |
+
+**Beschreibung:** Die Qualitätsauswertung aus FEATURE-004 (AK 16) zeigt aktuell nur aggregierte Zahlen (z. B. „14/30 korrekt", „12× falsches Land", „7× Dublette"), aber nicht, welche konkreten Städte-Einträge betroffen waren und warum genau sie als fehlerhaft gewertet wurden. Ohne diese Detailanzeige bleibt der eigentliche Lerneffekt der Runde (siehe FEATURE-004-Beschreibung: „Viel Kontextsprung führt zu niedrigen Qualität durch Fehler... das gilt es zu lernen") abstrakt und nicht konkret nachvollziehbar.
+
+**User Story:** Als Spielender, möchte ich nach der Runde sehen, welche konkreten Einträge falsch waren und warum (falsches Land vs. Dublette), sodass die Gruppe den Zusammenhang zwischen Kontextwechsel und Fehlern konkret nachvollziehen kann, statt nur eine abstrakte Zahl zu sehen.
+
+**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Eng verwandt mit FEATURE-004 selbst (AK 15/16). **Scope-Klärung (Stephan, 2026-07-27):** FEATURE-019 wird als eigenständiges Ticket analysiert und umgesetzt, unabhängig vom Fortschritt/Done-Zeitpunkt von FEATURE-004 — die ursprünglich offene Frage „Erweiterung von FEATURE-004 vor dessen Done-Setzung vs. eigenständiges Folgeticket" ist damit entschieden (eigenständiges Ticket).
+
+---
+
+#### Analyse-Spec (2026-07-27)
+
+**Vorab geprüfte Quellen (Pflicht-Code-Verifikation, Schritt 2b):** Der tatsächliche, aktuelle Code wurde gelesen, nicht aus dem Gedächtnis/aus `Backlog.md` behauptet — konkret `src/game/rundeVier/qualitaetsauswertung.js` (Node-Referenz), der inhaltlich identische Browser-Port in `public/js/game/rundeVier.js` (Zeilen ~139–219 Berechnung, ~411–421 Schreibvorgang), `src/game/rundeVier/laenderStaedte.js`, `src/game/vergleichsansicht.js`, die Anzeige-Stellen in `public/spiel.html` (`zeigeKennzahlen()` ~Zeile 1911–1957, `renderVergleichsTabelle()` ~Zeile 1846–1867) sowie die zugehörigen Abschnitte in `firestore.rules` (`match /runden/{runde}`, `match /elemente/{elementId}`, `rundeVierStaedteAngehaengt()`). Ebenso wurden `Product.md`, `Flow-Game-Entscheidungen.md` und der bestehende FEATURE-004-Abschnitt in `Backlog.md` (Analyse-Spec, Pre-Mortem, Betroffene Architektur, Freigabe-Entscheidungen vom 2026-07-27) vollständig gelesen.
+
+**Zentraler Befund der Code-Verifikation (überschreibt eine naheliegende, aber falsche Annahme):** Die pro-Eintrag-Detailinformation, die dieses Ticket verlangt, wird in der bestehenden Berechnung bereits vollständig ermittelt — sie wird nur nicht weiterverwendet. `berechneQualitaet()` liefert schon heute (sowohl in der Node-Referenz als auch im Browser-Produktivcode) neben der Zusammenfassung (`gesamt`) ein zweites Ergebnisfeld `proKarte`: für jede der sechs Länderkarten eine Liste ihrer Städte-Einträge, jeweils mit Land, eingetragener Stadt und Einzelwertung (`korrekt` | `falschesLand` | `dublette` | `falschesLandUndDublette`). Der Schreibvorgang beim Rundenende (`pruefeUndSetzeRundenEndeRundeVier()` in `public/js/game/rundeVier.js`, Zeile ~414–421) greift aus diesem bereits fertigen Ergebnis aber ausschließlich auf `gesamt` zu und verwirft `proKarte` vollständig, bevor irgendetwas in die Datenbank geschrieben wird. Dieses Ticket ist damit überwiegend eine **Anzeige- und Persistenz-Erweiterung eines bereits vorhandenen Rechenergebnisses**, keine neue fachliche Logik.
+
+Zusätzlicher Befund: Jeder einzelne Städte-Eintrag trägt im echten Datenmodell (`firestore.rules`, `rundeVierStaedteAngehaengt()`) bereits die Felder `stadt`, `von` (uid der eintragenden Person) und `am` (Server-Zeitstempel). Das Ticket selbst verlangt ausdrücklich nur „welche Stadt, welches Land, warum falsch" — nicht „wer". Da die Personenzuordnung technisch trivial mitgeliefert werden könnte, aber im Ticket-Text bewusst nicht gefordert ist, wurde das als eigene, klärungsbedürftige Frage behandelt (siehe Frage 1 im Annahmen-Protokoll, mittlerweile geklärt), nicht stillschweigend mit angezeigt.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten, alltagssprachlich):**
+
+1. Nach Ende von Runde 4 sieht man zusätzlich zu den bisherigen Zahlen („wie viele Städte insgesamt korrekt/falsch, wie viele mit falschem Land, wie viele Dubletten") eine Detailliste, die für jede der sechs Länderkarten zeigt: welches Land ihr zugeordnet war und welche Städte tatsächlich eingetragen wurden — **alle** eingetragenen Städte, sowohl korrekte als auch fehlerhafte, nicht nur die fehlerhaften (Geklärt, Stephan, 2026-07-27: alle 30 Einträge statt nur fehlerhafte, siehe AK 11).
+2. Bei jeder in der Detailliste gezeigten Stadt ist erkennbar, ob sie als korrekt oder als Fehler gewertet wurde.
+3. Bei einer fehlerhaften Stadt ist erkennbar, warum sie als Fehler zählt: weil sie nicht im zugeordneten Land liegt, weil sie im Spiel schon einmal verwendet wurde, oder beides gleichzeitig.
+4. Zählt eine Stadt gleichzeitig als falsches Land und als Dublette, taucht sie in der Detailliste nur einmal auf, zeigt aber erkennbar beide Gründe — konsistent mit der bereits bestehenden Regel, dass ein solcher Eintrag insgesamt nur als ein Fehler gezählt wird (geklärt am 2026-07-20, FEATURE-004).
+5. Die Detailliste erscheint an denselben Stellen wie die bisherige Qualitäts-Kennzahl: in der eigenen Rundenansicht direkt nach Rundenende und in der abschließenden Vergleichsansicht über alle Runden (inklusive der Vorschau, die der Host schon vor der offiziellen Ergebnisfreigabe sieht).
+6. Die Detailliste ist für dieselben Personen zu denselben Zeitpunkten sichtbar wie die bisherigen Qualitäts-Zahlen — für den Host bereits vor der Ergebnisfreigabe, für alle anderen Spielenden erst nach der Ergebnisfreigabe durch den Host. Es entsteht keine zusätzliche Möglichkeit, das Detail früher oder von mehr Personen einzusehen, als es die bisherige Zusammenfassung bereits erlaubt.
+7. Für Runde 1–3 ändert sich nichts: dort gibt es weiterhin weder eine Qualitäts-Kennzahl noch eine Detailliste.
+8. Zeigt eine Länderkarte gar keinen fehlerhaften Eintrag, erscheint sie trotzdem vollständig in der Detailliste: alle ihre eingetragenen Städte sind sichtbar, erkennbar alle als korrekt markiert — keine Karte fehlt in der Liste, und es gibt keinen separaten Leerzustand pro Karte (Geklärt, Stephan, 2026-07-27: da immer alle Einträge gezeigt werden [siehe AK 11], gibt es bei einer fehlerfreien Karte keinen „leeren" Zustand mehr — ersetzt den ursprünglich vorgesehenen „keine Fehler auf dieser Karte"-Leerzustand).
+9. Es gibt für die Detailliste keinen eigenen, zusätzlichen Wartezustand (Ladeanzeige o. ä.): Da die zugrunde liegenden Werte bereits feststehen, sobald die übrigen Kennzahlen sichtbar werden, erscheint die Detailliste zum gleichen Zeitpunkt wie diese.
+10. Kann die Detailliste aus irgendeinem Grund nicht angezeigt werden (z. B. Verbindungsabbruch), verhält sie sich wie die bestehende Fehlerbehandlung der übrigen Kennzahlen — kein neues, eigenes Fehlerverhalten nötig.
+11. Geklärt (Stephan, 2026-07-27): Die Detailliste zeigt alle 30 Einträge einzeln, nicht nur die fehlerhaften — für jede der sechs Länderkarten werden sowohl korrekte als auch fehlerhafte Städte-Einträge angezeigt. Diese Entscheidung widerlegt und ersetzt die ursprüngliche Default-Annahme der Analyse (siehe Annahmen-Protokoll: „korrigiert (Stephan, 2026-07-27): alle 30 Einträge statt nur fehlerhafte") und wirkt sich entsprechend auf AK 1 und AK 8 aus.
+
+---
+
+**Fundstellen-Sweep (Pflicht):** Gesucht wurde nach jeder Stelle, die die aggregierten Qualitäts-Zahlen (`qualitaet`, `gesamtStaedte`, `korrekt`/`falschesLand`/`dublette`) tatsächlich anzeigt (nicht nur berechnet). Ergebnis: genau **zwei** Anzeige-Fundstellen in `public/spiel.html` — (a) `zeigeKennzahlen()`, die eigene Rundenansicht direkt nach Rundenende einer einzelnen Person, und (b) `renderVergleichsTabelle()`, die sowohl für die Host-Vorschau (`ladeUndRenderHostVorschau()`) als auch für die finale, für alle sichtbare Auswertung nach Ergebnisfreigabe (`zeigeAuswertung()`) verwendet wird — letztere beiden sind also derselbe Code, keine dritte separate Stelle. Keine weiteren Fundstellen in `src/game/` oder `public/js/game/` (dort wird nur berechnet/geschrieben, nicht angezeigt). Beide gefundenen Stellen sind über AK 5 im Scope dieses Tickets.
+
+**Zustands-Check (Pflicht):**
+- **Wartezustand:** Kein eigener Wartezustand nötig — die Werte stehen bereits fest, sobald die Runde beendet ist und das Runden-Datenobjekt gelesen werden kann (identisch zum bestehenden Verhalten der Zeit-Kennzahlen). → AK 9.
+- **Leerzustand:** Geklärt (Stephan, 2026-07-27): Entfällt für die Detailliste pro Karte. Da immer alle Einträge jeder Karte angezeigt werden (siehe AK 11), gibt es keinen „leeren"/fehlerfreien Zustand mehr, der gesondert dargestellt werden müsste — auch eine fehlerfreie Karte zeigt weiterhin vollständig alle ihre eingetragenen Städte, erkennbar alle als korrekt markiert (→ AK 8, ersetzt den ursprünglich vorgesehenen „keine Fehler auf dieser Karte"-Hinweis). Ein Leerzustand „gar keine Stadt eingetragen" ist im Spielmodell weiterhin nicht vorgesehen (jede Länderkarte durchläuft zwingend alle fünf Personen, AK 15 aus FEATURE-004), daher weiterhin kein zusätzliches AK nötig.
+- **Fehlerfall:** Bestehende Fehlerbehandlung der übrigen Kennzahlen (z. B. bei Leseabbruch) greift unverändert mit, kein neues Verhalten nötig. → AK 10.
+
+---
+
+**Pre-Mortem — was könnte schiefgehen:**
+
+1. **Blame-Risiko statt Lerneffekt:** Würde die Detailliste erkennen lassen, welche Person welchen Fehler gemacht hat (die Rohdaten tragen dieses Feld bereits, siehe Befund oben), könnte aus einer gemeinsamen Lernerfahrung über Kontextwechsel eine bloßstellende „Wer hat's vermasselt"-Situation vor der ganzen Gruppe werden — das würde dem eigentlichen Zweck des Spiels (Product.md, Abschnitt 1) eher schaden als nutzen. Gegenmaßnahme: siehe Frage 1 im Annahmen-Protokoll — Geklärt (Stephan, 2026-07-27): ohne Namens-/Personenzuordnung in der Anzeige.
+2. **Informationsüberflutung in der Live-Debrief-Situation:** Bis zu 30 Einzel-Einträge auf einen Blick könnten in einer moderierten Gruppensituation eher verwirren als erklären und vom eigentlichen Lernpunkt ablenken. **Verschärft durch Stephans Entscheidung (2026-07-27): Da nun immer alle 30 Einträge statt nur der fehlerhaften gezeigt werden (siehe AK 11), ist dieses Risiko höher als ursprünglich in dieser Analyse eingeschätzt.** Gegenmaßnahme: nach Karten gruppieren; zusätzlich (Hinweis für die Umsetzung, keine offene Frage) sollen sich fehlerhafte Einträge in der Tabelle visuell klar von korrekten abheben (z. B. optische Hervorhebung), damit sie trotz der vollständigen Liste schnell auffindbar bleiben. Konkrete Darstellung: Geklärt (Stephan, 2026-07-27, nach Prototyp-Test): Tabellendarstellung (siehe „Hinweis zu Schritt 8" unten).
+3. **Divergenz zwischen Node-Referenz und Browser-Produktivcode:** Das Projekt hält beide Fassungen der Qualitätsauswertung bewusst manuell synchron (siehe Kopfkommentare in `qualitaetsauswertung.js` und der bereits dokumentierte Präzedenzfall BUGFIX-009, wo genau dieser Abgleich Teil der Freigabe war). Wird das Mitschreiben von `proKarte` nur in einer der beiden Fassungen ergänzt, bleiben die Node-Tests grün, während die echte Live-Anwendung die Detailanzeige nicht oder falsch befüllt. Gegenmaßnahme: Änderung zwingend an beiden Stellen parallel vornehmen, wie im Kopfkommentar beider Dateien bereits vorgeschrieben.
+4. **Auseinanderlaufen von Zusammenfassung und Detail:** Aggregat und Detail müssen im selben Schreibvorgang landen. Würden sie in zwei getrennten Schreibvorgängen geschrieben, könnte bei einem abgebrochenen zweiten Schreibversuch (z. B. weil ein anderer Client zwischenzeitlich schneller war — das bestehende `catch`-Verhalten in `pruefeUndSetzeRundenEndeRundeVier()` behandelt genau diesen Fall bereits für die Zusammenfassung) die Zusammenfassung stehen bleiben, ohne dass ein passendes Detail existiert. Gegenmaßnahme: ein einziges Update-Objekt für Zusammenfassung und Detail zusammen, wie es die bestehende Schreibstelle strukturell bereits vorsieht.
+5. **Server-Zeitstempel-Falle in verschachtelten Strukturen:** An anderer Stelle im Projekt ist bereits dokumentiert (Kopfkommentar `src/game/rundeVier/elemente.js`), dass Firestore einen frisch servergesetzten Zeitstempel nicht innerhalb eines Arrays akzeptiert — deshalb wird `staedte` dort bewusst als Map statt Array gespeichert. Würde die neue Detailliste unbedacht so gebaut, dass beim Schreiben erneut ein frischer Server-Zeitstempel pro Eintrag erzeugt wird, könnte derselbe Fehler hier wiederkehren. Gegenmaßnahme: die längst vorhandenen Zeitstempel der einzelnen Städte-Einträge wiederverwenden, keine neuen Server-Zeitstempel für die Detailliste erzeugen.
+6. **Bruch des Prinzips „Server bleibt die Wahrheit, Anzeige berechnet nichts neu":** Die Vergleichsansicht liest bestehende Kennzahlen bewusst unverändert, ohne sie clientseitig neu zu berechnen (`src/game/vergleichsansicht.js`, `tests/game-evaluation.logic.test.js`). Würde die Detailanzeige stattdessen eigenständig aus den rohen Elemente-Datensätzen neu berechnen statt das bereits geschriebene Detail zu lesen, könnten zwei Personen bei einer späteren Änderung der Bewertungslogik unterschiedliche Fehlergründe für dieselbe Stadt sehen. Gegenmaßnahme: Detailanzeige liest ausschließlich das bereits serverseitig geschriebene Feld.
+
+**Zusammenspiel bestehender Bausteine (Pflicht):**
+
+- **Betroffene Bausteine:** die Qualitätsauswertungs-Berechnung (zweifach vorhanden: Node-Referenz und Browser-Produktivcode), der Schreibvorgang beim Rundenende, das Runden-Datenobjekt in der Datenbank samt seiner bestehenden Zugriffsregel (Host jederzeit, andere Spielende erst nach Ergebnisfreigabe), die beiden bestehenden Anzeige-Stellen (eigene Rundenansicht, Vergleichsansicht/Host-Vorschau/finale Auswertung) sowie die zentrale Übersetzungstabelle für neue Beschriftungen.
+- **Reihenfolge des Zusammenwirkens:** Ein beliebiger teilnehmender Client bemerkt über seinen bestehenden Live-Abgleich, dass alle zwölf Arbeitselemente ihre letzte Station erreicht haben → dieser eine Client führt lokal die Berechnung aus → er schreibt Zusammenfassung und (neu) Detail in einem Schreibvorgang auf das Runden-Datenobjekt → die bestehende Zugriffsregel für dieses Datenobjekt lässt genau diesen einen Schreibvorgang zu → alle anderen Clients lesen anschließend über ihren eigenen bestehenden Abgleich dasselbe Datenobjekt, aber jeweils nur, wenn sie laut Zugriffsregel gerade lesen dürfen (Host sofort, andere erst nach Freigabe) → die beiden Anzeige-Stellen rendern aus genau diesem gelesenen Stand, inklusive des neuen Detailteils.
+- **Kombinationen, die zu Fehlern führen könnten:** (a) Eine Anzeige-Stelle berechnet das Detail versehentlich selbst aus einem lokal zwischengespeicherten, möglicherweise veralteten Stand der Arbeitselemente, statt ausschließlich das bereits serverseitig geschriebene Detail zu lesen — dann könnten zwei Personen unterschiedliche Fehlergründe für dieselbe Stadt sehen (identisch zu Pre-Mortem-Risiko 6). (b) Die Vergleichsansicht prüft aktuell einmal pro Kennzahl-Zeile, ob überhaupt eine Runde ein `qualitaet`-Feld mitbringt, bevor sie die Zeile überhaupt anzeigt (`vergleich.some(...)`) — wird diese Prüfung für die neue Detailzeile nicht in gleicher Form übernommen, könnten für Runde 1–3 plötzlich leere oder irreführende Detailzeilen erscheinen, obwohl AK 7 das ausdrücklich ausschließt.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- Die Qualitätsauswertungs-Berechnung (liefert schon heute das benötigte Detail als Zwischenergebnis, wird aktuell nach der Berechnung verworfen, bevor irgendetwas gespeichert wird).
+- Der bestehende Schreibvorgang beim Rundenende (schreibt aktuell nur die Zusammenfassung; das Detail zusätzlich mitzuschreiben ist eine Erweiterung dieses bereits bestehenden, einzelnen Schreibvorgangs, kein neuer Baustein).
+- Das bestehende Runden-Datenobjekt in der Datenbank und seine bereits vorhandene Zugriffsregel (bestimmt, wer wann lesen darf) — bleibt inhaltlich unverändert, weil das Detail im selben Dokument mitgespeichert würde und dadurch automatisch denselben Zugriffsschutz erbt; keine neue Zugriffsregel absehbar nötig.
+- Zwei bestehende Anzeigeorte (eigene Rundenansicht direkt nach Rundenende; abschließende Vergleichsansicht über alle Runden, gemeinsam genutzt von Host-Vorschau und finaler Auswertung) — beide müssten um die Detaildarstellung ergänzt werden.
+- Die zentrale, zweisprachige Übersetzungstabelle (FEATURE-006) — jede neue sichtbare Beschriftung braucht dort einen deutschen und einen englischen Eintrag, an den bereits bestehenden zwei synchron zu haltenden Stellen (Node + Browser).
+- Kein neuer serverseitiger Rechendienst, keine zwingend notwendige Änderung an den Sicherheitsregeln (die vorhandene Schreibberechtigung für das Runden-Datenobjekt ist bereits allgemein genug gehalten, um ein zusätzliches Detail-Feld zuzulassen, siehe Code-Verifikation oben).
+
+---
+
+**Regressionsrisiko (Pflicht ab dem zweiten Ticket):**
+
+- **FEATURE-003 (Auswertung, Done):** Etabliert das Prinzip „Kennzahlen werden serverseitig einmal berechnet, die Anzeige berechnet nichts neu" sowie das Muster der Vergleichsansicht als sortierte Liste über die Runden. Ein neues Detail-Feld darf dieses abgenommene Verhalten für Runde 1–3 nicht verändern (siehe AK 7, Pre-Mortem-Risiko 6).
+- **FEATURE-004 (Runde 4, In Progress):** Liefert Datenmodell und Berechnung, auf denen dieses Ticket direkt aufsetzt. Ein Regressionstest muss sicherstellen, dass die bisherigen Zusammenfassungs-Zahlen (AK 15/16 aus FEATURE-004) durch das Mitschreiben des Details unverändert bestehen bleiben (keine Änderung an `gesamt`, nur eine Ergänzung).
+- **FEATURE-005 (Barrierefreiheit, Done):** Die neue Detaildarstellung muss dieselben Kontrast-/Fokus-Standards erfüllen wie die übrige Oberfläche; neue Beschriftungen brauchen konsistente `aria-label`s (bereits als Muster etabliert, siehe FEATURE-005-Pre-Mortem-Risiko 6 zur Doppelpflege mit Mehrsprachigkeit).
+- **FEATURE-006 (Mehrsprachigkeit, Done):** Jede neue sichtbare Beschriftung der Detailliste muss von Anfang an in beiden Sprachen über die zentrale Übersetzungstabelle gepflegt werden, nicht als literaler deutscher Text.
+
+---
+
+**Implementierungsoptionen mit Empfehlung:**
+
+*Option A — Detail im selben Schreibvorgang mitspeichern, an derselben Speicherstelle wie die Zusammenfassung (empfohlen):*
+Das bereits heute berechnete, aber verworfene Detailergebnis wird beim bestehenden Schreibvorgang am Rundenende einfach mit in dasselbe Datenobjekt geschrieben, das auch die Zusammenfassung enthält. Kein neuer Speicherort, keine neue Zugriffsregel, keine zusätzliche Leseanfrage — beide bestehenden Anzeigeorte lesen ohnehin schon dieses Dokument. Vorteile: minimale, naheliegende Änderung eines bereits bestehenden Mechanismus; nutzt exakt denselben, bereits bewährten Zugriffsschutz; keine neue Race-Condition-Fläche (Pre-Mortem-Risiko 4 wird durch „ein Update-Objekt" ohnehin vermieden); Datenmenge klein (höchstens 30 kleine Einträge). Nachteile: das Datenobjekt wird etwas größer (bei dieser Datenmenge unkritisch).
+
+*Option B — Detail bei jeder Anzeige neu aus den rohen Arbeitselement-Daten berechnen:*
+Statt das Detail zu speichern, berechnet jede Anzeige-Stelle es bei Bedarf direkt aus den ohnehin für teilnehmende Personen technisch lesbaren rohen Länderkarten-Datensätzen neu. Vorteile: kein zusätzliches Schreiben nötig. Nachteile: bricht mit dem etablierten Architekturprinzip „Server-/Erstberechnung ist die Wahrheit, Anzeige berechnet nichts neu" (Pre-Mortem-Risiko 6); das Detail wäre dadurch technisch schon vor der offiziellen Ergebnisfreigabe einsehbar (die rohen Datensätze sind laut aktueller Zugriffsregel für `elemente` nicht an die Ergebnisfreigabe gekoppelt, anders als das Runden-Datenobjekt selbst — ein bestehender, durch dieses Ticket nicht verursachter, aber hier relevant gewordener Sachverhalt), was dem bisherigen Freigabe-Konzept widerspricht.
+
+*Option C — Neues, separates Datenobjekt nur für das Detail mit eigener Zugriffsregel:*
+Vorteile: saubere Trennung Zusammenfassung/Detail. Nachteile: doppelter Aufwand (neue Zugriffsregel bauen und gegen den Datenbank-Testaufbau testen), ohne dass ein sachlicher Vorteil erkennbar ist — die bestehende Zugriffsregel des Runden-Datenobjekts löst das Sichtbarkeits-Problem bereits vollständig.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar — Stephan entscheidet):** Option A. Sie ist die naheliegende, minimale Erweiterung eines bereits bestehenden, funktionierenden Mechanismus, bei dem die benötigten Werte schon heute berechnet, aber bislang verworfen werden. Sie hält das etablierte Prinzip „Server-Berechnung bleibt die Wahrheit, Anzeige berechnet nichts neu" konsequent durch und braucht keine neue Zugriffsregel.
+
+---
+
+**Annahmen-Protokoll:**
+
+- ✅ **Frage 1 — Geklärt (Stephan, 2026-07-27): ohne Namen.** (ursprünglich 🔴, funktional/produktrelevant): Soll die Detailliste erkennen lassen, welche Person die fehlerhafte Stadt eingetragen hat, oder ausschließlich Stadt, Land und Fehlergrund zeigen — ohne Personenzuordnung? Die Information liegt technisch bereits in den Rohdaten vor (jeder Städte-Eintrag speichert schon heute, wer ihn eingetragen hat), ist im Ticket-Text aber nicht gefordert. Das ist keine rein technische Frage, sondern betrifft die Workshop-Atmosphäre (gemeinsamer Lerneffekt vs. mögliche Bloßstellung Einzelner vor der Gruppe) — siehe Pre-Mortem-Risiko 1. Ohne ausdrückliche Zustimmung war per Default OHNE Personenzuordnung geplant. **Entscheidung Stephans bestätigt den Default: Die Detailliste zeigt Stadt, Land und Fehlergrund — nicht, wer die Stadt eingetragen hat.**
+- ⚠️ **Annahme — korrigiert (Stephan, 2026-07-27): alle 30 Einträge statt nur fehlerhafte** (Details siehe AK 11): Ursprüngliche Default-Annahme dieser Analyse war, dass die Detailliste vorrangig die fehlerhaften Einträge zeigt, nicht zusätzlich eine vollständige Liste aller 30 Einträge — begründet durch den Ticket-Wortlaut („welche konkreten Einträge FALSCH waren"). Diese Annahme ist widerlegt: **Stephan hat entschieden, dass alle 30 Einträge einzeln angezeigt werden**, sowohl korrekte als auch fehlerhafte. AK 1, AK 8 und AK 11 sowie der Zustands-Check (Leerzustand) und das Testplan-Grundgerüst wurden entsprechend angepasst.
+- ✅ Aus dem Ticket-Text und der bereits geklärten FEATURE-004-Spec direkt ableitbar (keine Rückfrage nötig): dass es genau sechs Länderkarten mit je bis zu fünf Städte-Einträgen gibt, dass „falsches Land" und „Dublette" die einzigen zwei Fehlerarten sind, und dass ein gleichzeitig doppelt fehlerhafter Eintrag nur einmal, aber mit beiden Gründen erscheint (Klärungsvermerk AK 13, 2026-07-20).
+
+**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Es gab eine echte, ungeklärte UI/UX-Frage — WIE die Detailliste konkret dargestellt wird (z. B. eine Tabelle mit einer Zeile je Eintrag vs. sechs aufklappbare Karten-Kacheln mit ihren jeweiligen Fehlern vs. eine reine Fehler-Stichpunktliste). Diese Varianten unterschieden sich in der Bedienung/Übersichtlichkeit deutlich, ließen sich aber in Worten nur schwer eindeutig gegeneinander abwägen — genau die Schwelle, ab der Ausprobieren mehr bringt als weiteres Beschreiben. Der `prototype-builder`-Skill wurde daraufhin eingesetzt: alle drei Varianten (Tabelle, aufklappbare Karten-Kacheln, Stichpunktliste) wurden als Klick-Prototyp gebaut und von Stephan ausprobiert.
+
+**Geklärt (Stephan, 2026-07-27, nach Prototyp-Test): Tabellendarstellung.** Die Detailliste wird als Tabelle dargestellt — eine Zeile je Eintrag mit Land, Stadt und Fehlergrund(en). Diese Entscheidung gilt für beide bestehenden Anzeigeorte (eigene Rundenansicht, Vergleichsansicht) und ersetzt die vorherige offene UI/UX-Frage.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Klärung von Frage 1 und Freigabe dieser Spec):**
+
+- Given `berechneQualitaet()` liefert bereits ein `proKarte`-Ergebnis mit Land/Stadt/Wertung je Eintrag, When der Rundenende-Schreibvorgang läuft, Then landet dieses Detail zusätzlich zur Zusammenfassung im selben Update auf dem Runden-Datenobjekt (neuer Test, Node-Referenz UND Browser-Port, siehe Pre-Mortem-Risiko 3).
+- Given `proKarte` enthält für eine Länderkarte sowohl korrekte als auch fehlerhafte Einträge, When die Detailliste gerendert wird, Then werden alle Einträge angezeigt, nicht nur die fehlerhaften (neuer Test, Geklärt Stephan 2026-07-27, siehe AK 1/AK 11 — ersetzt die ursprüngliche Default-Annahme „nur fehlerhafte Einträge").
+- Given ein Detail-Eintrag ist gleichzeitig falsches Land und Dublette, When das Detail geschrieben und gelesen wird, Then erscheint der Eintrag einmal mit beiden erkennbaren Gründen (Regressionstest gegen den bestehenden Klärungsvermerk AK 13/FEATURE-004).
+- Given eine Länderkarte ohne fehlerhafte Einträge, When die Detailliste gerendert wird, Then erscheint diese Karte trotzdem vollständig mit allen ihren eingetragenen Städte-Einträgen, jeweils erkennbar als korrekt markiert — kein separater Leerzustand mehr (ersetzt den ursprünglich vorgesehenen „keine Fehler"-Leerzustand-Test, Geklärt Stephan 2026-07-27, siehe AK 8, `public/spiel.html`).
+- Given eine Runde 1–3, When die Vergleichsansicht gerendert wird, Then erscheint weiterhin weder eine Qualitäts-Zeile noch eine Detailzeile (Regressionstest, erweitert die bestehende `vergleich.some(...)`-Prüfung in `public/spiel.html`).
+- Given die Ergebnisse sind noch nicht freigegeben, When eine nicht-moderierende Person versucht, das Detail zu lesen, Then bleibt der Zugriff verweigert — identisch zum bestehenden Verhalten für die Zusammenfassung (Regressionstest gegen die bestehende Zugriffsregel des Runden-Datenobjekts, kein neuer Regeltest nötig, siehe Betroffene Architektur).
+- Given zwei Clients erkennen das Rundenende nahezu gleichzeitig, When beide versuchen zu schreiben, Then gewinnt genau einer (bestehendes Verhalten), und Zusammenfassung sowie Detail stammen konsistent aus demselben Schreibvorgang (Regressionstest/Erweiterung des bestehenden Tests für diesen Fall).
+- Geklärt (Stephan, 2026-07-27, Frage 1: ohne Namen): ein expliziter Test, dass das `von`-Feld (eintragende Person) NICHT Teil der angezeigten Detaildaten ist, auch wenn es in den Rohdaten vorhanden ist.
+
+---
+
+#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-27)
+
+19 neue Testfälle in `tests/game-round4.logic.test.js` ergänzt (bestehende 39 Tests aus FEATURE-004/BUGFIX-009 unverändert gelassen, jetzt 58 insgesamt) sowie 4 neue Testfälle in `tests/game-round4.security.rules.test.js` (bestehende 28 unverändert gelassen, jetzt 32 insgesamt). NAMENSGEBUNG (eigene, begründete Festlegung dieser BDD-Phase, siehe Kopfkommentar der Testdatei): ein neues Node-Referenzmodul `src/game/rundeVier/detailliste.js` mit `bereiteDetailzeilenVor({ proKarte })` wird angenommen — nimmt das bereits bestehende `proKarte`-Ergebnis von `berechneQualitaet()` und bereitet es zu flachen Tabellenzeilen `{ land, stadt, wertung, gruende }` auf, ohne das `von`-Feld der eintragenden Person. Falls `flow-game-impl` einen anderen Modul-/Funktionsnamen wählt, bitte die Tests entsprechend anpassen statt sie stillschweigend zu ignorieren.
+
+- **Wiederverwendungsnachweis gegen die bestehende `berechneQualitaet()` (bewusst bereits GRÜN, 3 Testfälle):** proKarte enthält bei gemischten Ergebnissen bereits alle fünf Einträge einer Karte, nicht nur die fehlerhaften (AK 1/11); eine fehlerfreie Karte erscheint bereits heute vollständig mit allen Einträgen (AK 8); `berechneQualitaet()` reicht ein vorhandenes `von`-Feld unverändert durch — Beleg, dass das Verbergen NICHT Aufgabe dieser Funktion ist, sondern der neuen Aufbereitung.
+- **`bereiteDetailzeilenVor()` — neues Modul, 9 Testfälle, erwartungsgemäß ROT:** liefert für eine Karte mit fünf Einträgen fünf Zeilen mit Land/Stadt (AK 1); liefert über sechs Karten alle 30 Zeilen, korrekte UND fehlerhafte (AK 1/11); eine korrekte Stadt trägt keinen Fehlergrund (AK 2); „falschesLand" erscheint als Fehlergrund (AK 3); „dublette" erscheint als Fehlergrund (AK 3); ein gleichzeitig falsches-Land-und-Dublette-Eintrag erscheint als EINE Zeile mit beiden Gründen (AK 4, Grenzfall AK 12/13 aus FEATURE-004); das `von`-Feld ist in der aufbereiteten Zeile nicht enthalten (Frage 1, Pre-Mortem-Risiko 1); eine fehlerfreie Karte erscheint auch nach Aufbereitung vollständig, kein Leerzustand (AK 8); Zeilen bleiben über mehrere Karten hinweg korrekt zugeordnet (keine Vermischung).
+- **Persistenz-Schreibvorgang, Browser-Port `public/js/game/rundeVier.js` — Textmuster-Tests, 2 Testfälle:** der Rundenende-Schreibvorgang referenziert `proKarte` (aktuell ROT, wird bislang verworfen); Zusammenfassung und Detail landen in genau einem `rundenRef.update()`-Aufruf (bewusst bereits GRÜN als Regressionsschutz gegen Pre-Mortem-Risiko 4 — heute schon ein einziger Aufruf, darf durch die Erweiterung nicht zu zweien werden).
+- **Anzeige, `public/spiel.html` — Textmuster-Tests, 5 Testfälle:** `zeigeKennzahlen()` enthält Code, der die Detailliste als Tabelle darstellt (AK 5, aktuell ROT); `renderVergleichsTabelle()` ebenso (AK 5, aktuell ROT); die neue Darstellung bleibt innerhalb der bestehenden `vergleich.some(qualitaet != null)`-Bedingung, damit Runde 1–3 unverändert ohne Detailzeile bleiben (AK 7, aktuell ROT); fehlerhafte Zeilen sind über eine bedingte Kennzeichnung optisch von korrekten unterscheidbar (Pre-Mortem-Risiko 2, aktuell ROT); das `von`-Feld taucht im Anzeige-Code nicht auf (Frage 1, bewusst bereits GRÜN als Regressionsschutz für die spätere Implementierung).
+- **Sicherheitsregeln-Wiederverwendungsnachweis, `tests/game-round4.security.rules.test.js`, 4 Testfälle (bewusst bereits GRÜN, kein neuer Regeltest nötig, AK 6):** der Host kann das Runden-Dokument samt `proKarte`-Detail vor der Gesamtfreigabe lesen; eine spielende Person (nicht Host) bleibt vor der Freigabe weiterhin gesperrt; nach der Freigabe kann dieselbe Person lesen; ein größeres `qualitaet`-Objekt inklusive `proKarte` lässt sich mit der bestehenden Rundenende-Update-Regel schreiben, ohne dass eine neue Regel nötig ist.
+
+**Status:** `tests/game-round4.logic.test.js` real gegen Jest laufen lassen: 44/58 grün, 14 rot — alle 14 roten Fälle sind ausschließlich die neuen, oben als „erwartungsgemäß ROT" markierten FEATURE-019-Testfälle (Fehlerursache jeweils die fehlende Implementierung: `bereiteDetailzeilenVor is not a function` bzw. fehlende Textmuster in `rundeVier.js`/`spiel.html`), alle 39 bereits bestehenden FEATURE-004/BUGFIX-009-Tests bleiben unverändert grün — keine Regression durch das Hinzufügen. Die 5 als „bewusst bereits GRÜN" markierten neuen FEATURE-019-Fälle sind ebenfalls grün, wie vorgesehen. `tests/game-round4.security.rules.test.js` (32 Testfälle inkl. der 4 neuen) konnte in dieser Arbeitsumgebung NICHT gegen den Firestore-Emulator ausgeführt werden — derselbe bereits bei FEATURE-004 dokumentierte Netzwerk-Allowlist-Block (`firebase emulators:exec` scheitert beim Download des Emulator-Jars mit „download failed, status 403: request rejected: host not permitted"). Die vier neuen Regeltests wurden stattdessen manuell gegen den tatsächlichen Regeltext (`firestore.rules`, `match /runden/{runde}`, Lese-/Update-Bedingungen) durchgespielt und folgen exakt demselben, bereits mehrfach real-verifizierten Muster aus `tests/game-evaluation.security.rules.test.js` — das ersetzt keinen echten Emulator-Lauf und sollte von Stephan vor `flow-game-impl` einmal lokal bestätigt werden (`npm run test:emulator:feature-004`).
+
+Bereit für `flow-game-impl`.
+
+---
+
+**Umsetzung & Regressionstest (2026-07-27):** Implementiert in `src/game/rundeVier/detailliste.js` (neu, `bereiteDetailzeilenVor()`), `public/js/game/rundeVier.js` (Persistenz des `proKarte`-Details im bestehenden Rundenende-Update), `public/spiel.html` (Detailliste als Tabelle in `zeigeKennzahlen()` und `renderVergleichsTabelle()`) sowie `src/i18n/uebersetzungen.js` und dem zugehörigen Browser-Pendant (neue zweisprachige Beschriftungen für Land, Stadt und Fehlergrund). Vollständiger Regressionslauf: 138/140 nicht-Emulator-Tests grün — die 2 roten Fälle sind vorbestehende, ticketfremde Live-URL-Tests, die wegen der Netzwerksperre dieser Sandbox fehlschlagen; keine Regression durch FEATURE-019. Zusätzlich hat Stephan den lokalen Emulator-Lauf gegen die echten Firestore-Regeln selbst ausgeführt: `npm run test:emulator:feature-004` → 2 Testsuiten, 90/90 Tests grün (inklusive der 4 neuen Sicherheitsregel-Tests für FEATURE-019). Wie in der Spec vorhergesagt (siehe „Betroffene Architektur" oben) war keine neue Zugriffsregel nötig.
+
+**Release & Verifikation (2026-07-27):**
+
+1. **Release-Commit:** `78523bd` — „FEATURE-019: Qualitätsauswertung zeigt Details (Stadt, Land, Fehlergrund)" (enthielt zusätzlich unstrittigen Beifang: zwei BUGFIX-003-Testdateien, docs/tools-Dateien, .gitignore-Ergänzung um `.DS_Store`).
+2. **GitHub Actions:** Run zu diesem Commit erfolgreich/grün (45s Laufzeit), per Chrome-Browser-Verifikation bestätigt.
+3. **Live-Basis-Check:** `https://flow-game-19f01.web.app` lädt fehlerfrei, keine Konsolenfehler, per Chrome-Browser-Verifikation bestätigt.
+4. **Bekannte, von Stephan akzeptierte Prüflücke:** Die eigentliche neue Funktion (Detailtabelle mit Stadt/Land/Fehlergrund nach Runde 4) wurde NICHT in einer echten, vollständigen Spielrunde mit mehreren Personen live gesehen — das hätte einen kompletten Fünf-Personen-Durchlauf bis Runde 4 erfordert, was im Rahmen der automatisierten Solo-Browser-Verifikation nicht praktikabel war (mehrere Spielende über Tabs im selben Chrome-Profil zu simulieren liefert keine echten unabhängigen Testidentitäten, siehe `chrome-multi-identity-testing-conventions`). Stephan wurde das explizit vorgelegt und hat den Abschluss trotzdem bestätigt (Freigabe mit bekannter Einschränkung, kein Vertuschen). Die Absicherung für die eigentliche Fachlogik stammt stattdessen aus dem vollständigen automatisierten Testlauf (58 fachliche Tests + 90 Tests inkl. Sicherheitsregeln gegen den echten Firestore-Emulator, alle grün, siehe Abschnitt „Umsetzung & Regressionstest" oben).
+
+---
+
+### BUGFIX-011 Bearbeitungszeit (Cycle Time) wird in Runde 4 nie berechnet
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Im frischen FEATURE-004-Gate-3-Durchlauf (2026-07-27, nach BUGFIX-009/FEATURE-019) zeigte die Auswertung „Processing Time 00:00" für die gesamte Runde 4, obwohl die Runde über 7 Minuten lief und sichtbar bearbeitet wurde.
+
+**Root Cause (bereits code-verifiziert, nicht vermutet):** Für Runden 1–3 setzt `public/js/game/rundenStart.js` (Zeile ~93) beim allerersten erfolgreichen Kartenzug per `firebase.firestore.FieldValue.serverTimestamp()` das Feld `bearbeitungszeitStart` auf dem Rundendokument, sofern es noch `null` ist (Kopfkommentar dort: „ohne diese Funktion würde bearbeitungszeitStart in der echten Anwendung NIE gesetzt"). Für Runde 4 existiert exakt dieselbe Logik in der **Node-Referenz** (`src/game/rundeVier/elementBewegung.js`, Zeile 68–69: `if (runde.bearbeitungszeitStart == null) { runde.bearbeitungszeitStart = Date.now(); }`) — sie fehlt aber im tatsächlich produktiv laufenden **Browser-Code** (`public/js/game/rundeVier.js`): Dort kommt `bearbeitungszeitStart` nur zweimal vor — einmal als `null`-Initialwert bei Rundenstart (Zeile 256), einmal als reiner Durchreich-Parameter bei Rundenende (Zeile 382/405). Es gibt keine Stelle, die beim ersten erfolgreichen Würfel- oder Städte-Eintrag einen frischen Zeitstempel schreibt. Damit bleibt `bearbeitungszeitStart` in der Live-Anwendung für Runde 4 dauerhaft `null`, wodurch `berechneKennzahlen()` (`kennzahlen.js`, Zeile 42) die Bedingung `typeof bearbeitungszeitStart === 'number'` nie erfüllt und `bearbeitungszeit` nie berechnet.
+
+**User Story:** Als Host/Spielender, möchte ich nach Runde 4 dieselbe Bearbeitungszeit-Kennzahl sehen wie nach den Runden 1–3, sodass der Vergleich über alle vier Runden hinweg vollständig bleibt.
+
+**Kontext/Verweise:** Klassischer Fall des im Projekt bereits mehrfach dokumentierten Risikos „Node-Referenz und Browser-Produktivcode laufen auseinander" (Kopfkommentar `rundeVier.js`, bereits bei BUGFIX-009 als Pre-Mortem-Risiko benannt). Blockiert FEATURE-004 Gate 3, da eine der Kern-Kennzahlen der Runde nicht funktioniert. Nächster Schritt: `flow-game-analyze` — vermutlich reicht eine gezielte Ergänzung in `gibElementWeiter()`/dem Würfel-Erfolgspfad in `rundeVier.js`, analog zu `rundenStart.js`.
+
+**Pflicht-Code-Verifikation der Prämissen (2026-07-28, zusätzlich zur bereits im Ticket dokumentierten Root Cause geprüft):**
+
+- `public/js/game/rundeVier.js` vollständig gelesen (462 Zeilen). Bestätigt: `gibElementWeiter()` (Zeile 304–362, Kettenfortschritt bei Würfel-Erfolg ODER Städte-Eintrag) schreibt ausschliesslich auf `elementRef` und `fortschrittRef` (per `batch.commit()`, Zeile 358–361) — nirgends auf `rundenRef` selbst. `schreibeWuerfelZwischenwurf()` (Zeile 366–376, Wurf ≤3) schreibt ausschliesslich `wurfAnzahl`/`letzterWurf` auf das Element. Keine der beiden Funktionen kennt oder berührt `bearbeitungszeitStart`. `starteRundeVier()` (Zeile 234–300) setzt es einmalig auf `null`. `pruefeUndSetzeRundenEndeRundeVier()` (Zeile 380–446) nimmt es nur als durchgereichten Parameter entgegen (Zeile 382, 405) und gibt es unverändert an `berechneKennzahlen()` weiter.
+- `public/js/game/rundenStart.js` vollständig gelesen (107 Zeilen). Bestätigt das Muster, das übertragen werden soll: `starteBearbeitungszeitFallsNoetig()` (Zeile 86–101) ist bereits generisch über `rundenNummer` parametrisiert — sie ist **keine Runde-1-3-spezifische Funktion**, sondern eine allgemeine Hilfsfunktion, die den DoR-Regelzweig (Fall A) „huckepack" nutzt, um zusätzlich `bearbeitungszeitStart` zu setzen (siehe Kopfkommentar „WICHTIGER FUND", Zeile 72–85).
+- `firestore.rules` vollständig gelesen (708 Zeilen). Bestätigt: Die `allow update`-Regel unter `match /runden/{runde}` (Zeile 584–606) kennt exakt zwei Fälle — Fall A (`dorAbgeschlossen == true && phase == 'dor_abgeschlossen'`, Zeile 595–596) und Fall B (Rundenende, Zeile 603–605). `{runde}` ist ein Wildcard-Pfadsegment; die Regel unterscheidet nicht nach Rundennummer. Der FEATURE-004-Kommentar direkt darüber (Zeile 230–234) bestätigt ausdrücklich: „Wiederverwendet die bestehende `runden/{runde}`-Struktur oben UNVERÄNDERT". Fall A prüft laut Kommentar (Zeile 588–594) ausschliesslich das RESULTAT, nie den Vorzustand — ein erneuter Schreibversuch mit denselben, bereits gültigen Werten ist jederzeit ein wirkungsloses No-Op, unabhängig davon, ob DoR gerade erst oder schon vor Minuten abgeschlossen wurde. **Damit ist verifiziert: `starteBearbeitungszeitFallsNoetig()` kann unverändert mit `rundenNummer: 4` aufgerufen werden — keine neue Firestore-Regel nötig.**
+- `public/spiel.html` gelesen (Bereich Zeile 1280–1700). Bestätigt zwei fehlende Aufrufstellen: `schliesseRundeVierWurfAb()` (Zeile 1545–1571, Würfel-Erfolgspfad) und der Submit-Handler des Städte-Formulars (Zeile 1653–1671) rufen jeweils `window.FlowGame.gibElementWeiter()` auf, aber keiner von beiden ruft danach `starteBearbeitungszeitFallsNoetig()` auf — im Unterschied zum Kartenzug-Button für Runde 1–3 (Zeile 1443–1458), der genau das bereits tut. Zusätzlich bestätigt: `aktuelleRundenDaten` (Zeile 674, befüllt Zeile 1161) ist eine **rundenunabhängige, gemeinsame Variable**, die für Runde 4 exakt genauso befüllt wird wie für Runden 1–3 (derselbe `runden/{n}`-Snapshot-Listener) — der bestehende Guard `if (!aktuelleRundenDaten.bearbeitungszeitStart)` ist damit 1:1 übertragbar.
+- `src/game/kennzahlen.js` (Zeile 38–44) und `public/js/game/kennzahlen.js` (Zeile 62–67) gelesen: beide berechnen `bearbeitungszeit` ausschliesslich, wenn Start UND Ende als Zahl/Zeitstempel vorliegen — reine Differenzbildung, keine Änderung an diesen Dateien nötig oder vorgesehen.
+- `Product.md` Zeile 47 gelesen: „Bearbeitungszeit (ab erstem Zug nach „Definition of Ready" bis letzte Lieferung)" gilt laut Produktdefinition für **alle** Runden gleichermassen, keine Runde-4-Ausnahme vorgesehen — bestätigt, dass das beobachtete Verhalten ein Bug und keine bewusste Abweichung ist.
+
+**Fundstellen-Sweep (Pflicht):** Repo-weite Suche nach `bearbeitungszeitStart` (ein Suchbegriff, alle Treffer geprüft): 32 Fundstellen insgesamt. Aufteilung:
+- Runden 1–3, bereits korrekt (kein Scope): `src/game/kartenBewegung.js`, `src/game/rundenStart.js`, `public/js/game/rundenStart.js`, `public/spiel.html` Zeile 1449 (Kartenzug-Button).
+- Runde 4, fehlerhaft (Scope dieses Tickets): `public/js/game/rundeVier.js` (nur `null`-Initialwert + Durchreichparameter, siehe oben), `src/game/rundeVier/elementBewegung.js` (Node-Referenz, hat die Logik bereits — dient als Vorlage, nicht als zu änderndes Ziel dieses Tickets, siehe Betroffene Architektur), zwei fehlende Aufrufstellen in `public/spiel.html` (Zeile 1545–1571, Zeile 1653–1671).
+- Reine Lese-/Anzeige-Stellen ohne Änderungsbedarf: `public/spiel.html` Zeile 1297/1312 (Live-Timer-Anzeige `zeitBearbeitungBox`/`aktualisiereZeitanzeigen()`) — diese Anzeige ist bereits rundenunabhängig generisch (`runde.bearbeitungszeitStart`) und beginnt automatisch korrekt zu laufen, sobald das Feld für Runde 4 tatsächlich gesetzt wird; kein separater Fund, sondern derselbe Bug, nur an der Anzeige sichtbar.
+- Test-/Fixture-Stellen ohne Änderungsbedarf: diverse `tests/*.test.js` (seeden `bearbeitungszeitStart` direkt für Testzwecke, unabhängig vom hier behobenen Schreibpfad).
+- `firestore.rules` Zeile 555 (Kommentar), 581 (Create-Regel, prüft nur den `null`-Initialwert bei Rundenstart) — keine Änderung nötig (siehe Pflicht-Code-Verifikation oben).
+
+Keine weiteren Fundstellen.
+
+**Zustands-Check (Pflicht) – Warte-, Leer- und Fehlerfall:**
+- **Wartezustand:** Keiner zusätzlich nötig. Der Schreibvorgang läuft wie beim bestehenden Runde-1-3-Muster als „Fire-and-forget" im Hintergrund (`.catch()` schluckt Fehler bewusst, siehe Kommentar in `rundenStart.js`) — die eigentliche Aktion (Würfel-Erfolg/Städte-Eintrag) ist für die spielende Person bereits sichtbar abgeschlossen, bevor dieser zusätzliche Schreibvorgang überhaupt beginnt.
+- **Leerzustand:** Falls eine Runde-4-Instanz endet, ohne dass jemals ein einziger Würfel-Erfolg oder Städte-Eintrag gelang (praktisch nahezu ausgeschlossen, siehe Pre-Mortem), bleibt `bearbeitungszeitStart` weiterhin `null` und die Kennzahl wird nicht berechnet — identisch zum bereits heute für Runden 1–3 akzeptierten Verhalten, kein neuer Fall, keine neue Fehlermeldung nötig.
+- **Fehlerfall:** Schlägt der zusätzliche Schreibversuch fehl (z. B. weil ein anderer Client fast gleichzeitig bereits denselben Zeitstempel gesetzt hat), ist das laut bestehender Konvention explizit **kein Fehlerfall aus Nutzersicht** — der Zielzustand (irgendein gültiger erster Zeitstempel ist gesetzt) ist so oder so erreicht. Kein neues Fehlerverhalten gegenüber Runden 1–3.
+
+**Akzeptanzkriterien (beobachtbares Verhalten, Alltagssprache):**
+
+1. Sobald in Runde 4 zum allerersten Mal ein Würfel-Erfolg (Wurf über 3) ODER ein Städte-Eintrag passiert — je nachdem, was zuerst eintritt — beginnt sichtbar eine Bearbeitungszeit-Uhr zu laufen, genauso wie es bereits in Runde 1–3 beim ersten Kartenzug passiert.
+2. Bei jedem weiteren Fortschritt in derselben Runde 4 (egal ob weiterer Würfel-Erfolg oder weiterer Städte-Eintrag) bleibt der einmal gesetzte Startzeitpunkt der Bearbeitungszeit unverändert — der erste Zeitstempel gewinnt, es wird nie überschrieben.
+3. Am Ende von Runde 4 zeigt die Auswertung eine echte Bearbeitungszeit (Cycle Time) ungleich „00:00", sofern während der Runde mindestens ein erfolgreicher Fortschritt stattgefunden hat.
+4. Das Verhalten der Runden 1–3 bleibt vollständig unverändert (keine Regression an der dortigen Bearbeitungszeit-Messung).
+5. Zwei Personen, die nahezu zeitgleich ihren jeweils ersten Fortschritt in Runde 4 melden, sehen am Ende beide dieselbe, einmal gültig gesetzte Bearbeitungszeit — es entsteht kein Fehler und kein doppelt gezählter/widersprüchlicher Zeitstempel.
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Race Condition bei (fast) zeitgleichem ersten Fortschritt zweier Personen:** Wer „gewinnt" den ersten Zeitstempel? Gegenmaßnahme: bereits gelöst durch das übernommene Muster — Fall A der Firestore-Regel prüft nur das Resultat, nicht den Vorzustand (siehe Pflicht-Code-Verifikation), ein zweiter/gleichzeitiger Schreibversuch ist ein wirkungsloses No-Op mit identischem Zielzustand, kein Fehler.
+2. **Node-Referenz und Browser-Code laufen erneut auseinander:** Dasselbe Risiko, das bereits bei BUGFIX-009/FEATURE-019 als Pre-Mortem-Risiko dokumentiert wurde — hier sogar der direkte Ursprung dieses Bugs (Feature wurde in `elementBewegung.js` implementiert, aber nie in `rundeVier.js` portiert). Gegenmaßnahme: Diff explizit gegenlesen, im Kopfkommentar von `elementBewegung.js` einen Verweis auf die jetzt bestehende Browser-Umsetzung ergänzen (siehe Betroffene Architektur), auch wenn der Node-Code selbst inhaltlich nicht geändert werden muss.
+3. **Nur einer der beiden Erfolgspfade wird instrumentiert:** Würde der Fix nur im Würfel-Erfolgspfad ODER nur im Städte-Eintrag-Pfad ergänzt, bliebe AK 1 für Spiele verletzt, in denen der jeweils andere Pfad zuerst eintritt (in der Praxis eher selten total, aber nicht ausschliessbar). Gegenmaßnahme: beide Call-Sites in `spiel.html` (Zeile 1545–1571 UND Zeile 1653–1671) im selben Commit ändern.
+4. **Verwechslung mit dem separat parallel laufenden `gibElementWeiter()`-Batch-Write:** Der neue Schreibvorgang läuft bewusst NICHT atomar zusammen mit dem `batch.commit()` aus `gibElementWeiter()` (zwei getrennte Schreibvorgänge auf zwei verschiedene Dokumente mit unterschiedlichen Sicherheitsregeln). Das ist kein neues Risiko, sondern exakt dasselbe, bereits akzeptierte Muster wie bei Runde 1–3 (`bewegeKarte()` + separates `starteBearbeitungszeitFallsNoetig()`).
+5. **Veralteter Client-Snapshot beim Guard:** Der Check `if (!aktuelleRundenDaten.bearbeitungszeitStart)` beruht auf dem lokal zwischengespeicherten Snapshot und könnte durch Netzwerklatenz kurzzeitig veraltet sein. Führt höchstens zu einem zusätzlichen, harmlosen No-Op-Schreibversuch (siehe Risiko 1), nie zu einem falschen oder doppelten Zeitstempel.
+
+**Zusammenspiel bestehender Bausteine (Pflicht):**
+
+- **Berührte Bausteine:** `public/spiel.html` (`schliesseRundeVierWurfAb()`, Städte-Formular-Submit-Handler), `public/js/game/rundenStart.js` (`starteBearbeitungszeitFallsNoetig()`, unverändert wiederverwendet), `public/js/game/rundeVier.js` (`gibElementWeiter()`, `schreibeWuerfelZwischenwurf()` — bleiben in ihrer Kernlogik unverändert), `firestore.rules` (Fall A der `runden/{runde}`-Update-Regel, unverändert).
+- **Reihenfolge:** Person löst Würfel-Erfolg ODER Städte-Eintrag aus → `gibElementWeiter()` schreibt per `batch.commit()` Element + Fortschrittsdokument → **(neu, wie bei Runde 1–3)** im Anschluss prüft der Client `aktuelleRundenDaten.bearbeitungszeitStart` und ruft bei Bedarf `starteBearbeitungszeitFallsNoetig({ code, rundenNummer: 4, ... })` auf → Firestore-Regel Fall A lässt den Schreibvorgang zu, weil `dorAbgeschlossen` zu diesem Zeitpunkt in Runde 4 ohnehin bereits `true` ist (Voraussetzung von `rundeVierKettenfortschrittErlaubt()`) → alle Clients lesen den neuen Zeitstempel über denselben `runden/4`-Snapshot-Listener, der auch die Live-Timer-Anzeige speist.
+- **Kombinationen, die zu einem Fehler führen könnten:** (a) Fix nur an einer der beiden Erfolgs-Callsites (siehe Pre-Mortem-Risiko 3). (b) Ein Guard, der versehentlich gegen ein rundenübergreifendes statt ein rundenspezifisches Feld prüft — ausgeschlossen, da `aktuelleRundenDaten` bereits pro aktuell aktiver Runde neu geladen wird (siehe Pflicht-Code-Verifikation).
+
+**Betroffene Architektur (grob):** Ausschliesslich `public/spiel.html` (zwei Ergänzungen an bereits bestehenden Call-Sites, keine neue Funktion). Keine Änderung an `public/js/game/rundeVier.js`, `public/js/game/rundenStart.js` oder `kennzahlen.js` nötig — alle drei sind bereits generisch genug bzw. rufen nur durch. Keine Änderung an `firestore.rules` nötig (verifiziert: Fall A der `runden/{runde}`-Regel ist bereits rundennummerunabhängig). Optional, rein dokumentarisch: Kopfkommentar von `src/game/rundeVier/elementBewegung.js` um einen Verweis ergänzen, dass die Browser-Umsetzung jetzt über das `rundenStart.js`-Muster erfolgt (kein funktionaler Code-Unterschied zur Node-Referenz, nur ein anderer Aufrufort).
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:**
+- **FEATURE-004 (Runde 4 selbst, In Progress):** Die Kernlogik von `gibElementWeiter()`, `schreibeWuerfelZwischenwurf()` und `starteRundeVier()` darf durch diesen Fix nicht verändert werden — nur ein zusätzlicher, nachgelagerter Aufruf in `spiel.html`. Regressionstest: bestehende 39 Tests in `tests/game-round4.logic.test.js` und 28 Sicherheitsregel-Tests in `tests/game-round4.security.rules.test.js` müssen unverändert grün bleiben.
+- **FEATURE-003 (Kennzahlen-Anzeige/Auswertung):** `berechneKennzahlen()` selbst wird nicht geändert — sie berechnet bereits korrekt, sobald das Feld gesetzt ist. Regressionstest: bestehende Tests in `tests/game-evaluation.logic.test.js` bleiben unverändert grün.
+- **BUGFIX-009/FEATURE-019 (jüngste Änderungen an genau `rundeVier.js`):** Der Fix darf `starteRundeVier()` (Fisher-Yates-Länderziehung), `gibElementWeiter()` und `berechneQualitaetRundeVier()`/`proKarte` (FEATURE-019) nicht anfassen — ausschliesslich die beiden neuen Aufrufstellen in `spiel.html` werden ergänzt. Regressionstest: die dort zuletzt ergänzten 7 BUGFIX-009-Testfälle und die FEATURE-019-`proKarte`-Prüfung bleiben unverändert grün.
+
+**Implementierungsoption (eine Option, Fall ist eindeutig genug):**
+
+- **Option A (empfohlen) – Muster aus `rundenStart.js` 1:1 übertragen:** In `schliesseRundeVierWurfAb()` (nach erfolgreichem `gibElementWeiter()`-Aufruf im Würfel-Erfolgspfad) sowie im Submit-Handler des Städte-Formulars (nach erfolgreichem `gibElementWeiter()`-Aufruf) jeweils denselben Guard + Aufruf ergänzen, den der Kartenzug-Button für Runde 1–3 bereits nutzt (Zeile 1449–1453): `if (!aktuelleRundenDaten.bearbeitungszeitStart) { window.FlowGame.starteBearbeitungszeitFallsNoetig({ code, rundenNummer: aktuelleRundenNummer, bearbeitungszeitBereitsGesetzt: false }, db).catch(...) }`. Keine neue Funktion, keine Regeländerung, minimal-invasiver Diff (zwei Ergänzungen, keine bestehende Zeile verändert).
+- **Kurz geprüfte Alternative (nicht empfohlen):** Den Zeitstempel direkt innerhalb von `gibElementWeiter()` selbst mitschreiben (Batch erweitern). Nachteil: `gibElementWeiter()` schreibt heute ausschliesslich auf `elemente/{elementId}` und `fortschritt/{uid}` — ein zusätzliches Update auf `runden/{runde}` im selben Batch bräuchte entweder einen zusätzlichen Lesezugriff (kennt den aktuellen Wert von `bearbeitungszeitStart` nicht) oder müsste blind mit denselben Fall-A-Feldern schreiben, was `gibElementWeiter()` unnötig mit der DoR-Update-Regel koppeln würde — eine Vermischung zweier bisher sauber getrennter Zuständigkeiten. Der entkoppelte Fire-and-Forget-Ansatz aus `rundenStart.js` ist einfacher, bereits bewährt (Runden 1–3 laufen seit FEATURE-002 damit) und braucht keine neue Kopplung.
+- **Empfehlung:** Option A, ohne Einschränkung — dies ist eine reine Übertragung eines bereits produktiv bewährten Musters, keine neue fachliche Entscheidung.
+
+**Kein Prototyp nötig:** Reine Backend-/Datenlogik-Ergänzung (ein zusätzlicher Hintergrund-Schreibvorgang nach einer bereits bestehenden Aktion) — keine neue Interaktion, kein neues Layout, keine UI/UX-Variante zur Debatte. Die einzige sichtbare Auswirkung (Live-Timer beginnt zu laufen) nutzt eine bereits bestehende, unveränderte Anzeigekomponente.
+
+**Offene Fragen an Stephan:** Keine. Der Fall ist eindeutig: Root Cause ist bereits code-verifiziert, das zu übertragende Muster existiert bereits produktiv für Runden 1–3, und die Firestore-Regel-Prüfung bestätigt, dass keine Regeländerung nötig ist.
+
+**Testplan-Grundgerüst (für `flow-game-bdd`):**
+
+- Given Runde 4 läuft und DoR ist abgeschlossen, When der allererste Würfel-Erfolg (Wurf > 3) eintritt, Then wird `bearbeitungszeitStart` auf dem Rundendokument von `null` auf einen echten Zeitstempel gesetzt (neuer Test).
+- Given Runde 4 läuft und DoR ist abgeschlossen, When der allererste Städte-Eintrag (statt eines Würfel-Erfolgs) zuerst eintritt, Then wird `bearbeitungszeitStart` ebenfalls gesetzt (neuer Test, deckt den zweiten Erfolgspfad separat ab, siehe Pre-Mortem-Risiko 3).
+- Given `bearbeitungszeitStart` ist bereits gesetzt, When ein weiterer Würfel-Erfolg oder Städte-Eintrag passiert, Then bleibt der ursprüngliche Zeitstempel unverändert (neuer Test, AK 2).
+- Given Runde 4 endet mit mindestens einem erfolgten Fortschritt, When die Auswertung berechnet wird, Then ist `bearbeitungszeit` eine Zahl größer 0 (neuer Test, AK 3).
+- Regressionstest: bestehende 39 Tests in `tests/game-round4.logic.test.js` bleiben unverändert grün.
+- Regressionstest: bestehende 28 Sicherheitsregel-Tests in `tests/game-round4.security.rules.test.js` bleiben unverändert grün (keine Regeländerung).
+- Regressionstest: bestehende Tests zu Runde 1–3 (`tests/game-round.logic.test.js`, `tests/game-round.security.rules.test.js`, `tests/game-evaluation.logic.test.js`) bleiben unverändert grün.
+
+---
+
+### BUGFIX-012 Echte, korrekte Städte werden in Runde 4 systematisch als „falsches Land" gewertet
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Erstellt** | 2026-07-27 |
+| **Status** | ToDo |
+
+**Beschreibung:** Im selben Durchlauf wurden zahlreiche tatsächlich korrekte Städte als „wrong country" gewertet, u. a. Roma/Bozen/Turino (Italien), Leeds/Aberdeen/Dover (UK), Leipzig (Deutschland), Nantes/Calais (Frankreich) — alle real existierende, korrekte Städte des jeweils zugeordneten Landes.
+
+**Root Cause (bereits code-verifiziert, nicht vermutet):** `src/game/rundeVier/laenderStaedte.js` prüft Städte nicht gegen echte Geografie, sondern ausschließlich gegen eine bewusst kleine, hart hinterlegte Liste von 5–7 „Großstädten" je Land (`LAENDER_STAEDTE`, insgesamt 8 Länder × 5–7 Einträge). Jede reale, korrekte Stadt außerhalb dieser kuratierten Liste wird zwangsläufig als „falsches Land" gewertet, unabhängig davon, ob sie tatsächlich in dem betreffenden Land liegt. Das ist keine Logikpanne (der Code tut exakt, was er soll), sondern eine strukturelle Grenze der ursprünglich als Implementierungsdetail getroffenen Entscheidung (Kopfkommentar der Datei: „Implementierungsdetail-Festlegung dieser Phase"). Da Spielende in der Praxis naheliegenderweise viele reale Städte kennen, die nicht in der kuratierten Liste stehen, tritt dieses Verhalten voraussichtlich in **jedem** echten Spiel mit einigermaßen geografiekundigen Personen auf, nicht nur als Randfall — es untergräbt damit unmittelbar den von Stephan gewünschten Lerneffekt (siehe FEATURE-004-Beschreibung: Qualität soll echte, kontextwechselbedingte Fehler zeigen, keine Artefakte einer unvollständigen Referenzliste).
+
+**User Story:** Als Spielender, möchte ich, dass jede real korrekte Stadt auch als korrekt erkannt wird, sodass die Qualitäts-Kennzahl echte Fehler misst statt Lücken in einer Städteliste.
+
+**Kontext/Verweise:** Blockiert FEATURE-004 Gate 3 — höhere Priorität als ein gewöhnlicher Anzeigefehler, weil die Qualitäts-Kennzahl die zentrale Lernkennzahl der Runde ist (siehe bereits in der FEATURE-004-Spec, Pre-Mortem-Risiko 4, als „leicht manipulierbar/verfälschbar, wenn Prüfung nicht robust ist" vorgezeichnet).
+
+**Scope-Entscheidung (Stephan, 2026-07-27):** Städte sollen künftig anhand einer **Live-Liste** verifiziert werden (echte, umfassende Referenzdaten statt einer kleinen, fest hinterlegten Liste), und zwar **mehrsprachig** — mindestens Landessprache, Deutsch und Englisch (z. B. „Rom"/„Roma"/„Rome" alle als dieselbe Stadt erkennbar). Damit ist die Grundsatzfrage entschieden: kein bloßes Erweitern der bestehenden hartcodierten Liste, sondern ein grundsätzlich anderer Prüfansatz mit externer/umfangreicherer Datenquelle. Details (welche konkrete Datenquelle, wie „live" technisch umgesetzt wird — z. B. Abruf zur Laufzeit vs. große, eingebettete Referenzdatei, Vereinbarkeit mit der bisherigen Architekturlinie „keine Cloud Functions/Spark-Tarif", siehe Product.md §10) sind Teil der anstehenden Analysephase, nicht bereits hier vorweggenommen.
 
 ---
 
@@ -1047,93 +1661,6 @@ Bekannte, in dieser Sandbox nicht ausführbare Suiten (Firestore-Emulator nötig
 **Status NICHT auf Done gesetzt** — das ist Gate 3, das Stephan nach Vorlage des Ergebnisses vorbehalten bleibt (u. a. muss FEATURE-004 Gate 3 laut obigem Regressionshinweis mit einem frischen Mehrpersonen-Durchlauf wiederholt werden).
 
 ---
-
-### FEATURE-016 Name und Rolle der eigenen Person durchgängig auf jeder Spielseite sichtbar
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Feature |
-| **Priorität** | Mittel |
-| **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
-
-**Beschreibung:** Aktuell ist nicht auf jedem Bildschirm im Spiel durchgängig sichtbar, mit welchem Namen und welcher Rolle man selbst gerade angemeldet ist. Betrifft alle Ansichten (Lobby, laufende Runde, Auswertung), nicht nur einen einzelnen Screen.
-
-**User Story:** Als Spielender, möchte ich auf jeder Seite im Spiel meinen eigenen Namen und meine Rolle sehen, sodass ich jederzeit sicher bin, als wer ich gerade angemeldet bin.
-
-**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Abzugrenzen von BUGFIX-003c (dort geht es um die Namen ÜBER den Stationsspalten in Runde 1–3, hier um die eigene Identität durchgängig auf jeder Seite, unabhängig von Runde/Ansicht).
-
----
-
-### BUGFIX-010 Würfelanzeige in Runde 4: kein echter grafischer Würfel, Ergebnis vor neuem Versuch nicht sichtbar
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Bug |
-| **Priorität** | Mittel |
-| **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
-
-**Beschreibung:** FEATURE-004s Akzeptanzkriterium 10 verlangt eine „kurze Wurf-Animation" analog zur `RollButton`-Komponente aus CatTube. Im echten Test (2026-07-27) wirkte die Anzeige nicht wie ein echter grafischer Würfel, und das Ergebnis eines nicht ausreichenden Wurfs (≤3) war nicht klar sichtbar, bevor der nächste Wurfversuch gestartet werden konnte.
-
-**User Story:** Als Spielender, möchte ich einen erkennbaren Würfel sehen und das Ergebnis eines Wurfs deutlich erkennen können, bevor ich erneut würfle, sodass nachvollziehbar ist, warum ein weiterer Versuch nötig ist.
-
-**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Betrifft die bestehende Würfel-Umsetzung aus FEATURE-004 (AK 10), kein neuer Mechanismus.
-
----
-
-### FEATURE-017 Warteschlangen-Anzeige in Runde 4 auf tatsächlich bei mir wartende Elemente begrenzen
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Feature |
-| **Priorität** | Mittel |
-| **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
-
-**Beschreibung:** Im echten Test (2026-07-27) zeigte die Warteschlangen-Ansicht alle sechs Länderkarten und alle sechs Würfel mit dem Hinweis „waiting until it reaches you" an, auch für Elemente, die noch gar nicht bei dieser Person angekommen sind. Als Spielender ist dadurch nicht erkennbar, was konkret gerade bei der eigenen Station liegt und was nur theoretisch später ankommen könnte.
-
-**User Story:** Als Spielender, möchte ich in der Warteschlangen-Ansicht nur die Elemente sehen, die tatsächlich schon bei mir angekommen sind und auf Bearbeitung warten, sodass ich nicht zwischen echten und rein theoretisch zukünftigen Elementen unterscheiden muss.
-
-**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. **Wichtiger Klärungsbedarf für die Analysephase:** FEATURE-004s eigene Spec hält ausdrücklich fest, dass Verwirrung/Unübersichtlichkeit beim Nachverfolgen „was habe ich, was kommt als Nächstes" gewollte spielerische Friktion ist, kein zu behebendes UX-Problem (Zitat Stephan: „Verwirrung und Irritationen sind erwünscht, da sie die Realität widerspiegeln."). Vor der Umsetzung muss geklärt werden, ob dieser Beobachtungspunkt eine Verfeinerung des ursprünglichen Wunsches ist (nur die eigene, tatsächlich wartende Warteschlange zeigen, aber weiterhin ohne Vorschau/Führung) oder ob er der ursprünglichen Design-Entscheidung inhaltlich widerspricht.
-
----
-
-### FEATURE-018 Spiel auch ohne separaten Gastgeber spielbar (Host kann mitspielen)
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Feature |
-| **Priorität** | Mittel |
-| **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
-
-**Beschreibung:** Aktuell braucht jedes Spiel einen separaten Host, der nicht gleichzeitig eine Spielstation besetzt. Gewünscht: Der Host soll wahlweise auch selbst als Spielender teilnehmen können, statt zwingend eine eigenständige, nicht-spielende Rolle zu sein. Falls der Host gleichzeitig mitspielt, sollen die Rundenergebnisse automatisch direkt nach jeder Runde für alle sichtbar freigegeben werden, statt auf eine bewusste Freigabe-Aktion des Hosts zu warten (da diese Person ja gerade selbst mitspielt und nicht separat moderiert).
-
-**User Story:** Als Gruppe ohne separate moderierende Person, möchten wir das Spiel auch mit einem mitspielenden Gastgeber durchführen können, sodass wir keine zusätzliche, nicht mitspielende Person brauchen.
-
-**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Betrifft das bestehende Freigabe-Muster `ergebnisseFreigegeben` (Host-only, FEATURE-003) sowie die Rollenzuweisung aus FEATURE-001 — vor einer Analyse zu klären, wie sich „Host spielt mit" mit der bestehenden Host-Erkennung (`istHost()`) und der Stationszuweisung verträgt.
-
----
-
-### FEATURE-019 Qualitätsauswertung zeigt Details (welche Stadt, welches Land, warum falsch)
-
-| Feld | Wert |
-|------|------|
-| **Typ** | Feature |
-| **Priorität** | Hoch |
-| **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
-
-**Beschreibung:** Die Qualitätsauswertung aus FEATURE-004 (AK 16) zeigt aktuell nur aggregierte Zahlen (z. B. „14/30 korrekt", „12× falsches Land", „7× Dublette"), aber nicht, welche konkreten Städte-Einträge betroffen waren und warum genau sie als fehlerhaft gewertet wurden. Ohne diese Detailanzeige bleibt der eigentliche Lerneffekt der Runde (siehe FEATURE-004-Beschreibung: „Viel Kontextsprung führt zu niedrigen Qualität durch Fehler... das gilt es zu lernen") abstrakt und nicht konkret nachvollziehbar.
-
-**User Story:** Als Spielender, möchte ich nach der Runde sehen, welche konkreten Einträge falsch waren und warum (falsches Land vs. Dublette), sodass die Gruppe den Zusammenhang zwischen Kontextwechsel und Fehlern konkret nachvollziehen kann, statt nur eine abstrakte Zahl zu sehen.
-
-**Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Eng verwandt mit FEATURE-004 selbst (AK 15/16) — vor einer Analyse zu klären, ob dies als Erweiterung von FEATURE-004 vor dessen Done-Setzung mit aufgenommen wird, oder als eigenständiges Folgeticket danach.
-
----
-
-## ✅ Done
 
 ### FEATURE-006 Mehrsprachigkeit (Deutsch/Englisch)
 
