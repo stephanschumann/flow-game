@@ -539,6 +539,19 @@ service cloud.firestore {
         // Aktivität, ab FEATURE-002). Niemand darf sich per Update nachträglich
         // selbst zum Host machen – das geht ausschliesslich über "create" mit
         // Nachweis der hostKennung.
+        //
+        // BUGFIX-005 (2026-07-28, Freigabe-Entscheidung 1 / Option B, serverseitige
+        // Härtung): geprüft und bestätigt (siehe tests/game-host-claim-overwrite.
+        // security.rules.test.js), dass `request.resource.data.rolle ==
+        // resource.data.rolle` bereits ausreicht, um genau die in Option B
+        // geforderte Härtung abzudecken – ein restoreHostSession()-typischer
+        // `.set(data, {merge:true})`-Schreibvorgang auf ein BEREITS BESTEHENDES
+        // Dokument zählt für die Regelauswertung als "update" (nicht "create") und
+        // wird deshalb bereits heute abgelehnt, sobald er die Rolle ändern würde
+        // (z. B. ein bereits bestehendes rolle='spielende'-Dokument auf 'host'
+        // umschreiben). Der reguläre FEATURE-001-Reload-Fall (rolle bleibt 'host')
+        // bleibt davon unberührt und weiterhin erlaubt. Keine Regeländerung nötig
+        // – dieser Kommentar dokumentiert die Verifikation für zukünftige Leser.
         allow update: if request.auth != null
           && uid == request.auth.uid
           && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)

@@ -12,6 +12,8 @@
     "test:emulator:feature-004": "firebase emulators:exec --only firestore \"jest tests/game-round4.security.rules.test.js tests/game-round4.logic.test.js\"",
     "test:emulator:feature-005": "firebase emulators:exec --only firestore \"jest tests/game-rejoin.logic.test.js\"",
     "test:static:feature-005": "jest tests/game-connection-status.logic.test.js tests/game-a11y-static.test.js tests/game-feature-005-manual-checks.test.js",
+    "test:emulator:bugfix-005": "firebase emulators:exec --only firestore \"jest tests/game-host-claim-overwrite.security.rules.test.js\"",
+    "test:static:bugfix-005": "jest tests/game-join-precedence.static.test.js tests/game-host-claim-overwrite.logic.test.js",
     "test:emulator:feature-006": "firebase emulators:exec --only firestore \"jest tests/game-i18n.security.rules.test.js tests/game-i18n.logic.test.js\"",
     "test:static:feature-006": "jest tests/game-i18n.manual-checks.test.js",
     "test:static:bugfix-002": "jest tests/game-form-loading-state.static.test.js",

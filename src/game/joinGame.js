@@ -21,6 +21,21 @@
  * Nachricht bleibt als `message` erhalten (z. B. für Logs), die eigentliche
  * Übersetzung für die Anzeige passiert ausschliesslich an der Anzeigestelle
  * über `err.code`, nie hier in der Logik.
+ *
+ * BUGFIX-005 (2026-07-28, AK6, Freigabe-Entscheidung 1 / Option A): Ein
+ * bereits bestehendes teilnehmende/{uid}-Dokument mit rolle='host' stammt
+ * NIE aus einem bewussten Beitritt über dieses Formular (joinGame() vergibt
+ * nur 'spielende'/'beobachtende'/'stationenVoll') – es kann ausschliesslich
+ * durch den automatischen Hintergrund-Wiederherstellungsversuch
+ * (restoreHostSession(), z. B. aus einem anderen, denselben localStorage/
+ * dieselbe anonyme uid teilenden Browser-Tab) entstanden sein. Eine bewusste,
+ * gerade jetzt verarbeitete Beitritts-Handlung gewinnt deshalb IMMER gegen
+ * ein solches Dokument: die bestehende Idempotenz-Kurzschluss-Rückgabe unten
+ * (teilnehmerSnap.exists) greift nur noch, wenn die vorhandene Rolle NICHT
+ * 'host' ist – ein 'host'-Dokument wird stattdessen wie ein noch nicht
+ * existierendes Dokument behandelt und durch die reguläre Stationsvergabe
+ * ersetzt. Die bereits bestehende FEATURE-002/FEATURE-005-Idempotenz für
+ * spielende/beobachtende Dokumente bleibt davon unberührt.
  */
 
 const { STATIONEN } = require('./createGame');
@@ -123,7 +138,13 @@ async function joinGame({ code, anzeigename, rolle, uid }, db, retryOptionen = {
     // teilnehmerRef als Teil ihres Lese-Sets, deshalb wird die zweite
     // Transaktion automatisch neu ausgeführt, sobald die erste committet hat,
     // und sieht dann teilnehmerSnap.exists === true.
-    if (teilnehmerSnap.exists) {
+    //
+    // BUGFIX-005 (AK6): ein bestehendes Dokument mit rolle='host' stammt nie
+    // von einem bewussten Beitritt (siehe Datei-Kommentar oben) – die
+    // Idempotenz-Kurzschluss-Rückgabe gilt deshalb NICHT für rolle='host',
+    // damit eine bewusste Beitritts-Handlung immer gegen einen automatischen
+    // Host-Wiederherstellungsversuch gewinnt.
+    if (teilnehmerSnap.exists && teilnehmerSnap.data().rolle !== 'host') {
       const vorhandeneDaten = teilnehmerSnap.data();
       return {
         id: uid,

@@ -13,6 +13,12 @@
  * eingebunden sein) abgesichert; alle anderen Fehler (ungültiger Code,
  * Rolle, Stationen belegt, Spiel inaktiv) werden davon unverändert und ohne
  * Verzögerung durchgereicht.
+ *
+ * BUGFIX-005 (2026-07-28, AK6, Freigabe-Entscheidung 1 / Option A): Ein
+ * bereits bestehendes teilnehmende/{uid}-Dokument mit rolle='host' stammt nie
+ * aus einem bewussten Beitritt über dieses Formular – siehe
+ * src/game/joinGame.js für die ausführliche Begründung (beide Dateien
+ * synchron halten).
  */
 (function (global) {
   'use strict';
@@ -103,7 +109,12 @@
       // keine neue Station vergeben, kein Überschreiben. Idempotent für beide
       // Rollen, auch race-safe bei fast gleichzeitigen Doppelaufrufen (siehe
       // src/game/joinGame.js für den ausführlichen Kommentar).
-      if (teilnehmerSnap.exists) {
+      //
+      // BUGFIX-005 (AK6): gilt NICHT für rolle='host' - ein solches Dokument
+      // stammt nie aus einem bewussten Beitritt (siehe Datei-Kommentar oben);
+      // eine bewusste Beitritts-Handlung gewinnt immer gegen einen
+      // automatischen Host-Wiederherstellungsversuch.
+      if (teilnehmerSnap.exists && teilnehmerSnap.data().rolle !== 'host') {
         const vorhandeneDaten = teilnehmerSnap.data();
         return {
           id: uid,

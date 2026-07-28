@@ -2200,10 +2200,38 @@
             { code: letztesSpiel, hostSessionKennung, uid: user.uid },
             db
           );
-          zeigeLobby(db, ergebnis.spielCode, 'hostSchlicht', 'host');
-          return;
+          // BUGFIX-005 (AK1/AK2/AK6): restoreHostSession() selbst weigert sich
+          // bereits, ein bereits bestehendes, andersrolliges Dokument zu
+          // überschreiben (siehe src/game/hostSession.js) - dieser Aufruf hier
+          // wirft in diesem Fall bereits, landet also im catch-Zweig unten.
+          // Zusätzliche Absicherung GENAU an dieser Stelle: da localStorage
+          // (und damit die anonyme Auth-uid) origin-weit über ALLE Tabs
+          // desselben Browsers geteilt wird, kann zwischen dem Schreiben oben
+          // und der Anzeige hier ein zwischenzeitlich in einem ANDEREN Tab
+          // bewusst abgeschlossener Beitritt (joinGame(), derselbe Code,
+          // dieselbe uid) das Dokument bereits wieder auf eine andere Rolle
+          // gesetzt haben. Statt dem eigenen Schreibergebnis blind zu
+          // vertrauen, wird der aktuelle Dokumentzustand deshalb hier noch
+          // einmal frisch gelesen - eine bewusste Handlung gewinnt so auch
+          // gegenüber der ANZEIGE, nicht nur gegenüber dem Firestore-Dokument
+          // selbst (AK6: "gewinnt niemals der unsichtbare Hintergrundvorgang
+          // gegen die sichtbare, bewusst ausgelöste Handlung").
+          const aktuellerTeilnehmerStand = await db
+            .collection('spiele')
+            .doc(ergebnis.spielCode)
+            .collection('teilnehmende')
+            .doc(user.uid)
+            .get();
+          if (aktuellerTeilnehmerStand.exists && aktuellerTeilnehmerStand.data().rolle === 'host') {
+            zeigeLobby(db, ergebnis.spielCode, 'hostSchlicht', 'host');
+            return;
+          }
+          // Rolle wurde inzwischen bewusst auf etwas anderes gesetzt (anderer
+          // Tab) - normal weiter zur Start-Auswahl statt der veralteten
+          // Host-Ansicht.
         } catch (err) {
-          // Kennung nicht mehr gültig – normal weiter zur Start-Auswahl.
+          // Kennung nicht mehr gültig, oder BUGFIX-005: Rolle bereits
+          // anderweitig vergeben – normal weiter zur Start-Auswahl.
         }
       }
     }

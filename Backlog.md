@@ -654,8 +654,9 @@ Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Än
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-21 |
+| **Done seit** | 2026-07-28 |
 
 **Beschreibung:** Die Landingpage (Startseite vor Spielerstellung/-beitritt) erklärt das Spiel inhaltlich nicht. Es fehlen: Zweck und Lernziel des Spiels, Kontext/Mehrwert für die Spielenden, die zugrundeliegende Theorie (Lean-/Flow-Prinzipien), die benötigte Spieleranzahl sowie ein grober Überblick über den Spielablauf.
 
@@ -918,7 +919,17 @@ Verwendet die i18n-Schlüsselnamen und Element-IDs aus der BDD-Phase oben (`star
 2. Release (`flow-game-release`) — noch nicht erfolgt, siehe Release-vor-Done-Gate.
 3. Nach dem Release: Stephans eigene lokale/Live-Prüfung (visueller Eindruck, Cross-Device-Sprachtest) gemäß Testplan-Grundgerüst.
 
-**Status:** Ticket bleibt bewusst auf „In Progress" — Status-Änderung auf Done ist Gate 3 und dem Hauptthread/Stephan vorbehalten, zusätzlich blockiert durch das ausstehende Release. Mit dem grünen Emulator-Testlauf ist die vollständige automatisierte Testabdeckung jetzt bestätigt (18/18 neue Tests, 182/184 Nicht-Emulator-Regression mit 2 ticketfremden Netzwerk-Ausnahmen, 19/19 Emulator-Tests) — einziger verbleibender Blocker vor Done ist der Release.
+**Release durchgeführt (flow-game-release, 2026-07-28):** Implementierung lokal bei Stephan gemergt (Fast-Forward `78523bd` → `65139c8`, alle fünf ticketeigenen Dateien wie erwartet). Backlog.md-Sync-Check (Schritt 0) deckte dabei einen Daten-Drift zwischen lokaler und Cloud-Backlog.md auf (fehlender Gate-3-Abschluss-Abschnitt zu FEATURE-004 sowie die beiden Tickets BUGFIX-011/BUGFIX-012, die nur lokal existierten) — auf Stephans Entscheidung hin in dieses Cloud-Dokument nachgetragen, kein Inhalt verloren. Beifang-Prüfung: unstaged Backlog.md-Änderung sowie `tools/`-Unterordner waren nicht Teil dieses Tickets; Backlog.md wurde bewusst mitgenommen (der Sync-Nachtrag gehört zum Release), `tools/` blieb unangetastet. Release-Commit `0d5ee81` ("Backlog: FEATURE-007 Status/Spec aktualisiert, FEATURE-004 Gate-3-Abschluss + BUGFIX-011/012 aus lokalem Stand nachgetragen") enthielt sowohl den Code-Commit `65139c8` als auch den Backlog-Sync und wurde von Stephan gepusht (`78523bd..0d5ee81` auf `main`).
+
+**GitHub Actions verifiziert (Chrome-Subagent):** Lauf „Deploy to Firebase Hosting on merge" für Commit `0d5ee81` — grün, 38s.
+
+**Live-Ergebnis verifiziert (Chrome-Subagent, `https://flow-game-19f01.web.app`):** Alle drei neuen Panels sichtbar mit exakt dem freigegebenen Wortlaut ("Warum dieses Spiel?" im Teaser-Ton, "Wie viele Personen braucht ihr?" mit „fünf"/„Host", "Wie läuft es ab?" mit „vier kurze Runden"/korrekt abweichender Schlussrunde). CTA-Knopf „Spiel erstellen oder beitreten" weiterhin vor allen Panels positioniert. Alte Entwicklerhinweis-Texte vollständig verschwunden. Sprachumschalter wechselt auch die drei neuen Panels korrekt zwischen Deutsch und Englisch. Keine JavaScript-Konsolenfehler der App. Firestore-Regeln-Deploy nicht erforderlich (`firestore.rules` nicht Teil dieses Release-Commits).
+
+**Damit ist das Release-vor-Done-Gate erfüllt.** FEATURE-007 betrifft keine Mehrspieler-/Berechtigungs-/Timing-Logik (reine Startseiten-Textänderung ohne Spiellogik-Berührung) — die Gate-3-Ausnahme „echter Mehrpersonen-Test" greift hier nicht.
+
+**Gate 3 – Done-Bestätigung (Stephan, 2026-07-28):** „fertig". Damit ist FEATURE-007 abgeschlossen: Release durchgeführt und live verifiziert, automatisierte Testabdeckung vollständig (18/18 neue Tests, 182/184 Nicht-Emulator-Regression mit 2 ticketfremden Netzwerk-Ausnahmen, 19/19 Emulator-Tests), kein Mehrpersonen-Test erforderlich (keine Mehrspieler-/Berechtigungs-/Timing-Logik betroffen).
+
+**Status:** Done.
 
 
 ---
@@ -1035,14 +1046,213 @@ Verwendet die i18n-Schlüsselnamen und Element-IDs aus der BDD-Phase oben (`star
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Hoch |
-| **Status** | ToDo |
+| **Status** | In Progress |
 | **Erstellt** | 2026-07-23 |
+| **In Progress seit** | 2026-07-28 |
 
 **Beschreibung:** Beim Beitreten über den Spiel-Code bekommt eine neu beitretende Person manchmal (in 2 von 3 getesteten Spielen, 3x reproduziert) fälschlich die Gastgeber-Rolle und dieselbe Beobachter-Ansicht wie der echte Host, statt einer eigenen Spielstation zugewiesen zu werden. Auslöser unklar (evtl. abhängig von wiederholter Nutzung desselben Browsers — das war die Testmethode, echte Nutzende auf eigenen Geräten wurden nicht geprüft). Das ist der Kern-Mechanismus des Spiels — macht die Gruppe im schlimmsten Fall handlungsunfähig.
 
 **User Story:** Als beitretende Person möchte ich beim Beitreten über den Code zuverlässig meine eigene Spielstation zugewiesen bekommen, sodass die Gruppe verlässlich starten kann.
 
-**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+**Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23 (Projekt-Doc `claude/Erstnutzer-Test-Bericht-2026-07-23.md`), Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+#### Analyse-Spec (2026-07-28)
+
+**Wichtige Einschränkung dieser Analyse (bitte vor allem Weiteren lesen):** Diese Analyse-Session hatte **keinen Zugriff auf das echte Repo** (kein Git-Klon in dieser Sandbox verfügbar, anders als bei früheren Analysen z. B. zu BUGFIX-003/TASK-003). Alle unten genannten Code-Fundstellen, Zeilennummern und Funktionsnamen sind **Zitate aus bereits früher code-verifizierten Analysen** in diesem Backlog (insbesondere TASK-003, 2026-07-21, gegen Commit `1c4c4af`, sowie FEATURE-005/FEATURE-001), **nicht eigenständig in dieser Session gegen den aktuellen Code nachgeprüft**. Seit Commit `1c4c4af` sind zahlreiche weitere Commits gelandet (BUGFIX-002, FEATURE-004, FEATURE-006, BUGFIX-008/009/011/019 u. a.), die `public/spiel.html` und ggf. `hostSession.js` verändert haben könnten — Zeilennummern haben sich mit hoher Wahrscheinlichkeit verschoben. **Deshalb gilt als zwingender erster Schritt der Implementierungsphase (`flow-game-impl`):** frischer Klon des Repos, echte Nachprüfung der unten formulierten Root-Cause-Hypothese gegen den aktuellen Code (Abschnitt 2b des `flow-game-analyze`-Skills, hier aus Umgebungsgründen nicht selbst leistbar), bevor irgendeine Codeänderung vorgenommen wird.
+
+**Ausgangslage / Brainstorming & Example Mapping:**
+
+**Was aus früheren, code-verifizierten Analysen bereits bekannt ist (zitiert, nicht in dieser Session neu geprüft):**
+
+- `public/spiel.html`, `init()` (zuletzt bekannt bei Zeile ~1599-1699, Stand Commit `1c4c4af`) läuft bei jedem Laden der Spielseite unmittelbar nach `auth.signInAnonymously()`. Dabei liest `init()` u. a. `localStorage['flowGameLetztesSpiel']`, um automatisch zu entscheiden, ob die aktuelle Person als wiederkehrender Host in ein früheres Spiel zurückgeführt werden soll (`restoreHostSession()`, `hostSession.js`, FEATURE-001).
+- **Der Host-Wiederherstellungs-Mechanismus ist bereits als geheimnisbasiert, nicht UID-gebunden dokumentiert** (`speichereHostSession()`/`geladeneHostSession()`, `public/spiel.html` Zeile ~449-454: schreiben/lesen `localStorage['flowGameHost:'+code]` und `localStorage['flowGameLetztesSpiel']` — gewöhnliches `window.localStorage`, **origin-weit über alle Tabs und alle Ladevorgänge desselben Browsers hinweg geteilt**, unabhängig von Firebase-Auth-Zuständen). `restoreHostSession()` (`hostSession.js`) schreibt per `.set()` auf `spiele/{code}/teilnehmende/{uid}` mit `rolle: 'host'`, sofern das mitgeschickte Geheimnis zum serverseitig hinterlegten `spiele/{code}/geheim/kennung` passt — **unabhängig davon, welche `uid` das ist und unabhängig vom bisherigen Inhalt des Zieldokuments.**
+- **Bereits in der TASK-003-Analyse (2026-07-21) explizit als Gefahr benannt, aber dort nur im Kontext von Entwickler-Mehrfach-Tabs betrachtet, nicht als eigenständiger Nutzer-Bug verfolgt:** Zitat aus dieser früheren, code-geprüften Analyse — „findet `init()` trotzdem `localStorage['flowGameLetztesSpiel']` (geteilt) und versucht automatisch, sich selbst per `restoreHostSession()` zum Host zu machen (und würde … damit sogar erfolgreich, weil geheimnisbasiert!). Ein Entwickler, der Tab 2 bewusst als 'Station 2' öffnen wollte, bekäme also nicht Station 2, sondern würde den Host-Tab duplizieren.“ Das beschreibt exakt das in BUGFIX-005 beobachtete Symptom — nur damals als hypothetisches Entwickler-Testrisiko eingeordnet, hier jetzt als real beim Live-Test aufgetretener Bug.
+- `joinGame()` (`src/game/joinGame.js`/`public/js/game/joinGame.js`) ist seit dem FEATURE-002-Bugfix bereits pro-`uid` idempotent, aber **kennt den Host-Wiederherstellungspfad nicht** und hat keine Absicherung dagegen, dass ein anderer, paralleler Schreibvorgang (`restoreHostSession()`s `.set()`) dasselbe Dokument (`teilnehmende/{uid}`) kurz vorher oder kurz danach überschreibt.
+- Die Erstnutzer-Test-Beobachtung passt strukturell zu dieser bekannten Schwachstelle: „Bei einem ersten Testspiel trat der Fehler nicht auf“ (in einem frischen Browser existierte noch kein `flowGameHost:*`/`flowGameLetztesSpiel`-Eintrag) — bei den beiden folgenden Testspielen im selben Browser (in dem zuvor bereits mindestens einmal ein Spiel als Host erstellt oder besucht worden war) trat der Fehler auf.
+
+**Root-Cause-Hypothese (nicht in dieser Session am Code verifiziert — siehe Einschränkung oben; zwei plausible, einander nicht ausschließende Mechanismen, die exakt zum selben Symptom führen):**
+
+1. **Vorrang-/Präzedenz-Fehler:** `init()` prüft den Host-Wiederherstellungspfad, sobald `localStorage['flowGameLetztesSpiel']` vorhanden ist — unabhängig davon, ob die Person auf derselben Seite gerade einen abweichenden, neuen Beitritts-Code eintippt/abschickt. Ist ein Host-Geheimnis aus einem früheren, völlig anderen Spiel im selben Browser noch vorhanden, „gewinnt“ der automatische Wiederherstellungsversuch, bevor der bewusste Beitrittsversuch überhaupt verarbeitet wird — die Person landet in der Beobachter-Ansicht des ALTEN Spiels, nicht im neuen, tatsächlich eingegebenen.
+2. **Wettlauf zweier gleichzeitiger Schreibvorgänge (Race Condition):** Der automatische Hintergrund-Wiederherstellungsversuch (ausgelöst beim Laden der Seite) und der bewusste, vom Formular ausgelöste `joinGame()`-Aufruf schreiben beide auf dasselbe Firestore-Dokument `teilnehmende/{uid}`. Da `restoreHostSession()` per `.set()` unconditioned schreibt, gewinnt schlicht, welcher der beiden Schreibvorgänge zuletzt beim Server ankommt — unabhängig davon, was die Person tatsächlich zuletzt bewusst getan hat.
+
+Beide Mechanismen erklären gleichermaßen, warum der Fehler **„manchmal“** auftrat (zeitfensterabhängig) und warum das erste Testspiel im frischen Browser fehlerfrei war (noch kein störendes `localStorage`-Relikt vorhanden). Welcher der beiden Mechanismen (oder beide gemeinsam) tatsächlich zutrifft, muss die Implementierungsphase am echten, aktuellen Code klären, bevor der Fix geschrieben wird.
+
+**Durchgespielte Beispiele:**
+
+- Person A erstellt in Browser X ein Spiel als Host (Code `AAAA1111`) — Browser X speichert jetzt `flowGameHost:AAAA1111` + `flowGameLetztesSpiel=AAAA1111`. Später, im selben Browser X, tippt Person A (oder eine andere Person an demselben Rechner) einen abweichenden, gültigen Code `BBBB2222` eines fremden, neuen Spiels ins Beitreten-Formular und klickt „Beitreten“, mit neuem eindeutigem Namen → nach der Root-Cause-Hypothese oben würde die Person NICHT der neuen Station in Spiel `BBBB2222` zugewiesen, sondern (teilweise oder vollständig) automatisch als Host in das alte Spiel `AAAA1111` zurückgeführt bzw. ihr `teilnehmende/{uid}`-Dokument nachträglich auf `rolle: 'host'` überschrieben — exakt das im Testbericht beschriebene Symptom.
+- Derselbe Ablauf in einem komplett frischen Browser ohne jede vorherige Host-Erfahrung → kein `flowGameLetztesSpiel`-Eintrag vorhanden, kein automatischer Wiederherstellungsversuch, Beitritt funktioniert wie erwartet — deckt sich mit „beim allerersten Testspiel trat der Fehler nicht auf“.
+- Der echte Host lädt seine eigene, tatsächlich noch laufende Spielseite neu (die für ihn korrekte, bestehende FEATURE-001-Funktionalität) → muss weiterhin wie bisher funktionieren, dieses Ticket darf diesen Fall nicht verändern.
+- Eine bereits beigetretene Person (Spielende/Beobachtende) lädt ihre eigene Seite neu (FEATURE-005, uid-gebundenes Wiederbetreten) → muss ebenfalls weiterhin unverändert funktionieren.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe „Offene Fragen an Stephan“ unten): ob eine zusätzliche serverseitige Absicherung (Firestore-Regel-Härtung, siehe Option A unten) Teil des Scopes sein soll, oder ob eine rein clientseitige Sequenz-Korrektur als ausreichend gilt; ob dieses Ticket vor FEATURE-011 (Gastgeber-Rolle manuell zurückerlangen) umgesetzt werden soll, da beide denselben Mechanismus berühren.
+
+---
+
+**Annahmen-Protokoll (Schritt 2a):**
+
+- 🔴 **Funktional kritisch, an Stephan:** Soll eine serverseitige Härtung in `firestore.rules` (zusätzliche Absicherung, dass ein Host-Claim-Schreibvorgang niemals ein bereits bestehendes, andersrolliges `teilnehmende/{uid}`-Dokument überschreiben darf) Teil des Scopes dieses Bugfix-Tickets sein, oder rein clientseitige Sequenz-Korrektur? Siehe Implementierungsoptionen/offene Frage 1.
+- 🔴 **Funktional kritisch, an Stephan:** Soll dieses Ticket vor FEATURE-011 umgesetzt werden (Empfehlung: ja, siehe offene Frage 3)?
+- ⚪ **Konventionell, Default angenommen:** Der Fix betrifft ausschließlich den client-seitigen Ablauf beim Laden von `spiel.html` (Reihenfolge/Bedingtheit der Wiederherstellungs- und Beitritts-Pfade) sowie ggf. die betroffenen Session-Hilfsdateien — **kein** neues Datenfeld im Firestore-Datenmodell. ⚠️ Annahme: bitte bestätigen.
+- ✅ **Klar ableitbar aus `Product.md` §3:** Die Rollenzuordnung (genau ein Host, mindestens fünf Spielende mit eigener Station, optional Beobachtende) ist die bestehende, unveränderte Sollregel — dieses Ticket stellt nur sicher, dass die technische Umsetzung dieser Regel beim Beitreten zuverlässig eingehalten wird, keine neue Regel.
+
+---
+
+**Fundstellen-Sweep (Schritt 2d):** In dieser Sandbox ohne Repo-Zugriff nicht per echtem Grep durchführbar (dokumentierte Einschränkung, siehe oben). Basierend auf den bereits an anderer Stelle im Backlog zitierten, früher code-verifizierten Fundstellen sind mindestens folgende Stellen mit derselben zugrunde liegenden Ursache befasst und müssen im ersten Implementierungsschritt (frischer Code-Read) erneut geprüft werden: `public/spiel.html` (`init()`-Ablauf), `public/js/game/hostSession.js` + `src/game/hostSession.js` (`restoreHostSession()`), `public/js/game/joinGame.js` + `src/game/joinGame.js` (`joinGame()`), `public/js/game/teilnehmerSession.js` + `src/game/teilnehmerSession.js` (`restoreTeilnehmerSession()`, angrenzend betroffen, da im selben `init()`-Entscheidungsbaum). Keine weiteren Fundstellen aus den vorliegenden Ticket-Zitaten erkennbar — eine über diese vier Funktionspaare hinausgehende Suche ist explizit Teil des Pflicht-Code-Reads in der Implementierungsphase.
+
+**Zustands-Check (Schritt 2d):**
+
+- **Wartezustand:** Bereits durch BUGFIX-005 unabhängig durch BUGFIX-002 abgedeckt (Ladeanzeige beim Beitreten/Erstellen) — dieses Ticket führt keinen neuen Wartezustand ein, verändert aber ggf. die interne Reihenfolge, wann welcher Zustand angezeigt wird. Kein neues AK nötig, aber Regressionstest gegen BUGFIX-002 zwingend (siehe Regressionsrisiko).
+- **Leerzustand:** Nicht relevant für diesen Ablauf (kein „keine Daten vorhanden“-Fall beim Beitreten selbst).
+- **Fehlerfall:** Reguläre Beitritts-Fehler (ungültiger Code, alle Stationen belegt, Name bereits vergeben) müssen unverändert wie bisher erscheinen — dieser Fix darf ausschließlich den Konflikt zwischen automatischer Host-Wiederherstellung und bewusstem Beitritt lösen, keine bestehende Fehlermeldung verändern oder verzögern.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Tritt eine Person mit einem gültigen Spiel-Code und einem neuen, eindeutigen Namen einem Spiel bei, bekommt sie zuverlässig ihre eigene Spielstation zugewiesen — unabhängig davon, ob in demselben Browser zu einem früheren Zeitpunkt schon einmal ein anderes Spiel als Gastgeber(in) erstellt oder besucht wurde.
+2. Eine beitretende Person landet niemals in der Beobachter-Ansicht eines anderen, früheren Spiels, nur weil dieser Browser irgendwann zuvor einmal Gastgeber(in) eines Spiels war.
+3. Die tatsächliche Gastgeber-Person eines laufenden Spiels bekommt weiterhin zuverlässig ihre Moderationsrolle zurück, wenn sie die eigene Spielseite für genau dieses Spiel neu lädt (das bestehende Verhalten aus FEATURE-001 bleibt unverändert).
+4. Eine bereits beigetretene Spielende oder Beobachtende Person bekommt weiterhin zuverlässig ihre ursprüngliche Rolle und Station zurück, wenn sie die eigene Spielseite neu lädt (das bestehende Verhalten aus FEATURE-005 bleibt unverändert).
+5. Tritt dieselbe Person mehrfach kurz hintereinander demselben Spiel mit demselben Code bei (z. B. durch versehentliches doppeltes Klicken), bekommt sie weiterhin zuverlässig nur eine einzige, konsistente Station zugewiesen (das bestehende Verhalten aus FEATURE-002 bleibt unverändert).
+6. Läuft ein automatischer Wiederherstellungsversuch einer früheren Rolle im Hintergrund, während gleichzeitig eine bewusste, neue Beitritts-Handlung derselben Person verarbeitet wird, gewinnt niemals der unsichtbare Hintergrundvorgang gegen die sichtbare, bewusst ausgelöste Handlung — das Ergebnis entspricht immer dem, was die Person zuletzt bewusst ausgelöst hat.
+7. Während des Beitritts-/Wiederherstellungsvorgangs beim Laden der Seite sieht die Person weiterhin die aus BUGFIX-002 bereits bestehende Ladeanzeige — kein neuer, unerklärter Zwischenzustand entsteht durch diesen Fix.
+8. Schlägt der Beitritt aus einem regulären fachlichen Grund fehl (ungültiger Code, alle Stationen belegt, Name bereits vergeben), erscheint weiterhin exakt dieselbe, unveränderte Fehlermeldung wie bisher.
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Der Fix behebt den falschen der beiden Mechanismen**, weil die tatsächliche Ursache (Präzedenz-Fehler vs. Race Condition, siehe Root-Cause-Hypothese) in dieser Analyse mangels Repo-Zugriff nicht am echten Code verifiziert werden konnte. Gegenmaßnahme: zwingender frischer Code-Read als allererster Schritt der Implementierungsphase, bevor irgendeine Zeile geändert wird; beide Mechanismen mit einem gezielten Testfall (siehe Testplan) reproduzieren, bevor der Fix als vollständig gilt.
+2. **Der Fix bricht den bestehenden, bereits abgenommenen Host-Wiederherstellungs-Mechanismus (FEATURE-001)** — z. B. weil eine zu pauschale Sperre des automatischen Wiederherstellungspfads auch den legitimen Fall trifft, in dem der echte Host tatsächlich seine eigene Seite neu lädt. Gegenmaßnahme: Regressionstest, der explizit „Host lädt eigene, tatsächlich laufende Spielseite neu“ prüft, muss vor und nach dem Fix grün bleiben.
+3. **Der Fix bricht den bestehenden Teilnehmenden-Rejoin (FEATURE-005)**, weil beide Pfade (Host-Wiederherstellung, Teilnehmenden-Wiederbetreten) im selben `init()`-Entscheidungsbaum sitzen und eine Änderung an der Reihenfolge/Bedingtheit des einen Pfads den anderen versehentlich mitverändert. Gegenmaßnahme: voller Regressionslauf gegen `tests/game-rejoin.logic.test.js` und die übrigen FEATURE-005-Testsuiten.
+4. **Inkonsistenz zwischen den zwei manuell synchron gehaltenen Dateikopien** (`src/game/hostSession.js`/`joinGame.js`/`teilnehmerSession.js` vs. die `public/js/game/`-Kopien) — ein bereits mehrfach im Projekt dokumentiertes Risiko, falls der Fix nur in einer der beiden Kopien nachgezogen wird. Gegenmaßnahme: beide Kopien in derselben Implementierungs-Session anfassen, wie bei früheren Bugfixes bereits etabliert.
+5. **Ein rein clientseitiger Fix verhindert das Symptom im Normalfall, schließt aber die zugrunde liegende serverseitige Lücke nicht**: `firestore.rules` erlaubt heute (laut früher zitierter Analyse) einen Host-Claim-Schreibvorgang unabhängig vom bisherigen Inhalt des Zieldokuments. Ein manipulierter oder abweichend gebauter Client könnte diese Lücke theoretisch weiterhin ausnutzen. Gegenmaßnahme: siehe offene Frage 1 — Stephan entscheidet, ob eine serverseitige Härtung Teil dieses Tickets wird oder als separates, niedriger priorisiertes Ticket folgt.
+6. **Der Fix wird nur gegen das in diesem Test beobachtete Szenario (Browser-Wiederverwendung) geprüft, nicht gegen echte, unabhängige Geräte** — genau wie im Ticket selbst als Unsicherheit vermerkt („echte Nutzende auf eigenen Geräten wurden nicht geprüft“). Sollte der eigentliche Auslöser doch ausschließlich ein Testmethodik-Artefakt sein (siehe `chrome-multi-identity-testing-conventions`), wäre der Zeitaufwand für den Fix dennoch gerechtfertigt, da die zugrunde liegende Architekturschwäche (geheimnisbasierte, nicht code-spezifisch gescopte Host-Wiederherstellung) ein echter struktureller Mangel ist, unabhängig von der Testmethode. Gegenmaßnahme: Testplan deckt sowohl das Browser-Wiederverwendungs-Szenario als auch (soweit möglich) einen echten Cross-Device-ähnlichen Testfall ab.
+
+---
+
+**Zusammenspiel bestehender Bausteine (Schritt 4a):**
+
+- **Betroffene Bausteine:** `public/spiel.html`s `init()`-Ablauf (Bootstrapping nach `signInAnonymously()`), `hostSession.js` (`restoreHostSession()`, FEATURE-001, geheimnisbasiert), `joinGame.js` (`joinGame()`, FEATURE-001/002, uid-idempotent), `teilnehmerSession.js` (`restoreTeilnehmerSession()`, FEATURE-005, uid-gebunden), sowie die vier `localStorage`-Schlüssel `flowGameHost:{code}`, `flowGameLetztesSpiel`, `flowGameTeilnehmer:{code}`, `flowGameLetzterTeilnehmerCode` (alle origin-weit geteilt, nicht code- oder tab-gescoped).
+- **Reihenfolge des Zusammenspiels:** Seite lädt → `signInAnonymously()` liefert/reaktiviert eine `uid` → `init()` prüft die vier `localStorage`-Schlüssel und entscheidet, welchen von potenziell mehreren Pfaden es einschlägt (Host-Wiederherstellung / Teilnehmenden-Wiederbetreten / frisches Beitritts- oder Erstellen-Formular) → im Beitrittsfall verarbeitet `joinGame()` den vom Formular übergebenen Code+Namen und schreibt `teilnehmende/{uid}` → andere Clients reagieren über Firestore-Listener auf den neuen Zustand.
+- **Zustandskombination, die zum Fehler führt:** Browser enthält aus einem FRÜHEREN, unabhängigen Spiel noch ein gültiges Host-Geheimnis (`flowGameHost:{alterCode}` + `flowGameLetztesSpiel={alterCode}`), WÄHREND dieselbe Person jetzt bewusst einen ANDEREN, aktuellen Code in das Beitritts-Formular einträgt. Die beiden Pfade (automatische Host-Wiederherstellung für den alten Code, bewusster Beitritt zum neuen Code) sind nicht gegenseitig ausschließend synchronisiert — je nachdem, welcher zuerst greift oder zuletzt auf demselben `teilnehmende/{uid}`-Dokument schreibt, „gewinnt“ der falsche Pfad.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/spiel.html`: `init()`-Ablauf — Reihenfolge/Bedingtheit zwischen Host-Wiederherstellung, Teilnehmenden-Wiederbetreten und frischem Beitritts-/Erstellen-Formular.
+- `public/js/game/hostSession.js` und `src/game/hostSession.js`: `restoreHostSession()` — ggf. zusätzliche Bedingung, wann dieser Pfad überhaupt ausgelöst werden darf.
+- `public/js/game/joinGame.js` und `src/game/joinGame.js`: `joinGame()` — ggf. Konfliktschutz gegenüber einem parallel laufenden Host-Wiederherstellungsversuch.
+- `public/js/game/teilnehmerSession.js` und `src/game/teilnehmerSession.js`: `restoreTeilnehmerSession()` — angrenzend betroffen, da im selben Entscheidungsbaum, muss aber unverändert funktionieren.
+- Möglicherweise `firestore.rules` (`teilnehmende/{uid}`-Schreibregeln, `istHost()`), falls Stephan eine serverseitige Härtung als Teil des Scopes bestätigt (siehe offene Frage 1) — sonst keine Änderung an den Sicherheitsregeln nötig.
+- Kein neues Feld im Firestore-Datenmodell für die client-seitige Variante des Fixes.
+
+---
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** FEATURE-001 (Host-Erstellung + Host-Wiederherstellungs-Mechanismus — direkt betroffener Kernbaustein), FEATURE-002 (Beitritts-Idempotenz pro `uid` — darf durch eine geänderte Ablaufreihenfolge nicht unterlaufen werden), FEATURE-005 (Teilnehmenden-Wiederbetreten — sitzt im selben `init()`-Entscheidungsbaum, muss unverändert funktionieren), BUGFIX-001 (Retry-Mechanismus läuft in denselben Aufrufstellen unmittelbar nach `signInAnonymously()` — darf durch Umbauten an `init()` nicht gestört werden), BUGFIX-002 (Ladeanzeige beim Beitreten/Erstellen — darf durch eine geänderte Reihenfolge nicht verdeckt oder doppelt ausgelöst werden), TASK-003 (dokumentiert dieselbe Schwachstelle bereits im Entwicklerkontext — dessen Chrome-Profil-Testmethode bleibt von diesem Fix unberührt, da rein methodisch). **Cross-Ticket-Hinweis FEATURE-011** (ToDo, noch keine Analyse): FEATURE-011 will einen manuellen Weg schaffen, die Host-Rolle nach Verlust des lokalen Zustands zurückzuerlangen — baut also auf demselben Host-Session-Mechanismus auf, den dieses Ticket korrigiert. Empfehlung: BUGFIX-005 zuerst umsetzen, damit FEATURE-011 auf einem bereits korrigierten, verlässlichen Mechanismus aufsetzt (siehe offene Frage 3).
+
+---
+
+**Implementierungsoptionen (Kern-Architekturentscheidung dieses Tickets):**
+
+*Option A – Client-seitige Sequenz-Korrektur: automatische Host-Wiederherstellung wird strikt exklusiv gegenüber einem bewussten, aktuellen Beitritts-/Erstellen-Vorgang gemacht (empfohlen):* `init()` entscheidet sich beim Laden der Seite eindeutig für GENAU einen Pfad — entweder automatische Wiederherstellung (Host oder Teilnehmende) ODER Anzeige des frischen Beitritts-/Erstellen-Formulars — nie beides gleichzeitig im Hintergrund. Zusätzlich: Der automatische Host-Wiederherstellungsversuch wird niemals nachträglich ein `teilnehmende/{uid}`-Dokument überschreiben, das durch einen zwischenzeitlich abgeschlossenen, bewussten Beitritt entstanden ist (z. B. durch eine Prüfung des aktuellen Dokumentzustands vor dem Schreiben, statt eines bedingungslosen `.set()`). Vorteile: löst beide in der Root-Cause-Hypothese genannten Mechanismen (Präzedenz-Fehler und Race Condition) mit einem gemeinsamen Prinzip; bleibt vollständig client-seitig, kein Kostenwechsel, keine neuen Firestore-Regeln zwingend nötig; passt zur bestehenden Architektur-Linie („Host-Client wird für die eigene Session vertraut“). Nachteile: verändert eine zentrale, bereits mehrfach angefasste Ablaufstelle (`init()`) — erhöhtes Regressionsrisiko gegenüber FEATURE-001/005/BUGFIX-001/002, das durch einen vollständigen Regressionslauf abgefangen werden muss.
+
+*Option B – Zusätzliche serverseitige Härtung in `firestore.rules`:* Ergänzend zu Option A (oder auch unabhängig davon) wird die Sicherheitsregel für das Anlegen/Überschreiben von `teilnehmende/{uid}` mit `rolle: 'host'` so verschärft, dass sie ein bereits bestehendes Dokument mit einer anderen Rolle (Spielende/Beobachtende, gerade erst durch einen legitimen Beitritt entstanden) nicht mehr stillschweigend überschreiben darf, selbst wenn das Host-Geheimnis korrekt mitgeschickt wird. Vorteile: schließt die Lücke zusätzlich auf Server-Ebene ab (Verteidigung in der Tiefe), unabhängig davon, ob der Client-Fix in jedem denkbaren Fall greift. Nachteile: höherer Aufwand (Regeländerung + eigener Regel-Testlauf gegen den Firestore-Emulator, der in dieser Sandbox laut bekannter Einschränkung nicht ausführbar ist und von Stephan lokal bestätigt werden müsste), zusätzliches Regressionsrisiko gegen die bestehenden FEATURE-001-Sicherheitsregel-Tests (Host-Wiederherstellung selbst darf dadurch nicht kaputtgehen), und für ein Bugfix-Ticket mit klar identifiziertem, allein clientseitig lösbarem Symptom möglicherweise überdimensioniert.
+
+*Option C – Nur oberflächliche Reihenfolge-Vertauschung, ohne Schreibkonflikt-Absicherung:* Beitritts-Formular wird einfach IMMER vor jedem automatischen Wiederherstellungsversuch geprüft/angezeigt. Vorteile: minimalste Änderung. Nachteile: löst nur den Präzedenz-Fehler-Mechanismus (Hypothese 1), nicht die Race Condition (Hypothese 2) — falls Letztere zutrifft (was ohne Code-Verifikation nicht ausgeschlossen werden kann, siehe Pre-Mortem-Risiko 1), bliebe der Bug in abgeschwächter, aber weiterhin vorhandener Form bestehen. Nicht empfohlen als alleinige Lösung.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A als Kern-Fix, da sie beide plausiblen Root-Cause-Mechanismen gemeinsam adressiert und keinen Architektur-/Kostenwechsel erfordert. Option B (serverseitige Härtung) als sinnvolle, aber optionale Ergänzung — siehe offene Frage 1, da sie den Scope und Testaufwand dieses Tickets spürbar vergrößert und das Kernsymptom bereits durch Option A behoben würde.
+
+**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit):** Nicht anwendbar — dieses Ticket ist eine reine Ablauf-/Logikkorrektur ohne neue oder veränderte UI-Elemente, kein Prototyp nötig.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+
+- Given/When/Then je Akzeptanzkriterium oben (8 Stück).
+- Kernszenario (Hypothese 1 – Präzedenz): Given ein Browser hat ein gültiges Host-Geheimnis für Spiel A gespeichert, When dieselbe Person einen abweichenden, gültigen Code für Spiel B ins Beitritts-Formular einträgt und „Beitreten“ klickt, Then bekommt sie eine Station in Spiel B zugewiesen, nicht die Host-Rolle in Spiel A.
+- Kernszenario (Hypothese 2 – Race Condition): Given ein automatischer Hintergrund-Wiederherstellungsversuch und ein bewusster Beitrittsaufruf laufen mit knapper zeitlicher Überschneidung, When beide Schreibvorgänge das Firestore-Dokument erreichen, Then entspricht der Enddokumentzustand immer dem bewussten Beitritt, nie dem Hintergrundversuch.
+- Regressionstest FEATURE-001: Given der echte Host lädt seine eigene, laufende Spielseite neu, When die Seite lädt, Then bekommt er weiterhin zuverlässig seine Host-Rolle zurück.
+- Regressionstest FEATURE-005: Given eine bereits beigetretene Person lädt ihre eigene Spielseite neu, When die Seite lädt, Then bekommt sie weiterhin zuverlässig ihre ursprüngliche Rolle/Station zurück.
+- Regressionstest FEATURE-002: Given dieselbe Person klickt mehrfach hintereinander „Beitreten“ für denselben Code, When beide Aufrufe verarbeitet werden, Then bleibt es bei genau einer Station, keine zweite Zuweisung.
+- Regressionstest BUGFIX-001/BUGFIX-002: bestehende Retry- und Ladeanzeige-Testsuiten laufen nach dem Fix unverändert grün.
+- Alle bestehenden Emulator-/Sicherheitsregel-Tests zu FEATURE-001/002/005 (`tests/game-rooms.*`, `tests/game-rejoin.logic.test.js`) laufen unverändert grün (Ausführung in dieser Sandbox bekannt eingeschränkt, siehe `flow-game-impl`-Skill Abschnitt 5e — von Stephan lokal zu bestätigen).
+
+---
+
+**Freigabe-Entscheidungen (Stephan, 2026-07-28):**
+
+1. **Serverseitige Härtung (Option B) Teil des Scopes:** Bestätigt – abweichend von der Empfehlung der Analyse (dort: Option B optional/separat) entschieden, dass dieses Ticket beides zusammen umfasst: die clientseitige Sequenz-Korrektur (Option A) UND die Härtung der `firestore.rules` (Option B), die einen Host-Claim-Schreibvorgang generell daran hindert, ein bereits bestehendes, andersrolliges Teilnehmenden-Dokument zu überschreiben.
+2. **Reihenfolge gegenüber FEATURE-011:** Bestätigt – BUGFIX-005 wird vor FEATURE-011 umgesetzt, da FEATURE-011 denselben Host-Session-Mechanismus erweitert und von einem bereits korrigierten Zustand profitieren soll.
+3. **Umfang der Code-Nachverifikation:** Noch nicht gesondert bestätigt, gilt aber ohnehin als Standard-Vorgehen laut `flow-game-impl` (verpflichtender frischer Code-Read vor dem eigentlichen Fix) und wird in der Implementierungsphase entsprechend gehandhabt.
+
+Damit ist die Spec freigegeben. Nächster Schritt: BDD-Tests (`flow-game-bdd`).
+
+---
+
+#### BDD-Tests (flow-game-bdd, 2026-07-28)
+
+**Root-Cause-Verifikation am echten Code (Pflichtschritt, da die Analyse ohne Repo-Zugriff entstand):** Frischer Klon des Repos (aktuellster Commit auf `main`, `0d5ee81`) geprüft. **Ergebnis: Ausschliesslich Hypothese 1 (Vorrang-/Präzedenz-Fehler) bestätigt sich. Hypothese 2 (Race Condition zweier gleichzeitiger Schreibvorgänge auf DASSELBE Firestore-Dokument) tritt für das real gemeldete Symptom strukturell nicht auf:**
+
+- `public/spiel.html`, `init()` (Zeile 2171-2424) ist vollständig sequentiell (async/await, keine `Promise.all`-Verzahnung zwischen dem Host-Wiederherstellungspfad Zeile 2194-2209 und dem Beitritts-Formular Zeile 2364 ff.). Der Host-Wiederherstellungsversuch beendet `init()` bei Erfolg SOFORT mit `zeigeLobby(...); return;` (Zeile 2203-2204) — unbedingt, ohne jede weitere Prüfung. `auswahlPanel.hidden = false` (Zeile 2250) sowie die Event-Listener für das Beitritts-Formular werden dadurch bei vorhandenem, gültigem Host-Geheimnis NIEMALS erreicht: die Person bekommt das Beitritts-Formular für den neuen Code gar nicht erst zu sehen. Es liegt also kein Wettlauf zweier tatsächlich nebenläufiger Schreibvorgänge vor, sondern reiner Kontrollfluss-Vorrang.
+- Zusätzlich schreiben in der real gemeldeten Fehlersituation (Person hat Host-Geheimnis für ein ALTES Spiel A, versucht bewusst einem NEUEN Spiel B beizutreten) beide Pfade ohnehin auf ZWEI VERSCHIEDENE Firestore-Dokumente (`spiele/A/teilnehmende/{uid}` vs. `spiele/B/teilnehmende/{uid}`) — ein Dokument-Überschreib-Konflikt kann für dieses konkrete Symptom gar nicht entstehen. Ausführbar belegt in `tests/game-host-claim-overwrite.logic.test.js` (Szenario "getrennte Spiele bleiben unabhängig").
+- **Wichtiger Nebenbefund zur bereits freigegebenen serverseitigen Härtung (Option B):** Die bestehende `allow update`-Regel für `teilnehmende/{uid}` (`firestore.rules` Zeile 542-545: `request.resource.data.rolle == resource.data.rolle`) verhindert schon HEUTE, dass ein `restoreHostSession()`-typischer `.set(data, {merge:true})`-Schreibvorgang auf ein BEREITS BESTEHENDES Dokument dessen Rolle ändert (ein merge-Write auf ein existierendes Dokument zählt für die Firestore-Regel-Auswertung als "update", nicht "create"). Ob diese bestehende Regel den in Option B beschriebenen Fall bereits vollständig abdeckt oder eine echte Lücke bleibt, entscheidet der emulator-gebundene Testfall in `tests/game-host-claim-overwrite.security.rules.test.js` — dieser konnte in der Sandbox nicht ausgeführt werden (siehe Ausführungshinweis dort) und muss vor Abschluss des Tickets lokal von Stephan verifiziert werden.
+- **Konsequenz für den Scope:** Die tatsächliche Ursache des gemeldeten Bugs ist ausschließlich der unbedingte, kontrollflussbasierte Vorrang in `init()` (spiel.html), nicht ein Dokument-Überschreib-Wettlauf. Ein reiner Firestore-Regel-Fix (Option B) allein würde das gemeldete Symptom NICHT beheben, da unterschiedliche Spiele unterschiedliche Dokumente sind. Die clientseitige Korrektur in `init()` bleibt daher zwingender Kern des Fixes; Option B bleibt als zusätzliche Tiefenverteidigung sinnvoll, deckt aber laut obigem Befund möglicherweise bereits weitgehend ab, was sie soll. **Empfehlung an `flow-game-impl`:** vor der Implementierung mit Stephan klären, ob die "keine neue UI"-Annahme dieser Spec (Analyse-Schritt 8) haltbar bleibt, denn ohne jedes Signal, dass die Person tatsächlich einem ANDEREN Spiel beitreten will, kann `init()` diesen Unterschied vor Anzeige des Formulars nicht kennen — die gewählte Lösung muss diesen Punkt explizit adressieren.
+
+**Geschriebene Testdateien:**
+- `tests/helpers/fakeFirestore.js` — In-Memory-Firestore-Doppelgänger für die schmale API, die `hostSession.js`/`joinGame.js`/`createGame.js` nutzen (Begründung: echter Emulator-Download in dieser Sandbox durch Egress-Policy blockiert, `403: host not permitted`).
+- `tests/game-join-precedence.static.test.js` (2 Szenarien, gegen echten Quelltext `public/spiel.html`, kein Emulator nötig):
+  - Kernszenario Hypothese 1 (Präzedenz): unbedingtes `zeigeLobby()+return`-Muster darf nicht mehr ungeschützt vorhanden sein.
+  - BUGFIX-005-Kommentarmarker an der Fundstelle muss vorhanden sein.
+- `tests/game-host-claim-overwrite.logic.test.js` (7 Szenarien, gegen echte `src/game/*.js`-Module + Fake-DB, kein Emulator nötig):
+  - Kernszenario AK6 (bewusste Handlung gewinnt gegen automatischen Hintergrundvorgang).
+  - Absicherung Option A/Freigabe-Entscheidung 1 (kein Überschreiben eines andersrolligen Dokuments).
+  - Regressionstest FEATURE-001 (AK3, Host-Reload).
+  - Regressionstest FEATURE-005 (AK4, Teilnehmenden-Rejoin).
+  - Regressionstest FEATURE-002 (AK5, Doppel-Klick-Idempotenz).
+  - Root-Cause-Beleg: getrennte Spiele bleiben unabhängig (Hypothese 2 widerlegt für dieses Symptom).
+  - Regressionstest AK8 (unveränderte Fehlercodes).
+- `tests/game-host-claim-overwrite.security.rules.test.js` (3 Szenarien, echte `firestore.rules`, Emulator nötig — in dieser Sandbox NICHT ausführbar, siehe Ausführungshinweis in der Datei):
+  - Härtungstest Option B (Update-Pfad, andersrollige Überschreibung).
+  - Regressionstest FEATURE-001 Update-Pfad (Host-Reload, bislang testtechnisch nicht abgedeckte Lücke gegenüber dem bestehenden Create-Pfad-Test).
+  - Regressionstest FEATURE-001 Create-Pfad (bestehender Kontrollfall).
+
+**Testlauf-Ergebnis (2026-07-28):** `tests/game-join-precedence.static.test.js` + `tests/game-host-claim-overwrite.logic.test.js` tatsächlich mit Jest ausgeführt: **4 von 9 Tests ROT wie erwartet** (echte Assertion-Fehlschläge, keine Modul-/Syntaxfehler — Funktionalität existiert noch nicht), **5 von 9 GRÜN** (Regressionstests gegen FEATURE-001/002/005/AK8 sowie der Root-Cause-Beleg, bestätigen bestehendes Verhalten bleibt intakt). `tests/game-host-claim-overwrite.security.rules.test.js` konnte mangels Emulator-Netzwerkzugriff nicht ausgeführt werden (dokumentierte Sandbox-Einschränkung) — Ausführung und Rot-Bestätigung obliegt `flow-game-impl`/Stephan lokal, wie im Testplan-Grundgerüst bereits vorgesehen.
+
+Nächster Schritt: Implementierung (`flow-game-impl`).
+
+---
+
+#### Implementierung (flow-game-impl, 2026-07-28)
+
+**Code-Basis:** Repo lag bereits frisch geklont unter `/home/claude/flow-game-repo` vor (Branch `main`, inkl. der drei BDD-Testdateien und `tests/helpers/fakeFirestore.js` aus der vorherigen Phase). Frischer Code-Read von `public/spiel.html` `init()`, `src/game/hostSession.js`, `src/game/joinGame.js` und `firestore.rules` vor jeder Änderung durchgeführt (Pflichtschritt) — bestätigt exakt den in der BDD-Phase dokumentierten Stand.
+
+**Umgesetzt – clientseitig (Option A, Sequenz-Korrektur):**
+- `public/spiel.html`, `init()`: Der automatische Host-Wiederherstellungspfad ruft nach erfolgreichem `restoreHostSession()` nicht mehr unbedingt `zeigeLobby(...); return;` auf. Stattdessen wird der aktuelle Teilnehmenden-Dokumentzustand für `{spielCode}/{uid}` noch einmal frisch gelesen; nur wenn `rolle` dort tatsächlich noch `'host'` ist, wird die Host-Lobby gezeigt und `return`et. Andernfalls (Rolle wurde inzwischen — z. B. in einem anderen Tab desselben Browsers, da `localStorage`/anonyme uid origin-weit geteilt werden — bewusst auf etwas anderes gesetzt) fällt der Ablauf normal durch zur Start-Auswahl. Kein neues UI-Element, kein neuer sichtbarer Zwischenzustand (die zusätzliche Leseoperation läuft unsichtbar innerhalb der bereits bestehenden „Lädt…"-Phase aus BUGFIX-002). BUGFIX-005-Kommentar an der Fundstelle ergänzt.
+- `src/game/hostSession.js` + `public/js/game/hostSession.js` (`restoreHostSession()`): liest das Zieldokument jetzt zuerst; existiert bereits ein Dokument mit einer anderen Rolle als `'host'`, wird der Schreibvorgang abgebrochen (neuer Fehlercode `HOST_ROLLE_BEREITS_ANDERWEITIG_VERGEBEN`) statt es zu überschreiben. Ein bestehendes Dokument mit `rolle: 'host'` (der reguläre FEATURE-001-Reload-Fall) bleibt unverändert per merge aktualisierbar.
+- `src/game/joinGame.js` + `public/js/game/joinGame.js` (`joinGame()`): Die bestehende Idempotenz-Kurzschluss-Rückgabe (`teilnehmerSnap.exists`) greift jetzt ausdrücklich NICHT mehr, wenn die vorhandene Rolle `'host'` ist — ein solches Dokument kann nur aus einem automatischen Hintergrund-Wiederherstellungsversuch stammen, nie aus einem bewussten Beitritt über dieses Formular. Ein bewusster Beitritt überschreibt es dadurch mit der regulären Stationsvergabe. Die bestehende Idempotenz für `spielende`/`beobachtende`-Dokumente (FEATURE-002/FEATURE-005) bleibt unverändert.
+
+**Umgesetzt – serverseitig (Option B, Härtung `firestore.rules`):** Keine Regeländerung nötig. Der in der BDD-Phase vermutete Nebenbefund wurde bestätigt (siehe Testergebnis unten): Die bereits bestehende `allow update`-Regel für `teilnehmende/{uid}` (`request.resource.data.rolle == resource.data.rolle`) deckt den in Freigabe-Entscheidung 1 geforderten Härtungsfall bereits vollständig ab, weil ein `restoreHostSession()`-typischer `.set(data, {merge:true})`-Schreibvorgang auf ein bereits bestehendes Dokument für die Regelauswertung als „update" (nicht „create") zählt. Ein dokumentierender Kommentar wurde an dieser Stelle in `firestore.rules` ergänzt, damit dieser Befund für zukünftige Leser nachvollziehbar bleibt, statt stillschweigend keine Änderung vorzunehmen.
+
+**Geänderte Dateien:** `public/spiel.html`, `src/game/hostSession.js`, `public/js/game/hostSession.js`, `src/game/joinGame.js`, `public/js/game/joinGame.js`, `firestore.rules` (nur Kommentar), `package.json` (zwei neue Testskripte: `test:static:bugfix-005`, `test:emulator:bugfix-005`, analog zu bestehenden Ticket-Skripten, keine bestehenden Sammelskripte verändert).
+
+**Node/Browser-Sync-Check (Pflichtschritt 3a):** `restoreHostSession()` und `joinGame()` existieren beide als Node-Referenz (`src/game/*.js`) und als Browser-Produktivcode (`public/js/game/*.js`). Beide Fundstellen-Paare wurden angefasst und per Diff verglichen: die geänderte Bedingung ist in beiden Kopien identisch (Kommentar-Ausführlichkeit unterscheidet sich wie bei allen früheren Bugfixes bereits üblich, die eigentliche Logik ist wortgleich).
+
+**Testergebnis BDD-Tests:** `tests/game-join-precedence.static.test.js` + `tests/game-host-claim-overwrite.logic.test.js` erneut mit Jest ausgeführt: **9/9 GRÜN** (vorher 5/9 grün, 4/9 rot wie erwartet — nach der Implementierung wechseln genau die vier zuvor roten Fälle auf grün, kein bereits grüner Test wurde angefasst oder abgeschwächt). `tests/game-host-claim-overwrite.security.rules.test.js` (Firestore-Emulator nötig): erneuter Versuch in dieser Implementierungssitzung (`npx firebase emulators:exec --only firestore "echo ok"`) — weiterhin blockiert, identischer Fehler wie in der BDD-Phase (`Error: download failed, status 403: request rejected: host not permitted` beim Download von `cloud-firestore-emulator-v1.19.8.jar`, Organisations-Netzwerkrichtlinie dieser Sandbox). **Offene Verifikation für Stephan:** `npm run test:emulator:bugfix-005` lokal ausführen, um die serverseitige Härtung (3 Testfälle: Härtung Update-Pfad, Regressionstest FEATURE-001 Update-Pfad, Regressionstest FEATURE-001 Create-Pfad) tatsächlich am echten Emulator zu bestätigen — analog zum bereits etablierten Vorgehen bei allen anderen `*.security.rules.test.js`-Dateien in diesem Projekt.
+
+**Pflicht-Regressionslauf gegen alle Done-Tickets (Schritt 4):** Vollständiger Nicht-Emulator-Lauf über alle 18 Testdateien ohne Firestore-Emulator-Abhängigkeit (`tests/*.static.test.js`, `*.logic.test.js` ohne `rules-unit-testing`, `*.manual-checks.test.js`, `*.integration.test.js`, inkl. der beiden neuen BUGFIX-005-Dateien): **191/193 GRÜN.** Die zwei einzigen roten Fälle (`tests/deploy-regression.test.js`, `tests/feature-002-deploy-regression.test.js`) prüfen ausschließlich die Erreichbarkeit der echten Live-URL `https://flow-game-19f01.web.app` per `fetch()` — schlagen mit `403` fehl, weil die Sandbox-Netzwerk-Policy dieser Umgebung ausgehende Live-Aufrufe blockiert (kein Bezug zum BUGFIX-005-Code, reine Netzwerk-Erreichbarkeitstests, kein durch dieses Ticket verursachter Regressionsfehler). Nicht in dieser Sandbox ausführbar (Emulator-Netzwerkzugriff blockiert, s. o.), von Stephan lokal nachzuholen: `tests/game-rooms.*`, `tests/game-round.*` (außer dem statischen Test), `tests/game-round4.security.rules.test.js`, `tests/game-evaluation.security.rules.test.js`, `tests/game-i18n.security.rules.test.js`, `tests/game-i18n.logic.test.js`, `tests/game-rejoin.logic.test.js` — alle von BUGFIX-005 potenziell berührten Bereiche (FEATURE-001/002/005, BUGFIX-001/002) sind darin über den jeweils zugehörigen `*.logic.test.js`/`*.security.rules.test.js`-Lauf abgedeckt; ihre Node/Browser-Sync- bzw. Logikanteile wurden zusätzlich indirekt durch `tests/game-host-claim-overwrite.logic.test.js` (enthält eigene Regressionstests exakt zu FEATURE-001/002/005 gegen die echten, jetzt geänderten `src/game/*.js`-Module) bereits automatisiert bestätigt.
+
+**Abweichungen von der vorgeschlagenen Test-API:** Keine. Beide Testdateien (`game-join-precedence.static.test.js`, `game-host-claim-overwrite.logic.test.js`) wurden unverändert gegen die echte Implementierung grün — kein Testfall musste angepasst, abgeschwächt oder umformuliert werden (kein Escape-Hatch-Fall).
+
+**Was tatsächlich automatisiert geprüft wurde vs. was Stephan noch lokal bestätigen muss:**
+- Automatisiert geprüft und grün: alle 9 BUGFIX-005-BDD-Testfälle, 191/193 des breiteren Nicht-Emulator-Regressionslaufs (die 2 roten Fälle sind reine Netzwerk-Erreichbarkeitstests, unabhängig vom Ticket-Code).
+- NICHT automatisiert geprüft (Sandbox-Netzwerk-Einschränkung, Firestore-Emulator-Download blockiert): `tests/game-host-claim-overwrite.security.rules.test.js` sowie alle übrigen emulator-gebundenen Testsuiten des Projekts (s. o.) — von Stephan lokal auszuführen.
+- NICHT automatisierbar/bewusst manuell: ein echter Cross-Tab-Test im eigenen Browser (zwei Tabs desselben Profils, einer als zurückkehrender Host, einer mit bewusstem Beitritt zu einem anderen Code) gemäß der bekannten Fallstricke in `chrome-multi-identity-testing-conventions` — bestätigt die Logik-Testabdeckung auch visuell im echten Browser.
+
+**Status bleibt In Progress** (Ticket wird nicht eigenständig auf Done gesetzt — Release-vor-Done-Gate: Release und Live-Verifikation stehen noch aus, danach Gate 3/Stephans Bestätigung).
 
 ---
 
@@ -1105,10 +1315,11 @@ Verwendet die i18n-Schlüsselnamen und Element-IDs aus der BDD-Phase oben (`star
 |------|------|
 | **Typ** | Task |
 | **Priorität** | Mittel |
-| **Status** | Aufgegangen in FEATURE-007 |
+| **Status** | Done |
 | **Erstellt** | 2026-07-23 |
+| **Done seit** | 2026-07-28 |
 
-**Hinweis (2026-07-28):** Im Zuge der FEATURE-007-Analyse festgestellt, dass dieses Ticket denselben Text-Slot betrifft (`#label-hinweis-panel`, „Basic setup live…"/„Phase 0, Part 1"/„Agent Contract"), den FEATURE-007 ohnehin vollständig ersetzt (dort AK6). Stephan hat die Zusammenlegung bestätigt — dieses Ticket wird nicht mehr separat umgesetzt, sondern gilt mit FEATURE-007 als miterledigt. Kein eigener Durchlauf durch `flow-game-analyze`/`-bdd`/`-impl` mehr nötig.
+**Hinweis (2026-07-28):** Im Zuge der FEATURE-007-Analyse festgestellt, dass dieses Ticket denselben Text-Slot betrifft (`#label-hinweis-panel`, „Basic setup live…"/„Phase 0, Part 1"/„Agent Contract"), den FEATURE-007 ohnehin vollständig ersetzt (dort AK6). Stephan hat die Zusammenlegung bestätigt — dieses Ticket wurde nicht separat umgesetzt, sondern gilt mit FEATURE-007 als miterledigt. Mit FEATURE-007s Done-Bestätigung durch Stephan (2026-07-28) gilt auch dieses Ticket als Done.
 
 **Beschreibung:** Unter dem Hauptknopf der Startseite stehen aktuell interne Entwicklerhinweise ("Basic setup live — the actual game logic follows in the next phases.", "Phase 0, Part 1", "Agent Contract"). Für Erstnutzer(innen) wirkt das wie eine interne Testseite statt der echten Anwendung und untergräbt das Vertrauen beim ersten Eindruck. Diese Hinweise für echte Nutzende ausblenden oder durch einen normalen, verständlichen Begrüßungstext ersetzen.
 

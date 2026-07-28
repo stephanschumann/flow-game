@@ -7,6 +7,12 @@
  * den Schreibvorgang – die Sicherheitsregel entscheidet serverseitig, ob die
  * mitgeschickte Kennung korrekt ist. Schlägt der Schreibvorgang fehl
  * (PERMISSION_DENIED), war die Kennung falsch.
+ *
+ * BUGFIX-005 (2026-07-28, Freigabe-Entscheidung 1 / Option A zweiter Satz):
+ * Der automatische Host-Wiederherstellungsversuch darf ein bereits bestehendes
+ * teilnehmende/{uid}-Dokument mit einer ANDEREN Rolle (spielende/beobachtende)
+ * nicht mehr stillschweigend überschreiben – siehe src/game/hostSession.js für
+ * die ausführliche Begründung (beide Dateien synchron halten).
  */
 (function (global) {
   'use strict';
@@ -29,6 +35,18 @@
     }
 
     const teilnehmerRef = db.collection('spiele').doc(code).collection('teilnehmende').doc(uid);
+
+    // BUGFIX-005: bereits bestehendes, andersrolliges Dokument nicht überschreiben.
+    const bestehenderSnap = await teilnehmerRef.get();
+    if (bestehenderSnap.exists && bestehenderSnap.data().rolle !== 'host') {
+      const fehler = new Error(
+        'Diese Person ist in diesem Spiel bereits mit einer anderen Rolle beigetreten – ' +
+          'die automatische Host-Wiederherstellung wird deshalb nicht durchgeführt.'
+      );
+      fehler.code = 'HOST_ROLLE_BEREITS_ANDERWEITIG_VERGEBEN';
+      throw fehler;
+    }
+
     try {
       await teilnehmerRef.set(
         {
