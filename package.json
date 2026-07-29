@@ -18,6 +18,8 @@
     "test:static:feature-006": "jest tests/game-i18n.manual-checks.test.js",
     "test:static:bugfix-002": "jest tests/game-form-loading-state.static.test.js",
     "test:static:feature-007": "jest tests/game-startseite-erklaerung.static.test.js",
+    "test:emulator:feature-008": "firebase emulators:exec --only firestore \"jest tests/game-drag-drop.security.rules.test.js\"",
+    "test:static:feature-008": "jest tests/game-drag-drop.static.test.js tests/game-drag-drop.logic.test.js",
     "test:deploy-regression": "jest tests/deploy-regression.test.js tests/feature-002-deploy-regression.test.js"
   },
   "devDependencies": {

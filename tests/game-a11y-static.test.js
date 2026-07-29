@@ -36,7 +36,22 @@ const SPIEL_HTML_PFAD = path.join(__dirname, '..', 'public', 'spiel.html');
 const spielHtmlInhalt = fs.readFileSync(SPIEL_HTML_PFAD, 'utf8');
 
 describe('Szenario: Bewegen-Button ist für Screenreader sinnvoll benannt (AK15)', () => {
-  test('Gegeben der Bewegen-Button wird dynamisch erzeugt und zeigt nur das Zeichen "→", wenn der Quelltext darauf geprüft wird, dann setzt er zusätzlich ein sprechendes aria-label (nicht nur das Pfeil-Symbol als einzige Beschriftung)', () => {
+  // FEATURE-008 (2026-07-29, finale Klärung Frage 6, Backlog.md
+  // "### FEATURE-008"): Der Klick-Button für Kartenbewegung wurde durch
+  // FEATURE-008 VOLLSTÄNDIG durch echtes Pointer-Events-Ziehen ersetzt
+  // (Freigabe-Entscheidung 1, "ersetzen statt ergänzen") - `btn.textContent =
+  // '→'` existiert seitdem nicht mehr (siehe tests/game-drag-drop.static.test.js,
+  // Szenario "Der bisherige Klick-Button ... ist vollständig entfernt"),
+  // wodurch dieses Szenario strukturell nicht mehr geprüft werden kann.
+  // Stephan hat diesen Konflikt mit der Tastatur-Bedienbarkeits-Anforderung
+  // aus Product.md §9 bewusst in Kauf genommen, beschränkt auf genau diese
+  // eine Interaktion (siehe Product.md §9, ergänzter Hinweis) - es wird
+  // bewusst KEINE neue, gleichwertige Tastatur-/Screenreader-Bedienung für
+  // die Kartenbewegung gebaut. Dieser Test wird deshalb NICHT ersatzlos
+  // gelöscht (dokumentierte Ausnahme statt stillschweigendem Entfernen), aber
+  // mit test.skip versehen, da die von ihm geprüfte Stelle nicht mehr
+  // existiert und laut Stephans Entscheidung auch nicht mehr existieren soll.
+  test.skip('Gegeben der Bewegen-Button wird dynamisch erzeugt und zeigt nur das Zeichen "→", wenn der Quelltext darauf geprüft wird, dann setzt er zusätzlich ein sprechendes aria-label (nicht nur das Pfeil-Symbol als einzige Beschriftung)', () => {
     // Sucht gezielt im Umfeld der Stelle, die laut Analyse-Spec den
     // Bewegen-Button ohne aria-label erzeugt (btn.textContent = '→').
     const stelleIndex = spielHtmlInhalt.indexOf("btn.textContent = '→'");

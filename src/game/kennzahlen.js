@@ -14,6 +14,26 @@
  *     (gleiche "0 Bewegungen ohne Sonderbehandlung"-Regel wie anzahlBewegungen).
  *   Siehe tests/game-evaluation.logic.test.js für die exakten Erwartungen an
  *   Feldnamen und Werte.
+ *
+ * FEATURE-008 – neue Kennzahl "Fehlversuche" (finale Klärung Frage 8,
+ * Backlog.md FEATURE-008): proStation[station].fehlversuche, analog zu
+ * anzahlBewegungen aus einem eigenen, gleich aufgebauten Eingabe-Array
+ * (fehlversuche: [{station, anzahl}]) berechnet ("0 Fehlversuche" ohne
+ * Sonderbehandlung, dieselbe Konvention). WICHTIG - bewusste Asymmetrie zur
+ * Browser-Produktivfassung (public/js/game/kennzahlen.js), dokumentiert nach
+ * demselben, bereits etablierten Muster wie bei bewegungen/bewegungsLog
+ * weiter oben bzw. bei kartenBewegung.js (siehe dortiger Kopfkommentar):
+ * Die Browser-Fassung schreibt/liest `fehlversuche` als FLACHEN, globalen
+ * Zähler direkt auf dem Runden-Dokument (siehe
+ * public/js/game/fehlversuch.js, firestore.rules "Fall C") - sie berechnet
+ * diese Kennzahl NICHT über diese Funktion, weil ein abgelehnter
+ * Bewegungsversuch (anders als eine echte Kartenbewegung) nie eine
+ * Firestore-Änderung erzeugt, die sich wie bewegungsLog live aus
+ * docChanges() mitschneiden ließe (AK14, real code-geprüft in der Analyse-
+ * Spec). Diese Node-Referenz bildet die reine Rechenregel isoliert nach
+ * (siehe tests/game-drag-drop.logic.test.js), genau wie bewegeKarte() in
+ * src/game/kartenBewegung.js die fachliche Regel isoliert nachbildet, ohne
+ * dass der Browser denselben Code tatsächlich aufruft.
  */
 
 const { holeRunde } = require('./_rundenStatus');
@@ -22,6 +42,7 @@ async function berechneKennzahlen(eingabe = {}) {
   const {
     bewegungen, stationen, lieferungen, rundenStart, code, rundenNummer, nurKartenZustand,
     durchlaufzeitStart, durchlaufzeitEnde, bearbeitungszeitStart, bearbeitungszeitEnde,
+    fehlversuche,
   } = eingabe;
 
   if (nurKartenZustand) {
@@ -49,9 +70,13 @@ async function berechneKennzahlen(eingabe = {}) {
       const eintrag = Array.isArray(bewegungen)
         ? bewegungen.find((b) => b.station === station)
         : undefined;
+      const fehlversuchEintrag = Array.isArray(fehlversuche)
+        ? fehlversuche.find((f) => f.station === station)
+        : undefined;
       proStation[station] = {
         anzahlBewegungen: eintrag ? eintrag.anzahl : 0,
         beteiligungsspanne: eintrag ? (eintrag.letzteBewegungAm - eintrag.ersteBewegungAm) : 0,
+        fehlversuche: fehlversuchEintrag ? fehlversuchEintrag.anzahl : 0,
       };
     });
     ergebnis.proStation = proStation;
