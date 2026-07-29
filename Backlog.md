@@ -1046,9 +1046,9 @@ Verwendet die i18n-Schlüsselnamen und Element-IDs aus der BDD-Phase oben (`star
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Hoch |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-23 |
-| **In Progress seit** | 2026-07-28 |
+| **Done seit** | 2026-07-28 |
 
 **Beschreibung:** Beim Beitreten über den Spiel-Code bekommt eine neu beitretende Person manchmal (in 2 von 3 getesteten Spielen, 3x reproduziert) fälschlich die Gastgeber-Rolle und dieselbe Beobachter-Ansicht wie der echte Host, statt einer eigenen Spielstation zugewiesen zu werden. Auslöser unklar (evtl. abhängig von wiederholter Nutzung desselben Browsers — das war die Testmethode, echte Nutzende auf eigenen Geräten wurden nicht geprüft). Das ist der Kern-Mechanismus des Spiels — macht die Gruppe im schlimmsten Fall handlungsunfähig.
 
@@ -1252,7 +1252,21 @@ Nächster Schritt: Implementierung (`flow-game-impl`).
 - NICHT automatisiert geprüft (Sandbox-Netzwerk-Einschränkung, Firestore-Emulator-Download blockiert): `tests/game-host-claim-overwrite.security.rules.test.js` sowie alle übrigen emulator-gebundenen Testsuiten des Projekts (s. o.) — von Stephan lokal auszuführen.
 - NICHT automatisierbar/bewusst manuell: ein echter Cross-Tab-Test im eigenen Browser (zwei Tabs desselben Profils, einer als zurückkehrender Host, einer mit bewusstem Beitritt zu einem anderen Code) gemäß der bekannten Fallstricke in `chrome-multi-identity-testing-conventions` — bestätigt die Logik-Testabdeckung auch visuell im echten Browser.
 
-**Status bleibt In Progress** (Ticket wird nicht eigenständig auf Done gesetzt — Release-vor-Done-Gate: Release und Live-Verifikation stehen noch aus, danach Gate 3/Stephans Bestätigung).
+**Release durchgeführt (flow-game-release, 2026-07-28):** Implementierung lag ausschließlich in einer separaten Cloud-Sandbox-Kopie vor (kein direkter Zugriff auf Stephans lokales Repo während der Implementierungsphase) — deshalb Übergabe per `git bundle` (`sandbox-repo-handover`-Ablauf) statt direkter Device-Bridge-Edits. Lokaler Commit `aca124f` in der Sandbox erstellt (enthält Code-Fix + BDD-Tests + diesen Backlog-Eintrag), als Bundle an Stephan geliefert. Vor dem Merge zeigte sich auf Stephans Mac eine unabhängige, nicht committete lokale Änderung an `Backlog.md` (nachträgliche Done-Markierung von FEATURE-007/TASK-006 aus einem separaten, dieser Session nicht bekannten Durchlauf) — geprüft und bestätigt, dass der eingehende Commit diesen Inhalt bereits vollständig als Teilmenge enthält (echter Superset, kein Datenverlust beim Verwerfen der lokalen Änderung). Merge lief danach als sauberer Fast-Forward auf `aca124f`, von Stephan gepusht auf `main`.
+
+**GitHub Actions verifiziert:** Lauf „Deploy to Firebase Hosting on merge" für Commit `aca124f` — grün (Run 31).
+
+**Live-Ergebnis verifiziert (Chrome-Subagent, `https://flow-game-19f01.web.app`):** Seite lädt fehlerfrei, keine app-eigenen Konsolenfehler. Da dieser Fix reine Ablauflogik ohne sichtbare Oberflächenänderung betrifft, war eine visuelle Bestätigung des eigentlichen Verhaltens hier nicht möglich — das leistet erst der Mehrpersonen-Test unten. `firestore.rules` war Teil des Commits, aber rein als erklärender Kommentar ohne Regeländerung (per Commit-Diff verifiziert) — ein separater `firebase deploy --only firestore:rules` war daher nicht erforderlich.
+
+**Offene Verifikation nachträglich geschlossen:** `npm run test:emulator:bugfix-005` von Stephan lokal ausgeführt (Ergebnis real eingelesen, nicht nur behauptet) — **3/3 GRÜN**: Härtung des Update-Pfads (Freigabe-Entscheidung 1/Option B) sowie beide Regressionsfälle zu FEATURE-001 (Update- und Create-Pfad). Bestätigt den in der Implementierungsphase dokumentierten Nebenbefund, dass die bestehende `firestore.rules`-Regel den Härtungsfall bereits ohne Codeänderung abdeckt.
+
+**Echter Mehrpersonen-Test (Stephan, 2026-07-28):** Da dieses Ticket Berechtigungs-/Rollenlogik mit mehreren gleichzeitigen Spielenden betrifft, war ein grüner automatisierter Lauf laut Gate-3-Regel (siehe `flow-game-orchestrator`, hergeleitet aus den FEATURE-004-Erfahrungen) allein nicht ausreichend. Stephan hat das ursprünglich gemeldete Szenario (Browser mit bestehendem Gastgeber-Zustand tritt bewusst einem zweiten, anderen Spiel bei) real auf getrennten Geräten/Profilen nachgestellt — Ergebnis: eigene Spielstation korrekt zugewiesen, keine fälschliche Gastgeber-/Beobachter-Ansicht mehr. Von Stephan bestätigt: „alles positiv".
+
+**Damit ist das Release-vor-Done-Gate UND die zusätzliche Mehrpersonen-Test-Anforderung aus Gate 3 erfüllt.**
+
+**Gate 3 – Done-Bestätigung (Stephan, 2026-07-28):** „Done", nach expliziter Rückfrage zum echten Mehrpersonen-Testergebnis bestätigt („alles positiv").
+
+**Status:** Done.
 
 ---
 
