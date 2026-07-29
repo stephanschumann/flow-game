@@ -94,10 +94,28 @@
   .spalte-tor{font-size:11px;color:var(--dim);text-align:center}
   .spalte-tor.offen{color:var(--green);font-weight:700}
   .karten-liste{display:flex;flex-direction:column;gap:6px}
-  .karte-chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--text)}
+  .karte-chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--text);transition:transform .18s ease}
   .karte-chip.stapel-A{border-left:3px solid var(--blue)}
   .karte-chip.stapel-B{border-left:3px solid var(--purple)}
-  .karte-chip button{appearance:none;background:var(--blue);border:0;color:#fff;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+
+  /* FEATURE-008: Klick-Button vollständig durch echtes Pointer-Events-Ziehen
+     ersetzt (Freigabe-Entscheidung 1, "ersetzen statt ergänzen" - siehe
+     Backlog.md FEATURE-008). .ziehbar markiert eine per Zieh-Geste greifbare
+     Karte; touch-action:none verhindert, dass der Zieh-Versuch auf dem
+     Hauptgerät Tablet mit dem Seiten-Scrollen kollidiert (Pre-Mortem-Risiko
+     4). .busy sperrt eine bereits losgelassene, noch auf Serverbestätigung
+     wartende Karte gegen ein zweites Anfassen (AK9). .wird-gezogen hebt die
+     Karte waehrend der Geste optisch ab (Annahme 4/AK3 der ursprünglichen
+     Spec). .falsch-platziert markiert eine Karte, die absichtlich in eine
+     andere als die einzig richtige Spalte gezogen wurde (Scope-Zusatz Punkt
+     5) - "Hängen bleiben" statt automatischem Zurückspringen (finale
+     Klärung Frage 7) - IMMER mit zusätzlichem Text-Hinweis, nie nur über
+     Farbe/Rahmen (Product.md §9). */
+  .karte-chip.ziehbar{cursor:grab;touch-action:none}
+  .karte-chip.ziehbar.busy{cursor:progress;opacity:.6;touch-action:none}
+  .karte-chip.wird-gezogen{position:relative;z-index:50;box-shadow:0 8px 20px rgba(0,0,0,.4);opacity:.92}
+  .karte-chip.falsch-platziert{border:2px solid var(--red);background:rgba(248,81,73,.14)}
+  .falsch-platziert-hinweis{font-size:10px;color:var(--red);font-weight:700;white-space:nowrap}
   .eigene-hinweis{margin-top:16px;text-align:center}
   .kennzahlen-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
   .kennzahl-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center}
@@ -158,6 +176,11 @@
      vorhandene Animation (.stage rise beim Seitenwechsel). */
   @media (prefers-reduced-motion: reduce){
     .stage{animation:none}
+    /* FEATURE-008 (AK10): deckt auch die neue Zieh-/Rückschnapp-/Hänge-
+       Animation der Kartenbewegung ab, nicht nur die Seitenwechsel-
+       Animation oben - .karte-chip transformiert sich beim Ziehen und beim
+       Loslassen (siehe .wird-gezogen/.falsch-platziert oben). */
+    .karte-chip{transition:none}
   }
 </style>
 </head>
@@ -381,6 +404,7 @@
 <script src="js/game/stapelTor.js"></script>
 <script src="js/game/rundenStart.js"></script>
 <script src="js/game/kartenBewegung.js"></script>
+<script src="js/game/fehlversuch.js"></script>
 <script src="js/game/kennzahlen.js"></script>
 <script src="js/game/rundenEnde.js"></script>
 <!-- FEATURE-004: Runde 4 (Kontextwechsel). Muss NACH kartenBewegung.js
@@ -674,6 +698,15 @@
   let aktuelleRundenDaten = null;
   let aktuelleKartenListe = [];
   let bewegungsLog = []; // siehe kennzahlen.js: live beobachtet, nicht serverseitige Historie
+  // FEATURE-008: rein lokale (nie an Firestore geschriebene) Zieh-Zustände.
+  // falschPlatzierteKarten: kartenId -> Anzeige-Position, solange eine Karte
+  // absichtlich in eine falsche Spalte gezogen wurde und dort "hängen bleibt"
+  // (finale Klärung Frage 7) - AK13: nur auf DIESEM Client sichtbar, die
+  // echte serverseitige Position bleibt für alle anderen unverändert.
+  // ziehendeKartenBusy: kartenId -> true, solange ein Schreibversuch nach dem
+  // Loslassen noch läuft (AK9, Ersatz für das frühere btn.disabled).
+  let falschPlatzierteKarten = {};
+  let ziehendeKartenBusy = {};
   let aktuelleElementeListe = []; // FEATURE-004: Runde 4, analog zu aktuelleKartenListe
   let bewegungsLogRundeVier = []; // FEATURE-004: analog zu bewegungsLog
   let eigenerFortschrittTyp = null; // FEATURE-004: fortschritt/{eigeneUid}.letzterAbgeschlossenerTyp
@@ -1123,6 +1156,8 @@
 
     aktuelleKartenListe = [];
     bewegungsLog = [];
+    falschPlatzierteKarten = {}; // FEATURE-008
+    ziehendeKartenBusy = {}; // FEATURE-008
     aktuelleElementeListe = []; // FEATURE-004
     bewegungsLogRundeVier = []; // FEATURE-004
     eigenerFortschrittTyp = null; // FEATURE-004
@@ -1416,47 +1451,188 @@
       const liste = document.createElement('div');
       liste.className = 'karten-liste';
 
+      // FEATURE-008: Klick-Button VOLLSTÄNDIG ersetzt durch echtes
+      // Pointer-Events-Ziehen (Freigabe-Entscheidung 1). anzeigePosition()
+      // liest eine evtl. lokale, rein clientseitige "falsch platziert"-
+      // Überschreibung (falschPlatzierteKarten) statt der echten Position -
+      // die serverseitig gültige Position (karte.position) bleibt davon
+      // unberührt (AK13) und bestimmt weiterhin allein die Zuständigkeit
+      // (Regressionsschutz BUGFIX-008).
+      function anzeigePosition(k) {
+        return Object.prototype.hasOwnProperty.call(falschPlatzierteKarten, k.id)
+          ? falschPlatzierteKarten[k.id] : k.position;
+      }
+
       aktuelleKartenListe
-        .filter(function (k) { return k.position === position; })
+        .filter(function (k) { return anzeigePosition(k) === position; })
         .forEach(function (karte) {
+          const istFalschPlatziert = Object.prototype.hasOwnProperty.call(falschPlatzierteKarten, karte.id);
           const chip = document.createElement('div');
-          chip.className = 'karte-chip' + (karte.stapel ? ' stapel-' + karte.stapel : '');
+          chip.className = 'karte-chip' + (karte.stapel ? ' stapel-' + karte.stapel : '')
+            + (istFalschPlatziert ? ' falsch-platziert' : '');
           const label = document.createElement('span');
           label.textContent = karte.id.replace('karte-', 'Karte ') + (karte.stapel ? ' (' + karte.stapel + ')' : '');
           chip.appendChild(label);
 
-          if (position <= 5 && darfIchDieseKarteBewegen(rundenNummer, position, karte)) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = '→';
-            // FEATURE-005 (AK15): sprechende Bezeichnung fuer Screenreader
-            // statt nur des Pfeil-Symbols - benennt Karte, Herkunfts- und
-            // Zielposition explizit.
-            btn.setAttribute(
-              'aria-label',
-              t('aria.kartePosition', {
-                karte: karte.id.replace('karte-', ''),
-                von: positionLabelsAktuell[position],
-                nach: positionLabelsAktuell[position + 1],
-              })
-            );
-            btn.addEventListener('click', async function () {
-              btn.disabled = true;
-              try {
-                await window.FlowGame.bewegeKarte({
-                  code, rundenNummer, kartenId: karte.id, vonPosition: position, uid: eigeneUid,
-                }, db);
-                if (!aktuelleRundenDaten.bearbeitungszeitStart) {
-                  window.FlowGame.starteBearbeitungszeitFallsNoetig({
-                    code, rundenNummer, bearbeitungszeitBereitsGesetzt: false,
-                  }, db).catch(function () { /* siehe Kommentar in rundenStart.js */ });
-                }
-              } catch (err) {
-                zeigeFehlerAusException(err);
-                btn.disabled = false;
+          if (istFalschPlatziert) {
+            // finale Klärung Frage 7: "Hängen bleiben" statt automatischem
+            // Zurückspringen, IMMER mit Text-Hinweis (nicht nur Farbe/Rahmen,
+            // Product.md §9) UND für Screenreader wahrnehmbar (aria-label).
+            const hinweis = document.createElement('span');
+            hinweis.className = 'falsch-platziert-hinweis';
+            hinweis.textContent = t('spielbrett.falschPlatziertHinweis');
+            chip.appendChild(hinweis);
+            chip.setAttribute('aria-label', t('spielbrett.falschPlatziertHinweis'));
+          }
+
+          // Zuständigkeit richtet sich ausschliesslich nach der ECHTEN,
+          // serverseitigen Position (karte.position), nie nach einer evtl.
+          // falschen Anzeige-Position - unverändert dieselbe Prüfung wie vor
+          // FEATURE-008 (Regressionsschutz BUGFIX-008).
+          if (karte.position <= 5 && darfIchDieseKarteBewegen(rundenNummer, karte.position, karte)) {
+            const vonPosition = karte.position;
+            chip.classList.add('ziehbar');
+            if (ziehendeKartenBusy[karte.id]) {
+              // AK9: eine gerade losgelassene, noch auf Serverbestätigung
+              // wartende Karte kann nicht ein zweites Mal angefasst werden.
+              chip.classList.add('busy');
+            } else {
+              // Regressionsschutz (BUGFIX-003 c, game-stationsnamen.static.test.js):
+              // das aria-label nutzt weiterhin unverändert
+              // positionLabelsAktuell[position]/[position + 1] (die ÄUSSERE
+              // Schleifenvariable, nicht vonPosition) - an dieser Stelle
+              // garantiert identisch mit vonPosition, da eine NICHT falsch
+              // platzierte Karte immer in genau der Spalte ihrer echten
+              // Position gerendert wird (siehe anzeigePosition()/Filter oben).
+              // Für eine falsch platzierte Karte bleibt stattdessen der oben
+              // bereits gesetzte falsch-platziert-Hinweis als aria-label
+              // bestehen (informativer als "von X nach Y", siehe AK12) - hier
+              // bewusst nicht überschrieben.
+              if (!istFalschPlatziert) {
+                chip.setAttribute(
+                  'aria-label',
+                  t('aria.kartePosition', {
+                    karte: karte.id.replace('karte-', ''),
+                    von: positionLabelsAktuell[position],
+                    nach: positionLabelsAktuell[position + 1],
+                  })
+                );
               }
-            });
-            chip.appendChild(btn);
+
+              let zeigerAktiv = false;
+              let startX = 0;
+              let startY = 0;
+
+              chip.addEventListener('pointerdown', function (ev) {
+                if (ziehendeKartenBusy[karte.id]) return;
+                zeigerAktiv = true;
+                startX = ev.clientX;
+                startY = ev.clientY;
+                try { chip.setPointerCapture(ev.pointerId); } catch (e) { /* Testumgebung ohne echtes Pointer-Capture-API */ }
+                chip.classList.add('wird-gezogen');
+              });
+
+              chip.addEventListener('pointermove', function (ev) {
+                if (!zeigerAktiv) return;
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+                chip.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+              });
+
+              chip.addEventListener('pointercancel', function () {
+                zeigerAktiv = false;
+                chip.classList.remove('wird-gezogen');
+                chip.style.transform = '';
+              });
+
+              chip.addEventListener('pointerup', async function (ev) {
+                if (!zeigerAktiv) return;
+                zeigerAktiv = false;
+                chip.classList.remove('wird-gezogen');
+                // Kurz unsichtbar für elementFromPoint machen, damit das Ziel
+                // UNTER der gezogenen Karte ermittelt wird, nicht die Karte
+                // selbst.
+                chip.style.pointerEvents = 'none';
+                const zielElement = document.elementFromPoint(ev.clientX, ev.clientY);
+                chip.style.pointerEvents = '';
+                chip.style.transform = '';
+
+                const zielSpalte = zielElement && zielElement.closest ? zielElement.closest('.spalte') : null;
+                if (!zielSpalte) {
+                  // AK4: ungültiger Bereich - Karte bleibt unverändert, keine Fehlermeldung.
+                  return;
+                }
+                const alleSpalten = Array.prototype.slice.call(brett.querySelectorAll('.spalte'));
+                const nachPosition = alleSpalten.indexOf(zielSpalte);
+                if (nachPosition === -1) return;
+
+                if (nachPosition === position) {
+                  // Karte wurde effektiv wieder an ihrer bisherigen Anzeige-
+                  // Position losgelassen (kaum bewegt/direkt wieder
+                  // fallengelassen, oder eine bereits falsch platzierte Karte
+                  // erneut in derselben falschen Spalte abgelegt) - AK4-
+                  // Analogie: reiner No-Op, kein neuer Fehlversuch, keine
+                  // Fehlermeldung. Ohne diese Prüfung würde jeder minimale,
+                  // unabsichtliche Ziehversuch fälschlich als Fehlversuch
+                  // gezählt.
+                  return;
+                }
+
+                if (nachPosition !== vonPosition + 1) {
+                  // Scope-Zusatz Punkt 5 (finale Klärung, 2026-07-29): Karten
+                  // können optisch in JEDE Spalte gezogen werden - nur die
+                  // eine tatsächlich richtige wird übernommen. Diese
+                  // Erkennung passiert bewusst VOR jedem Serverschreibversuch
+                  // (Empfehlung der Spec: kein unnötiger Server-Roundtrip für
+                  // den absichtlichen Fehlerfall).
+                  falschPlatzierteKarten[karte.id] = nachPosition;
+                  // Bewusst KEIN zeigeFehlerAusException()/Server-Roundtrip
+                  // hier (Empfehlung der Spec) - eine rein lokale, bereits
+                  // übersetzte Meldung reicht, da der Client die Zielspalte
+                  // schon vor jedem Schreibversuch kennt.
+                  zeigeFehler(t('fehler.falschePosition'));
+                  renderBrett(db, code);
+                  // Finale Klärung Frage 8: Fehlversuch als eigene, neue
+                  // Kennzahl an den Server melden - eigener, bewusster
+                  // Schreibvorgang (siehe public/js/game/fehlversuch.js),
+                  // weil ein abgelehnter Zug nie eine Firestore-Änderung
+                  // erzeugt (AK14) und deshalb sonst nirgends beobachtbar
+                  // wäre. Fire-and-forget: eine seltene Race Condition beim
+                  // Zählen darf den eigentlichen Hinweis an die Person nicht
+                  // blockieren (gleiches Muster wie
+                  // starteBearbeitungszeitFallsNoetig() weiter unten).
+                  window.FlowGame.meldeFehlversuch({
+                    code, rundenNummer, bisherigeFehlversuche: (aktuelleRundenDaten && aktuelleRundenDaten.fehlversuche) || 0,
+                  }, db).catch(function () { /* siehe Kommentar oben - reine Zusatz-Kennzahl */ });
+                  return;
+                }
+
+                delete falschPlatzierteKarten[karte.id];
+                ziehendeKartenBusy[karte.id] = true;
+                renderBrett(db, code);
+                try {
+                  await window.FlowGame.bewegeKarte({
+                    code, rundenNummer, kartenId: karte.id, vonPosition: vonPosition, uid: eigeneUid,
+                  }, db);
+                  if (!aktuelleRundenDaten.bearbeitungszeitStart) {
+                    window.FlowGame.starteBearbeitungszeitFallsNoetig({
+                      code, rundenNummer, bearbeitungszeitBereitsGesetzt: false,
+                    }, db).catch(function () { /* siehe Kommentar in rundenStart.js */ });
+                  }
+                } catch (err) {
+                  // AK5 (Regressionsschutz, Race Condition): der Server lehnt
+                  // trotz korrekter Zielspalte ab (Zustand hat sich zwischen
+                  // Render und Drop geändert) - dieselbe bestehende
+                  // Fehlerbehandlung wie vor FEATURE-008, die Karte "schnappt"
+                  // durch das erneute renderBrett() im finally sichtbar zu
+                  // ihrer echten Position zurück.
+                  zeigeFehlerAusException(err);
+                } finally {
+                  delete ziehendeKartenBusy[karte.id];
+                  renderBrett(db, code);
+                }
+              });
+            }
           }
           liste.appendChild(chip);
         });
@@ -2033,6 +2209,28 @@
       box.appendChild(label);
       kennzahlenGrid.appendChild(box);
     });
+
+    // FEATURE-008 (finale Klärung Frage 8): neue Kennzahl "Fehlversuche" -
+    // ausschließlich Runden 1-3 (Runde 4 hat mit qualitaet.fehlerhaft bereits
+    // eine eigene, analoge Kennzahl, siehe Block direkt darunter). Gleiches
+    // Anzeige-/Freigabe-Muster wie alle übrigen Kennzahlen hier: nur
+    // gelesen, nicht neu berechnet, unterliegt derselben Host-only-dann-
+    // Gesamtfreigabe-Sperre wie das gesamte Runden-Dokument (firestore.rules,
+    // keine gesonderte Regel nötig). `|| 0` deckt ältere, vor FEATURE-008
+    // gespielte Runden ohne dieses Feld ab.
+    if (aktuelleRundenNummer !== 4) {
+      const fehlversucheBox = document.createElement('div');
+      fehlversucheBox.className = 'kennzahl-box';
+      const fehlversucheWert = document.createElement('div');
+      fehlversucheWert.className = 'wert';
+      fehlversucheWert.textContent = String(runde.fehlversuche || 0);
+      const fehlversucheLabel = document.createElement('div');
+      fehlversucheLabel.className = 'label';
+      fehlversucheLabel.textContent = t('kennzahlen.fehlversuche');
+      fehlversucheBox.appendChild(fehlversucheWert);
+      fehlversucheBox.appendChild(fehlversucheLabel);
+      kennzahlenGrid.appendChild(fehlversucheBox);
+    }
 
     // FEATURE-004: Qualitäts-Kennzahl (AK 15/16) - nur vorhanden, wenn diese
     // Runde die Runde 4 ist (siehe pruefeUndSetzeRundenEndeRundeVier() in

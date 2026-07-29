@@ -605,8 +605,34 @@ service cloud.firestore {
             // client-geprüft wird – der erste erfolgreiche Schreibvorgang
             // gewinnt, alle weiteren sind reine No-Ops mit identischem Ziel-
             // zustand).
+            //
+            // FEATURE-008-KORREKTUR (2026-07-29, siehe Backlog.md FEATURE-008,
+            // "Wichtiger, real code-geprüfter Befund zur aktuellen Regel"):
+            // Diese Bedingung prüfte bisher AUSSCHLIESSLICH das Resultat der
+            // beiden Felder dorAbgeschlossen/phase, OHNE einzuschränken,
+            // welche ANDEREN Felder ein Update sonst noch mitändern darf.
+            // Solange eine Runde bereits dorAbgeschlossen:true/
+            // phase:'dor_abgeschlossen' hat (der Normalzustand während der
+            // gesamten aktiven Spielzeit), hätte JEDE teilnehmende Person
+            // (auch Beobachtende, auch mit beliebigem Wert) per Huckepack
+            // JEDES beliebige zusätzliche Feld setzen können, ohne dass diese
+            // Bedingung das verhindert hätte - u.a. wäre damit die neue
+            // Fehlversuche-Kennzahl (Fall C unten) fälschlich auch für
+            // Beobachtende und ohne Ein-Schritt-Limit über Fall A erreichbar
+            // gewesen. Fix: zusätzliche hasOnly()-Einschränkung auf genau die
+            // Felder, die die beiden bestehenden, bereits produktiv
+            // genutzten Aufrufer tatsächlich mitschreiben (siehe
+            // public/js/game/rundenStart.js: loeseDefinitionOfReadyAus()
+            // schreibt {dorAbgeschlossen, phase, dorAbgeschlossenAm},
+            // starteBearbeitungszeitFallsNoetig() schreibt {dorAbgeschlossen,
+            // phase, bearbeitungszeitStart} huckepack) - beide bleiben
+            // dadurch unverändert erlaubt, jedes andere Feld (z.B.
+            // fehlversuche) fällt jetzt aus Fall A heraus und braucht seinen
+            // eigenen, bewusst entworfenen Fall (siehe Fall C unten).
             (request.resource.data.dorAbgeschlossen == true
-              && request.resource.data.phase == 'dor_abgeschlossen')
+              && request.resource.data.phase == 'dor_abgeschlossen'
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['dorAbgeschlossen', 'phase', 'dorAbgeschlossenAm', 'bearbeitungszeitStart']))
             ||
             // Fall B: automatisches Rundenende (letzte Karte im Ziel) – nur
             // mit servergesetztem Zeitstempel, niemals ein Client-Zeitwert.
@@ -616,6 +642,22 @@ service cloud.firestore {
             (request.resource.data.phase == 'beendet'
               && request.resource.data.durchlaufzeitEnde == request.time
               && resource.data.dorAbgeschlossen == true)
+            ||
+            // Fall C (FEATURE-008, finale Klärung Frage 8): neue Kennzahl
+            // "Fehlversuche" - ein Client erkennt selbst einen absichtlich
+            // falschen Zielspalten-Versuch (siehe Backlog.md FEATURE-008,
+            // Scope-Zusatz Punkt 5) VOR jedem Bewegungs-Schreibversuch und
+            // meldet ihn separat, weil ein abgelehnter Bewegungsversuch nie
+            // eine Firestore-Änderung erzeugt (AK14) und sonst nirgends
+            // beobachtbar wäre. Nur eine Person mit eigener Station
+            // (spielende, nicht Host/Beobachtende - Host/Beobachtende haben
+            // laut Datenmodell kein `station`-Feld) darf zählen, und zwar
+            // ausschliesslich exakt um 1 pro Schreibvorgang (Manipulations-
+            // schutz, analog zum Ein-Schritt-Limit bei echten Kartenbe-
+            // wegungen) - kein Huckepack mit anderen Feldern.
+            (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fehlversuche'])
+              && get(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data.get('station', null) != null
+              && request.resource.data.fehlversuche == resource.data.get('fehlversuche', 0) + 1)
           );
 
         allow delete: if false;

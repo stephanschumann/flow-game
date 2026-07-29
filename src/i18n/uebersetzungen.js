@@ -169,6 +169,13 @@ const UEBERSETZUNGEN = {
   // Text, siehe wechsleZuRunde()).
   'spielbrett.rundeKontextMitPhase': { de: 'Runde {rundenNummer} läuft – {phase}', en: 'Round {rundenNummer} in progress – {phase}' },
   'spielbrett.rundeKontextOhnePhase': { de: 'Runde {rundenNummer} wird geladen …', en: 'Round {rundenNummer} is loading …' },
+  // FEATURE-008 (finale Klärung Frage 7, "Hängen bleiben"): Text-Hinweis
+  // für eine absichtlich falsch abgelegte Karte - siehe Kopfkommentar der
+  // Browser-Kopie public/js/i18n/uebersetzungen.js.
+  'spielbrett.falschPlatziertHinweis': {
+    de: 'Falsch platziert – bitte zur richtigen Station weiterziehen.',
+    en: 'Misplaced – please drag it on to the correct station.',
+  },
 
   // ---- Phasen-Anzeige ------------------------------------------------------
   'phase.aufgabeVorgestellt': { de: 'Aufgabe vorgestellt', en: 'Task presented' },
@@ -210,6 +217,10 @@ const UEBERSETZUNGEN = {
   'kennzahlen.bisLetzteLieferung': { de: 'Bis letzte Lieferung', en: 'Until last delivery' },
   'kennzahlen.abstandLieferung': { de: 'Abstand 1.↔letzte Lieferung', en: 'Spread 1st↔last delivery' },
   'kennzahlen.qualitaetKorrekt': { de: 'Qualität (korrekt)', en: 'Quality (correct)' },
+  // FEATURE-008 (finale Klärung Frage 8): neue, für alle sichtbare Kennzahl
+  // "Fehlversuche" (Runden 1-3), analog zur Fehlerzahl-Auswertung aus
+  // Runde 4 - flacher, globaler Zähler (kein Aufschlüsseln je Station).
+  'kennzahlen.fehlversuche': { de: 'Fehlversuche', en: 'Failed attempts' },
   'kennzahlen.beteiligungTitel': { de: 'Beteiligung je Station:', en: 'Participation per station:' },
   'kennzahlen.bewegungen': { de: 'Bewegungen', en: 'moves' },
   'kennzahlen.beteiligungsspanne': { de: 'Beteiligungsspanne', en: 'participation span' },
@@ -308,6 +319,14 @@ const UEBERSETZUNGEN = {
   'fehler.ungueltigeKartenliste': { de: 'Ungültige Kartenliste.', en: 'Invalid list of cards.' },
   'fehler.stadtErforderlich': { de: 'Stadt ist erforderlich.', en: 'A city is required.' },
   'fehler.unbekannterElementtyp': { de: 'Unbekannter Elementtyp.', en: 'Unknown element type.' },
+  // FEATURE-008 (Scope-Zusatz Punkt 5, AK11): absichtliche Fehlerquelle -
+  // Karte über einer falschen Spalte losgelassen, client-seitig VOR jedem
+  // Serverschreibversuch erkannt - siehe Kopfkommentar der Browser-Kopie
+  // public/js/i18n/uebersetzungen.js.
+  'fehler.falschePosition': {
+    de: 'Falsche Station – diese Karte gehört woanders hin.',
+    en: 'Wrong station – this card belongs somewhere else.',
+  },
   'fehler.ladenFehlgeschlagen': { de: 'Fehler beim Laden: {nachricht}', en: 'Error while loading: {nachricht}' },
   'fehler.datenNichtGeladen': { de: 'Daten konnten nicht geladen werden', en: 'Data could not be loaded' },
   'hinweis.tabInaktiv': {
