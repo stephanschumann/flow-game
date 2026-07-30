@@ -940,9 +940,9 @@ Verwendet die i18n-Schlüsselnamen und Element-IDs aus der BDD-Phase oben (`star
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-21 |
-| **In Progress seit** | 2026-07-29 |
+| **Done seit** | 2026-07-29 |
 
 **Beschreibung:** Aus dem Testlauf ergab sich die offene Frage, ob Karten künftig per Drag-and-Drop bewegt werden könnten, statt wie heute über einen Klick-Button — um die Interaktion spielerischer zu machen. **Dies ist ausdrücklich noch keine Entscheidung, sondern nur die Frage selbst, festgehalten zur späteren Bewertung durch Stephan.** Keine Analyse, keine Aufwandsschätzung, keine Priorisierung bisher vorgenommen.
 
@@ -1169,7 +1169,13 @@ Drei neue Testdateien im Repo angelegt (Muster: `tests/game-*.test.js`, wie bei 
 - NICHT automatisiert geprüft (Sandbox-Netzwerk-Einschränkung, Firestore-Emulator-Download blockiert): `tests/game-drag-drop.security.rules.test.js` (neuer Fall C + Fall-A-Korrektur) sowie alle übrigen emulator-gebundenen Testsuiten des Projekts — von Stephan lokal auszuführen (`npm run test:emulator:feature-008` sowie die bestehenden Emulator-Sammelskripte für die betroffenen Altfeatures).
 - NICHT automatisierbar/bewusst manuell: ein echter Zieh-Test im Browser (Maus UND Touch/Tablet) — Pointer-Events-Verhalten (insbesondere `setPointerCapture`, `elementFromPoint` während des Ziehens, `touch-action` auf einem echten Tablet) lässt sich nicht durch Textmuster-Tests verifizieren, nur durch echtes Anfassen im Browser.
 
-**Status bleibt In Progress** (Ticket wird nicht eigenständig auf Done gesetzt — Release-vor-Done-Gate: Release und Live-Verifikation stehen noch aus, danach Gate 3/Stephans Bestätigung).
+**Release abgeschlossen (2026-07-29):** GitHub-Actions-Deploy für beide Commits (`2934f99`, `2b4d45c`) grün, Live-Check auf `https://flow-game-19f01.web.app/spiel.html` bestanden (neue Datei `js/game/fehlversuch.js` live ausgeliefert, alter Klick-Button im DOM nicht mehr vorhanden, keine Konsolen-/Netzwerkfehler), Firestore-Regeln separat deployt (`firebase deploy --only firestore:rules`, Compile-Erfolg, „Deploy complete!"; die dabei aufgetretene Compiler-Warnung „Unused variable: kartenId" ist vorbestehend seit FEATURE-002/Commit `6270daa7` und nicht durch FEATURE-008 verursacht).
+
+**Echter Mehrpersonentest (Gate 3, erforderlich wegen geänderter Berechtigungslogik in den Firestore-Regeln):** Von Stephan am 2026-07-29 durchgeführt und bestätigt: „Positiv getestet".
+
+**Gate 3 – Done-Bestätigung (Stephan, 2026-07-29):** „Done". Damit ist FEATURE-008 abgeschlossen: Spec freigegeben, BDD-Tests geschrieben und grün (16/16 statisch, 205/206 im breiteren Regressionslauf mit 1 bewusstem Skip), Implementierung inkl. Firestore-Regel-Härtung, Release durchgeführt und live verifiziert, echter Mehrpersonentest von Stephan positiv bestätigt.
+
+**Status:** Done.
 
 ---
 
@@ -1179,14 +1185,32 @@ Drei neue Testdateien im Repo angelegt (Muster: `tests/game-*.test.js`, wie bei 
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
-| **Status** | ToDo |
+| **Status** | Geschlossen – bereits erfüllt durch FEATURE-002 |
 | **Erstellt** | 2026-07-21 |
+| **Geschlossen am** | 2026-07-30 |
 
-**Beschreibung:** Während eine Person aktiv an ihrer Aufgabe arbeitet, sieht sie aktuell keine mitlaufende eigene Bearbeitungszeit live auf dem Bildschirm — die Zeit wird zwar serverseitig gemessen (FEATURE-002/003), aber nicht während der Bearbeitung sichtbar dargestellt.
+**Beschreibung:** Während eine Person aktiv an ihrer Aufgabe arbeitet, sollte sie eine mitlaufende Bearbeitungszeit (Cycle Time) live auf dem Bildschirm sehen, statt die Zahl erst nachträglich in der Auswertung zu erfahren.
 
-**User Story:** Als Spielender, der gerade eine Karte bearbeitet, möchte ich sehen, wie lange ich schon aktiv daran arbeite, sodass ich ein Gefühl für meine eigene Bearbeitungszeit (Cycle Time) bekomme, während das Spiel läuft — nicht erst nachträglich in der Auswertung.
+**User Story:** Als Spielender, der gerade eine Karte bearbeitet, möchte ich sehen, wie lange die aktive Bearbeitung in dieser Runde schon läuft, sodass ich ein Gefühl für die Cycle Time bekomme, während das Spiel läuft — nicht erst nachträglich in der Auswertung.
 
-**Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21. Die zugrundeliegende Zeitmessung existiert bereits serverseitig (`durchlaufzeitStart`/`bearbeitungszeitStart` u. Ä., FEATURE-002/003) — hier geht es nur um eine zusätzliche, rein clientseitige Live-Anzeige (z. B. mitlaufender Timer im Browser), keine neue serverseitige Messung. Siehe auch Terminologie-Ticket TASK-005 (Cycle Time statt Bearbeitungszeit als Anzeigebegriff).
+**Kontext/Verweise:** Beobachtung aus dem echten Testlauf, 2026-07-21 (demselben Tag, an dem FEATURE-004/Runde 4 erstmals live ausgerollt wurde, Commit `9735800`). Siehe auch Terminologie-Ticket TASK-005 (Cycle Time statt Bearbeitungszeit als Anzeigebegriff, ToDo, unverändert offen) und BUGFIX-011 (Runde-4-spezifischer Darstellungs-Mangel, siehe unten).
+
+---
+
+#### Analyse-Spec (2026-07-30, korrigiert)
+
+**Hinweis zur Korrektur:** Eine erste Analyse-Runde vom selben Tag ging von einer falschen Grundannahme aus (das Ticket verlange eine NEUE, persönliche Live-Anzeige je Station, getrennt von der bestehenden Team-Zeit) und leitete daraus eine vollständige Spec für eine neue Funktion ab. Nach Rücksprache mit Stephan ist klar: Seine ursprüngliche Beobachtung vom 21.07. bezog sich auf die bereits bestehende, geteilte Team-Bearbeitungszeit — nicht auf eine gewünschte neue persönliche Anzeige. Dieser Abschnitt ersetzt die frühere, falsch angesetzte Spec vollständig.
+
+**Pflicht-Code-Verifikation (Repo frisch geklont, `github.com/stephanschumann/flow-game`, HEAD `2b4d45c`, identisch zum Stand nach FEATURE-008):**
+
+1. **Die geteilte Team-Bearbeitungszeit tickt bereits seit FEATURE-002 (Done, 2026-07-19) live und sekündlich.** `renderRundenStatus()` (`public/spiel.html`, Zeile 1301–1370) enthält `aktualisiereZeitanzeigen()` (Zeile 1340–1351), die `Date.now() − bearbeitungszeitStart` fortlaufend berechnet und per `setInterval(aktualisiereZeitanzeigen, 1000)` (Zeile 1354) jede Sekunde in `#zeit-bearbeitung` schreibt. Der zugehörige `onSnapshot`-Listener auf `runden/{n}` (Zeile 1194–1204) läuft identisch für Host, jede Spielstation und Beobachtende — im Code findet sich **keine Rollen-Verzweigung**, die diese Anzeige nur bestimmten Rollen zeigt. Commit-Historie bestätigt: `a509c1c "FEATURE-002: Spielbrett-Oberfläche für Runden 1-3 (…, Zeiten, …)"` — die Zeitanzeige war von Anfang an Teil des FEATURE-002-Scopes.
+2. **Die Box ist bis zur ersten Kartenbewegung absichtlich verborgen — das ist korrektes, spezifiziertes Verhalten, kein Darstellungsfehler.** `zeitBearbeitungBox.hidden = !Boolean(runde.bearbeitungszeitStart)` (Zeile 1332–1333); `bearbeitungszeitStart` wird serverseitig erst beim allerersten erfolgreichen Kartenzug nach Definition-of-Ready gesetzt (`rundenStart.js`, `starteBearbeitungszeitFallsNoetig()`). `Flow-Game-Entscheidungen.md` legt exakt das als Sollverhalten fest: „Mit der ersten bewegten Karte beginnt sichtbar die Bearbeitungszeit." Vor DoR-Abschluss bzw. vor dem ersten Zug läuft nur die **Durchlaufzeit** (`#zeit-durchlauf`, ab Aufgabenvorstellung, nie verborgen) — die Bearbeitungszeit-Box existiert zu diesem Zeitpunkt bewusst noch nicht, weil die Cycle Time per Definition noch nicht begonnen hat. Zusätzlich global abgesichert durch `[hidden]{display:none !important}` (Zeile 23) — keine CSS-Kollision wie bei einem früher behobenen Bug (`f73e867`) möglich.
+3. **Einzig real bestehender Darstellungs-Mangel: Runde 4 zeigt die Bearbeitungszeit aktuell nie, weil `bearbeitungszeitStart` dort im produktiven Browser-Code nie gesetzt wird.** Das ist bereits **eigenständig, vollständig code-verifiziert und spezifiziert** als **BUGFIX-011 „Bearbeitungszeit (Cycle Time) wird in Runde 4 nie berechnet"**, Priorität Hoch, **Status ToDo** (nicht Done — die erste, hier korrigierte Analyse-Runde hatte das fälschlich als „BUGFIX-011, Done" zitiert; tatsächlich ist es weiterhin offen und blockiert FEATURE-004 Gate 3). Root Cause dort bereits belegt: `public/js/game/rundeVier.js` (produktiver Browser-Code) ruft nach einem Würfel-Erfolg oder Städte-Eintrag nirgends `starteBearbeitungszeitFallsNoetig()` auf — anders als die Node-Referenz `src/game/rundeVier/elementBewegung.js`, die die Logik bereits enthält. Damit bleibt `bearbeitungszeitStart` in Runde 4 dauerhaft `null`, die Box bleibt für alle Rollen dauerhaft verborgen.
+4. **Zeitlicher Zusammenhang, der Stephans Beobachtung vom 21.07. plausibel erklärt:** FEATURE-004 (Runde 4) wurde laut Commit-Historie am **selben Tag** (`9735800`, 2026-07-21) erstmals live ausgerollt wie Stephans Testlauf, aus dem dieses Ticket entstand. Es ist naheliegend, dass die Beobachtung „keine mitlaufende Zeit sichtbar" entweder (a) während der Klärungsphase vor dem ersten Kartenzug entstand (dort ist das Fehlen korrektes, gewolltes Verhalten, siehe Punkt 2), oder (b) beim Testen von Runde 4 entstand, wo der oben beschriebene, separat getrackte Bug (BUGFIX-011) die Anzeige tatsächlich verhindert. Beide Erklärungen sind durch den Code vollständig belegt; keine der beiden erfordert eine neue Implementierung im Rahmen von FEATURE-009.
+
+**Einschätzung/Ergebnis:** Die in FEATURE-009 beschriebene Fähigkeit — eine live mitlaufende, sekündlich aktualisierte Anzeige der Bearbeitungszeit (Cycle Time) während aktiver Bearbeitung, sichtbar für alle Rollen — existiert für Runden 1–3 bereits vollständig und produktiv seit FEATURE-002 (Done seit 2026-07-19). Es ist damit **Fall (a): bereits erfüllt**, kein zusätzlicher Implementierungsbedarf. Der einzige heute noch tatsächlich bestehende Darstellungs-Mangel (Runde 4) ist kein neuer Scope für dieses Ticket, sondern bereits als eigenständiges, vollständig spezifiziertes Ticket erfasst (**BUGFIX-011**, ToDo, Priorität Hoch) — dort sollte er weiterverfolgt werden, nicht hier dupliziert.
+
+**Entscheidung:** FEATURE-009 wird geschlossen, ohne eigene Implementierung. Verweis für den verbleibenden, real bestehenden Darstellungs-Mangel: **BUGFIX-011**.
 
 ---
 
@@ -1539,6 +1563,8 @@ Nächster Schritt: Implementierung (`flow-game-impl`).
 
 **Beschreibung:** Bei aktiv eingestellter englischer Oberfläche erscheinen Stationsnamen weiterhin auf Deutsch (z. B. "wareneingang", "kommissionierung", "packstation", "versand", "qualitaetskontrolle") sowie Kartenbeschriftungen ("Karte 1"–"Karte 6"). Zusätzlich zeigte sich bei einer Person einmalig nur "Your station: 5" (Zahl statt Name) — wirkte wie ein einmaliger Anzeigefehler und sollte bei der Umsetzung mitgeprüft werden. Ebenfalls hier mit erledigen: kleine Grammatikholprigkeit "You are Players in this game." (sollte Singular sein). Wirkt unfertig, für nicht-deutschsprachige Teilnehmende schlicht unverständlich, obwohl explizit Englisch angeboten wird.
 
+**Hinweis (2026-07-29, aus einem neuen Live-Screenshot bestätigt):** Der bisherige FEATURE-006-Vollständigkeitstest prüft nur, ob jeder Eintrag der zentralen Übersetzungstabelle beide Sprachen hat — er hätte diese Lücke nicht gefunden, weil Kartennamen und Stationsnamen offenbar an dieser Tabelle vorbeilaufen. Die Umsetzung dieses Tickets muss deshalb durch einen Test abgesichert werden, der die tatsächlich sprachreine Anzeige prüft (bei aktiver englischer Sprache darf nirgends mehr deutscher Text auf dem Bildschirm auftauchen), nicht nur die Vollständigkeit der Übersetzungstabelle selbst.
+
 **User Story:** Als Mitspielende(r) mit englischer Spracheinstellung, möchte ich durchgängig englische Bezeichnungen sehen, sodass die Oberfläche konsistent und verständlich ist.
 
 **Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
@@ -1869,7 +1895,8 @@ Bereit für `flow-game-impl`.
 | **Typ** | Bug |
 | **Priorität** | Hoch |
 | **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
+| **Status** | In Progress |
+| **In Progress seit** | 2026-07-30 |
 
 **Beschreibung:** Im frischen FEATURE-004-Gate-3-Durchlauf (2026-07-27, nach BUGFIX-009/FEATURE-019) zeigte die Auswertung „Processing Time 00:00" für die gesamte Runde 4, obwohl die Runde über 7 Minuten lief und sichtbar bearbeitet wurde.
 
@@ -1950,6 +1977,33 @@ Keine weiteren Fundstellen.
 - Regressionstest: bestehende 39 Tests in `tests/game-round4.logic.test.js` bleiben unverändert grün.
 - Regressionstest: bestehende 28 Sicherheitsregel-Tests in `tests/game-round4.security.rules.test.js` bleiben unverändert grün (keine Regeländerung).
 - Regressionstest: bestehende Tests zu Runde 1–3 (`tests/game-round.logic.test.js`, `tests/game-round.security.rules.test.js`, `tests/game-evaluation.logic.test.js`) bleiben unverändert grün.
+
+#### Testplan (BDD-Tests geschrieben, flow-game-bdd am 2026-07-30)
+
+Root-Cause-Verifikation am echten Code (Pflichtschritt, da die Analyse ohne Repo-Zugriff entstand): Repo frisch geklont (`github.com/stephanschumann/flow-game`, HEAD `2b4d45c`, identisch zum in der Spec genannten Stand). Bestätigt: `schliesseRundeVierWurfAb()` (`public/spiel.html`) ruft im Würfel-Erfolgspfad ausschliesslich `gibElementWeiter()` auf, ohne danach `starteBearbeitungszeitFallsNoetig()` aufzurufen; derselbe fehlende Aufruf gilt für den Submit-Handler des Städte-Formulars (`rv-stadt-form`). Im Quelltext existiert `starteBearbeitungszeitFallsNoetig(` heute genau zweimal: einmal als reine Kommentar-Erwähnung (Zeile ~1603, im Umfeld von `meldeFehlversuch()`), einmal als echter, unveränderter Aufruf im bestehenden Kartenzug-Erfolgspfad der Runden 1–3.
+
+Eine neue Testdatei, bewusst OHNE Firestore-Emulator und OHNE DOM/jsdom (gleiches Textmuster-Vorgehen wie `tests/game-drag-drop.static.test.js`, das exakt denselben Aufrufstellen-Nachweis bereits für FEATURE-008 führt):
+
+- `tests/game-round4-bearbeitungszeit.static.test.js` – 7 Testfälle, gegen den echten Quelltext von `public/spiel.html` bzw. die bestehende, generische `berechneKennzahlen()`:
+  - Bearbeitungszeit startet beim allerersten Würfel-Erfolg in Runde 4 (AK1, Würfel-Pfad)
+  - Bearbeitungszeit startet auch beim allerersten Städte-Eintrag in Runde 4, unabhängig vom Würfel-Pfad (AK1, Städte-Pfad, Pre-Mortem-Risiko 3)
+  - Beide Runde-4-Erfolgspfade sind unabhängig voneinander abgesichert, nicht nur einer (Pre-Mortem-Risiko 3, Vollständigkeits-Regressionsschutz)
+  - Der einmal gesetzte Startzeitpunkt der Bearbeitungszeit wird nie überschrieben (AK2, Guard-Bedingung an beiden Runde-4-Stellen statt eines unbedingten Aufrufs)
+  - Auswertung zeigt eine echte Bearbeitungszeit größer 0, sobald Start und Ende vorliegen (AK3, Logik-Regressionsnachweis über die bereits bestehende `berechneKennzahlen()` — bereits GRÜN, kein neuer Bug in der Berechnung selbst)
+  - Leerzustand-Regressionsschutz: `bearbeitungszeitStart` bleibt `null` ohne jeden Fortschritt, `bearbeitungszeit` bleibt unberechnet (bereits GRÜN, identisch zum akzeptierten Runden-1–3-Verhalten)
+  - Runde-1-3-Kartenzug-Erfolgspfad bleibt durch diesen Fix vollständig unverändert (AK4, Regressionsschutz — bereits GRÜN)
+
+**Status:** Alle 7 Testfälle real gegen Jest ausgeführt: 4 echte Assertion-Fehlschläge (erwartungsgemäß ROT – `public/spiel.html` enthält heute an keiner der beiden Runde-4-Erfolgsstellen den Guard+Aufruf), 3 bereits grün (die beiden Logik-Regressionsnachweise zur bestehenden `berechneKennzahlen()` sowie der Regressionsschutz für den unveränderten Runden-1–3-Pfad – kein RED-Fall, sondern Leitplanke). Zusätzlich gegen eine lokal simulierte, testweise angewendete Fassung des vorgeschlagenen Fixes gegengeprüft: alle 7 Testfälle liefen dort tatsächlich grün – die Tests sind also weder unerfüllbar noch zu lax formuliert.
+
+**Abweichung von der vorgeschlagenen Test-API:** Eine reine Text-Musterprüfung auf `starteBearbeitungszeitFallsNoetig(` hätte ohne Weiteres die bereits bestehende Kommentar-Erwähnung des Funktionsnamens (Zeile ~1603) mitgezählt und dadurch sowohl den Aufrufstellen-Zähler als auch die Guard-Prüfung verfälscht (beim ersten Testlauf bemerkt und vor dem `flow-game-impl`-Übergang korrigiert: alle Muster verlangen jetzt einen unmittelbar vorangehenden Punkt, um nur echte Methodenaufrufe zu zählen, nicht Kommentartext).
+
+**Regressionslauf (Nicht-Emulator-Suiten, Sandbox ohne Firestore-Emulator-Zugriff):** `tests/game-round4.logic.test.js` (58/58 grün), `tests/game-evaluation.logic.test.js`, `tests/game-drag-drop.static.test.js`/`.logic.test.js`, `tests/game-round.station-berechtigung.static.test.js`, `tests/game-join-precedence.static.test.js`, `tests/game-host-claim-overwrite.logic.test.js`, `tests/game-a11y-static.test.js`, `tests/game-form-loading-state.static.test.js`, `tests/game-i18n.manual-checks.test.js`, `tests/game-lobby-und-rundenkontext.static.test.js`, `tests/game-startseite-erklaerung.static.test.js`, `tests/game-stationsnamen.static.test.js`, `tests/game-connection-status.logic.test.js`, `tests/game-connection-retry.static.test.js`/`.logic.test.js`, `tests/game-feature-005-manual-checks.test.js` – alle unverändert grün, keine Regression durch die neue Testdatei. `tests/game-round.stapel-zaehlung.test.js` und alle `*.security.rules.test.js`-Dateien (inkl. der 28 aus `tests/game-round4.security.rules.test.js`) benötigen den Firestore-Emulator und sind in dieser Sandbox nicht ausführbar (Netzwerksperre) – von Stephan lokal zu bestätigen, wie bei allen vorherigen Tickets dieses Projekts.
+
+**Anmerkung zu den im Testplan-Grundgerüst genannten Zahlen 39/28:** Zum Zeitpunkt der BDD-Phase enthalten `tests/game-round4.logic.test.js` bzw. `tests/game-round4.security.rules.test.js` real 58 bzw. 32 Testfälle (gewachsen durch die zwischenzeitlich abgeschlossenen BUGFIX-009/FEATURE-019-Tickets) statt der im Testplan-Grundgerüst genannten 39/28 – der Regressionslauf bezieht sich auf den tatsächlichen, aktuellen Bestand dieser Dateien, keine der ursprünglich gemeinten Testfälle wurde entfernt oder verändert.
+
+**Zugriffsart:** Kein Zugriff auf Stephans lokale Geräte-Brücke in dieser Session – Repo frisch von `github.com/stephanschumann/flow-game` in eine eigene Sandbox-Kopie geklont (`/home/claude/flow-game`, HEAD `2b4d45c`).
+
+Damit sind die BDD-Tests geschrieben und ausgeführt. Nächster Schritt: Implementierung (`flow-game-impl`).
 
 ---
 

@@ -1729,6 +1729,14 @@
           vonPosition: element.position,
           ausgefuehrtVon: eigeneUid,
         }, db);
+        // BUGFIX-011: dasselbe Muster wie beim Kartenzug-Button der Runden
+        // 1-3 (siehe oben, nach bewegeKarte()) - ohne diesen Aufruf würde
+        // bearbeitungszeitStart in Runde 4 nie gesetzt.
+        if (!aktuelleRundenDaten.bearbeitungszeitStart) {
+          window.FlowGame.starteBearbeitungszeitFallsNoetig({
+            code, rundenNummer: aktuelleRundenNummer, bearbeitungszeitBereitsGesetzt: false,
+          }, db).catch(function () { /* siehe Kommentar in rundenStart.js */ });
+        }
       } else {
         await window.FlowGame.schreibeWuerfelZwischenwurf({
           code,
@@ -1839,7 +1847,18 @@
           ausgefuehrtVon: eigeneUid,
           staedteAlt: element.staedte,
           neueStadt: input.value,
-        }, db).catch(function (err) {
+        }, db).then(function () {
+          // BUGFIX-011: derselbe Guard + Aufruf wie im Würfel-Erfolgspfad
+          // oben und beim Kartenzug-Button der Runden 1-3 - ohne diesen
+          // Aufruf würde bearbeitungszeitStart nie gesetzt, wenn der
+          // Städte-Pfad (statt des Würfel-Pfads) zuerst zum ersten
+          // Fortschritt führt.
+          if (!aktuelleRundenDaten.bearbeitungszeitStart) {
+            window.FlowGame.starteBearbeitungszeitFallsNoetig({
+              code, rundenNummer: aktuelleRundenNummer, bearbeitungszeitBereitsGesetzt: false,
+            }, db).catch(function () { /* siehe Kommentar in rundenStart.js */ });
+          }
+        }).catch(function (err) {
           zeigeFehlerAusException(err);
           absendenBtn.disabled = false;
           input.disabled = false;
