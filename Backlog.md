@@ -1558,8 +1558,10 @@ Nächster Schritt: Implementierung (`flow-game-impl`).
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Hoch |
-| **Status** | In Progress |
+| **Status** | Done |
 | **In Progress seit** | 2026-07-30 22:50 |
+| **Done seit** | 2026-07-31 |
+| **Release-Commit** | 0bce4ec (GitHub Actions grün, Homepage/aria-label live per Chrome-Subagent verifiziert, Produktionscode-Übersetzungen bestätigt; Lobby-Stationsnamen-Anzeige laut Stephans eigener Bestätigung auf Englisch korrekt) |
 | **Erstellt** | 2026-07-23 |
 | **Analyse am** | 2026-07-30 |
 | **Spec freigegeben am** | 2026-07-30 |
