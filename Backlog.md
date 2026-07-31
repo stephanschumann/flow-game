@@ -4,6 +4,67 @@
 
 ## 📋 ToDo
 
+### BUGFIX-013 Kartenverschieben zwischen Spalten löst Textmarkierung aus statt sauberem Ziehen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | BugFix |
+| **Priorität** | Hoch |
+| **Status** | In Progress |
+| **Erstellt** | 2026-07-30 |
+| **Analyse am** | 2026-07-31 |
+| **Spec freigegeben am** | 2026-07-31 |
+| **In Progress seit** | 2026-07-31 19:17 |
+
+**Beschreibung:** Beim Ziehen einer Karte von einer Spalte in eine andere markiert der Browser sporadisch stattdessen einen großen Textbereich der Seite (Spaltenüberschriften, Prozess-Kürzel, Gate-Anzeigen, übrige Karten) blau, so wie bei einer klassischen Textauswahl per Maus. Die Karte selbst bewegt sich in diesem Moment sichtbar nicht, der Mauszeiger wechselt zwischen Hand-Symbol und Text-/Pfeil-Cursor. Nach ein paar Sekunden verschwindet die Markierung wieder, danach funktioniert das nächste Ziehen normal. Stephan hat das anhand einer Bildschirmaufnahme gemeldet (Verschieben zwischen den Spalten "2. Picking" und "3. Packing") und weist darauf hin, dass das Kartenverschieben im Schwesterprojekt "Spec or Regret" spürbar zuverlässiger funktioniert.
+
+**User Story:** Als Spielleitung, die während einer Sitzung Karten zwischen Spalten verschiebt, möchte ich, dass jeder Zieh-Versuch zuverlässig als Karte-verschieben erkannt wird statt gelegentlich als Textmarkierung, sodass der Spielfluss nicht unterbrochen wird und ich vor Beobachtenden nicht mit einem sichtbaren Aussetzer dastehe.
+
+**Kontext/Verweise:** Bildschirmaufnahme von Stephan (30.07.2026), Fehler tritt beim Verschieben zwischen "2. Picking" und "3. Packing" auf. Zusammenhängt mit FEATURE-008 (Karten per Drag-and-Drop statt Klick-Button bewegen) – der aktuelle Zieh-Mechanismus wurde dort bewusst NICHT über die native Browser-Drag-Funktion gebaut, weil diese auf dem Tablet nicht gut funktioniert; Spec or Regret nutzt dagegen genau diese native Funktion plus eine Textmarkierungs-Sperre, weshalb dort kein Aussetzer auftritt.
+
+**Hinweis zur Entstehung dieser Spec:** Die ursprüngliche, ausführlichere Fassung dieser Analyse ist am 31.07.2026 durch einen Datenverlust bei gleichzeitiger Bearbeitung von `Backlog.md` (parallele lokale Sitzung) verloren gegangen, bevor sie committet war. Diese Fassung ist aus der Gesprächs-Zusammenfassung rekonstruiert – inhaltlich gleichwertig, aber kompakter als das Original.
+
+---
+
+**Scope:**
+Eingeschlossen: Verhindern, dass ein Zieh-Versuch auf einer Karte irgendwo im Spielbrett-Bereich zu einer Textmarkierung führt – sowohl direkt auf der Karte als auch auf benachbarten Elementen (Spaltenüberschriften, Kürzel, Gate-Anzeigen, andere Karten), die während eines fehlerhaften Zieh-Versuchs mit erfasst wurden. Ausgeschlossen: jede Änderung am eigentlichen Zieh-Mechanismus selbst (Anheben der Karte, Zurückschnappen bei falscher Spalte, Sperre während Serverbestätigung) – der bleibt unverändert. Auch ausgeschlossen: Textmarkierung außerhalb des Spielbretts (z. B. der Beitritts-Code bleibt normal markierbar).
+
+**Akzeptanzkriterien:**
+- [ ] Beim Ziehen einer Karte wird zu keinem Zeitpunkt mehr Text markiert – unabhängig davon, wo auf der Karte das Ziehen beginnt und zwischen welchen Spalten gezogen wird.
+- [ ] Der Mauszeiger bleibt während des gesamten Zieh-Vorgangs als Hand-Symbol sichtbar, wechselt nicht zwischenzeitlich zu einem Text-Cursor.
+- [ ] Das bestehende Zieh-Verhalten (Karte hebt sich sichtbar ab, schnappt bei ungültiger Zielspalte zurück, ist während der Serverbestätigung kurz gesperrt) bleibt unverändert beobachtbar.
+- [ ] Auf dem Tablet (Touch-Bedienung) ändert sich das Zieh-Verhalten nicht gegenüber heute.
+- [ ] Text außerhalb des Spielbretts (z. B. der Beitritts-Code) lässt sich weiterhin normal markieren.
+
+**Analyse & Planung:**
+- [x] Aktuellen Zustand verstanden: eigener `pointerdown`-basierter Zieh-Mechanismus in `public/spiel.html`, `touch-action:none` vorhanden, aber kein `user-select:none` an den Karten-Elementen gefunden – am echten Code verifiziert.
+- [x] Betroffene Datei identifiziert: `public/spiel.html` (Inline-Styles/Script rund um die Karten-Chips und den Spielbrett-Bereich).
+- [x] Implementierungsansatz definiert: siehe Empfehlung unten.
+- [x] Risiken/Zusammenspiel benannt: siehe Pre-Mortem unten.
+- [ ] Aufwand schätzen (offen, aber als klein/risikoarm eingeschätzt).
+
+**Pre-Mortem (Risiken):**
+- Der Fix muss den gesamten Spielbrett-Bereich abdecken, nicht nur die einzelne Karte – sonst kann die Markierung weiterhin an Nachbarelementen (Spaltenüberschriften, andere Karten) starten, wenn der Zieh-Versuch dort "danebengeht".
+- Eine einzelne, rein optische Absicherung (nur CSS) reicht erfahrungsgemäß in manchen Browsern nicht zuverlässig – deshalb zwei sich ergänzende Maßnahmen vorsehen (CSS-Absicherung + aktives Unterbinden der Standard-Textauswahl im Zieh-Handler), nicht nur eine.
+- Das Verhalten lässt sich nicht sinnvoll automatisiert testen (Textmarkierung ist ein Browser-natives Verhalten, kein Anwendungszustand) – Verifikation muss echt am Rechner (Maus) und am Tablet (Finger) erfolgen.
+- Regressionsrisiko gegen FEATURE-008 (Karten per Drag-and-Drop statt Klick-Button bewegen): Der Fix greift direkt in den dort erst kürzlich fertiggestellten Zieh-Mechanismus ein – die für FEATURE-008 bestehenden automatisierten Tests müssen danach weiterhin fehlerfrei durchlaufen (Regressionslauf Pflicht in der Implementierungsphase).
+
+**Implementierungsoptionen:**
+1. **Nur CSS (`user-select:none` auf Spielbrett-Bereich):** Einfach, aber laut Pre-Mortem in manchen Browsern allein nicht zuverlässig genug.
+2. **CSS + aktives Unterbinden im Zieh-Handler (empfohlen):** `user-select:none` auf dem gesamten Spielbrett-Bereich UND zusätzlich der Zieh-Handler unterbindet die Standard-Textauswahl aktiv, sobald ein Zieh-Versuch erkannt wird – zwei sich ergänzende Absicherungen, robuster gegen Browser-Unterschiede. **Empfehlung.**
+3. **Umstieg auf native Browser-Drag-Funktion (wie Spec or Regret):** Bewusst NICHT empfohlen – wurde beim Bau von FEATURE-008 extra vermieden, weil diese Funktion auf dem Tablet nicht gut funktioniert.
+
+**Testplan:**
+- [ ] Manuelle Testschritte: Am Rechner mehrfach hintereinander Karten zwischen verschiedenen Spalten ziehen, dabei bewusst auch auf Textstellen der Karte und in der Nähe von Spaltenüberschriften starten – keine Textmarkierung darf auftreten.
+- [ ] Manueller Test auf dem Tablet: bestehendes Zieh-Verhalten unverändert bestätigen.
+- [ ] Regressionstest: bestehende automatisierte Tests zu FEATURE-008 (Drag-and-Drop) laufen weiterhin grün.
+
+**Scope-Änderungen** *(chronologisches Log):*
+*(leer bei Erstellung)*
+
+**Implementierungsnotizen:**
+*(leer bei Erstellung)*
+
 ### TASK-003 Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen
 
 | Feld | Wert |
@@ -1705,6 +1766,8 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 **Testlauf-Ergebnis (real ausgeführt, nicht nur behauptet):** `npx jest` gegen alle drei Dateien: 3 Testsuiten, 25 Testfälle gesamt, **13 rot / 12 grün**. Die 13 roten Fälle scheitern erwartungsgemäß aus dem richtigen Grund (die geprüfte Funktionalität existiert noch nicht — z. B. `stationsAnzeige` wird noch nicht über `t()`/`stationsLabel()` aufgelöst, kein Singular-Schlüssel vorhanden, kein aria-label-Update, kein Quelltext-Scan-Treffer für die neuen Muster), die 12 grünen Fälle sind Regressions-/Selbsttest-Baseline. Nichts committet.
 
 **Hinweis an `flow-game-impl`:** Der bestehende Test `tests/game-round4.logic.test.js` (BUGFIX-009) prüft aktuell per Regex explizit auf den literalen deutschen Text "Karte X von 6" (Pre-Mortem-Risiko 2 oben) — dieser Test muss im Zuge der Umsetzung kontrolliert auf ein `t()`-Aufruf-Muster umgestellt werden, nicht einfach gelöscht oder ignoriert werden.
+
+**Retrospektive (2026-07-31):** Durchlauf brachte zwei ernste Vorfälle zutage, die zu Skill-Ergänzungen geführt haben (device-access-conventions, flow-game-analyze, flow-game-orchestrator, flow-game-release, chrome-multi-identity-testing-conventions): ein Analyse-Subagent behauptete fälschlich einen Backlog.md-Schreibvorgang, und ein device_bash-Skript mit Read-Modify-Write auf Backlog.md verursachte durch einen veralteten Mount-Lesestand einen echten, aufwendig behobenen Datenverlust. Zusätzlich beobachtet: ein ähnlicher veralteter-Lesestand-Effekt trat auch beim Dateien-Zwischenspeichern (`device_stage_files`) auf — im Auge behalten, ob beide Fälle dieselbe zugrundeliegende Ursache haben oder zwei getrennte Probleme sind.
 
 ---
 
