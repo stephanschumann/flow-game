@@ -57,15 +57,21 @@ Eingeschlossen: Verhindern, dass ein Zieh-Versuch auf einer Karte irgendwo im Sp
 **Testplan:**
 - [ ] Manuelle Testschritte: Am Rechner mehrfach hintereinander Karten zwischen verschiedenen Spalten ziehen, dabei bewusst auch auf Textstellen der Karte und in der Nähe von Spaltenüberschriften starten – keine Textmarkierung darf auftreten.
 - [ ] Manueller Test auf dem Tablet: bestehendes Zieh-Verhalten unverändert bestätigen.
-- [ ] Regressionstest: bestehende automatisierte Tests zu FEATURE-008 (Drag-and-Drop) laufen weiterhin grün.
-- [ ] Automatisierte statische Tests (BDD, flow-game-bdd, tests/game-bugfix-013-textmarkierung.static.test.js): CSS-Absicherung (user-select:none) existiert; CSS-Absicherung deckt gesamten Spielbrett-Bereich ab (Pre-Mortem-Risiko 1); Zieh-Handler unterbindet Standardauswahl aktiv (Pre-Mortem-Risiko 2); Absicherung bleibt auf Spielbrett-Bereich beschränkt, Beitritts-Code bleibt markierbar (AK5).
+- [x] Regressionstest: bestehende automatisierte Tests zu FEATURE-008 (Drag-and-Drop) laufen weiterhin grün (nur statischer Teil `test:static:feature-008`; `test:emulator:feature-008` konnte in der Geräte-Werkstatt-VM nicht laufen, siehe Implementierungsnotizen).
+- [x] Automatisierte statische Tests (BDD, flow-game-bdd, tests/game-bugfix-013-textmarkierung.static.test.js): CSS-Absicherung (user-select:none) existiert; CSS-Absicherung deckt gesamten Spielbrett-Bereich ab (Pre-Mortem-Risiko 1); Zieh-Handler unterbindet Standardauswahl aktiv (Pre-Mortem-Risiko 2); Absicherung bleibt auf Spielbrett-Bereich beschränkt, Beitritts-Code bleibt markierbar (AK5).
 - [ ] Dokumentierte manuelle Testfälle (tests/game-bugfix-013-manual-checks.test.js, bewusst nicht automatisierbar laut Pre-Mortem): keine Textmarkierung bei mehreren Zieh-Versuchen mit unterschiedlichen Startpunkten/Spaltenpaaren am Rechner (AK1); Mauszeiger bleibt durchgehend Hand-Symbol (AK2); Zieh-Verhalten auf dem Tablet unverändert (AK4).
 
 **Scope-Änderungen** *(chronologisches Log):*
 *(leer bei Erstellung)*
 
 **Implementierungsnotizen:**
-*(leer bei Erstellung)*
+- 2026-07-31: Umsetzung gemäß Empfehlung (Option 2) in `public/spiel.html`:
+  - Zeile 86: CSS-Regel für `.brett` um `user-select:none;-webkit-user-select:none` ergänzt (deckt als Vorfahre automatisch `.spalte-titel`, `.spalte-tor`, `.karte-chip` mit ab).
+  - Zeile ~1571-1576: Im `pointerdown`-Handler des Zieh-Mechanismus (FEATURE-008) direkt nach der `ziehendeKartenBusy`-Prüfung ein `ev.preventDefault();` ergänzt, um die Standard-Textauswahl zusätzlich aktiv zu unterbinden.
+  - `package.json`: neues Skript `test:static:bugfix-013` ergänzt (`jest tests/game-bugfix-013-textmarkierung.static.test.js tests/game-bugfix-013-manual-checks.test.js`).
+- Node/Browser-Sync-Check: `grep -rln "pointerdown\|userSelect\|user-select" src/` liefert keine Treffer – die Zieh-/Textmarkierungs-Logik existiert nur im Browser-Code (`public/spiel.html`), keine Node-Referenzfassung zum Synchronhalten nötig.
+- Testläufe: `npm run test:static:bugfix-013` grün (2 Suites, 7 Tests). `npm run test:static:feature-008` grün (2 Suites, 16 Tests, Regression ok). `npm run test:emulator:feature-008` in der Geräte-Werkstatt-VM NICHT gelaufen: Firebase-Emulator-Download scheitert mit „download failed, status 403: Connection blocked by network allowlist" (Netzwerksperre der VM, kein Code-Fehler) – Stephan müsste diesen Emulator-Regressionstest bei Bedarf selbst lokal laufen lassen.
+- Offen vor Freigabe zu Done: die drei manuellen Testplan-Punkte (Maus am Rechner mit verschiedenen Startpunkten/Spaltenpaaren, Mauszeiger bleibt Hand-Symbol, Tablet/Touch-Verhalten unverändert) sind NICHT automatisiert geprüft und müssen von Stephan selbst verifiziert werden.
 
 ### TASK-003 Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen
 
