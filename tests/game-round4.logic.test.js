@@ -142,6 +142,11 @@ const path = require('path');
 const SPIEL_HTML_PFAD = path.join(__dirname, '..', 'public', 'spiel.html');
 const spielHtmlInhalt = fs.readFileSync(SPIEL_HTML_PFAD, 'utf8');
 
+// BUGFIX-006 (kontrollierte Anpassung, siehe Backlog.md Pre-Mortem-Risiko 2):
+// die zentrale Uebersetzungstabelle, um zu pruefen dass die DEUTSCHE
+// Uebersetzung des neuen Schluessels weiterhin "Karte X von 6" liest.
+const { UEBERSETZUNGEN } = require('../src/i18n/uebersetzungen');
+
 const RUNDE_VIER_JS_PFAD = path.join(__dirname, '..', 'public', 'js', 'game', 'rundeVier.js');
 const rundeVierJsInhalt = fs.readFileSync(RUNDE_VIER_JS_PFAD, 'utf8');
 
@@ -584,8 +589,23 @@ describe('BUGFIX-009 UI: "Karte X von 6"-Anzeige (AK5, public/spiel.html)', () =
   // gemeinsame Hilfsfunktion zu, ohne diesen Test unnötig rot laufen zu lassen.
   const KARTE_VON_SECHS_MUSTER = /Karte[^\n]{0,20}von\s*6/;
 
-  test('Szenario: Der Quelltext zeigt für Länderkarten sichtbar eine Positionsanzeige "Karte X von 6" an, unabhängig vom Land (AK5)', () => {
-    expect(KARTE_VON_SECHS_MUSTER.test(spielHtmlInhalt)).toBe(true);
+  // BUGFIX-006 (kontrollierte Anpassung, 2026-07-31, siehe Backlog.md
+  // Pre-Mortem-Risiko 2 und der dort referenzierte FEATURE-006-Praezedenzfall
+  // "literaler Text -> Schluessel-Aufruf-Muster"): Die Positionsanzeige lief
+  // bisher als hartcodierte deutsche String-Verkettung direkt im Quelltext
+  // von public/spiel.html (dort fand KARTE_VON_SECHS_MUSTER unveraendert
+  // einen Treffer). Seit BUGFIX-006 laeuft sie ueber den Uebersetzungs-
+  // schluessel 'rundeVier.kartenPosition' (t()-Aufruf statt Literal) - der
+  // Test prueft deshalb jetzt STATT des literalen Textvorkommens im
+  // Quelltext zwei Dinge: (a) dass spiel.html tatsaechlich ueber t() aufloest,
+  // und (b) dass die deutsche Übersetzung selbst (in der zentralen Tabelle)
+  // unveraendert dem Muster "Karte X von 6" entspricht - die Konstante
+  // KARTE_VON_SECHS_MUSTER selbst bleibt dafuer unveraendert bestehen (wird
+  // auch von tests/game-bugfix-006-sprachreine-anzeige.static.test.js als
+  // Fundstelle erwartet).
+  test('Szenario: Die Positionsanzeige fuer Länderkarten wird ueber einen Uebersetzungsschluessel berechnet, dessen deutsche Übersetzung weiterhin "Karte X von 6" liest (AK5, BUGFIX-006-Anpassung)', () => {
+    expect(spielHtmlInhalt).toMatch(/positionsAnzeige\.textContent\s*=\s*t\(\s*'rundeVier\.kartenPosition'/);
+    expect(KARTE_VON_SECHS_MUSTER.test(UEBERSETZUNGEN['rundeVier.kartenPosition'].de)).toBe(true);
   });
 
   test('Regressionsschutz: Die neue "Karte X von 6"-Anzeige ist nicht in der Bewegungs-/Datenlogik (window.FlowGame.gibElementWeiter in rundeVier.js) verankert, sondern bleibt reine Anzeige (erwartungsgemäß bereits GRÜN)', () => {

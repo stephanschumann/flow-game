@@ -127,6 +127,11 @@ const UEBERSETZUNGEN = {
   'rollen.host': { de: 'Host', en: 'Host' },
   'rollen.spielende': { de: 'Spielende', en: 'Players' },
   'rollen.beobachtende': { de: 'Beobachtende', en: 'Observers' },
+  // BUGFIX-006 (AK5): eigener Singular-Schluessel fuer den
+  // Einzelperson-Satz "You are ... in this game." - rollen.spielende
+  // bleibt unveraendert die Mehrzahl-Kategorie fuer die
+  // Badge-/Spaltenkopf-Anzeige (siehe Backlog.md BUGFIX-006, AK5).
+  'rollen.spielendeEinzeln': { de: 'Spielende', en: 'a Player' },
 
   // ---- Spielbrett Runde 1-3 ------------------------------------------------
   'spielbrett.runde': { de: 'Runde', en: 'Round' },
@@ -156,6 +161,10 @@ const UEBERSETZUNGEN = {
     en: 'You are an observer - you watch the team play.',
   },
   'spielbrett.karteWeiterbewegen': { de: 'Weiterbewegen', en: 'Move forward' },
+  // BUGFIX-006 (AK3): Kartenbeschriftung ("Karte 1"-"Karte 6"/"Card
+  // 1"-"Card 6") in der Spalten-/Stapelansicht - ersetzt die vorherige
+  // hartcodierte deutsche Verkettung karte.id.replace('karte-', 'Karte ').
+  'spielbrett.kartenLabel': { de: 'Karte {nummer}', en: 'Card {nummer}' },
   // BUGFIX-003 (c/d): Platzhaltertext für eine noch nicht besetzte Station
   // (Spaltenkopf renderBrett() bzw. Vergleichsansicht renderVergleichsTabelle()),
   // statt eines leeren oder "undefined" wirkenden Felds.
@@ -189,6 +198,11 @@ const UEBERSETZUNGEN = {
   'rundeVier.wuerfeln': { de: 'Würfeln', en: 'Roll dice' },
   'rundeVier.stadtEintragen': { de: 'Stadt eintragen', en: 'Enter city' },
   'rundeVier.absenden': { de: 'Absenden', en: 'Submit' },
+  // BUGFIX-006 (AK3, Regressionsschutz BUGFIX-009): Positionsanzeige
+  // "Karte X von 6"/"Card X of 6" in Runde 4 - ersetzt die vorherige
+  // hartcodierte Verkettung 'Karte ' + kartenNr + ' von 6' (siehe
+  // tests/game-round4.logic.test.js fuer den mitgezogenen Regressionstest).
+  'rundeVier.kartenPosition': { de: 'Karte {nummer} von 6', en: 'Card {nummer} of 6' },
   'rundeVier.leerHinweis': {
     de: 'Du wartest gerade auf das nächste Element - es ist noch bei einer anderen Person unterwegs.',
     en: 'You are currently waiting for the next element - it is still on its way with someone else.',
@@ -224,6 +238,9 @@ const UEBERSETZUNGEN = {
   'kennzahlen.beteiligungTitel': { de: 'Beteiligung je Station:', en: 'Participation per station:' },
   'kennzahlen.bewegungen': { de: 'Bewegungen', en: 'moves' },
   'kennzahlen.beteiligungsspanne': { de: 'Beteiligungsspanne', en: 'participation span' },
+  // FEATURE-010: zwei zusätzliche, additive Kennzahlen je Station.
+  'kennzahlen.wartezeitVorher': { de: 'Wartezeit vorher', en: 'wait time before' },
+  'kennzahlen.wartezeitNachher': { de: 'Wartezeit danach', en: 'wait time after' },
   // BUGFIX-003 (d): additive dritte Zeile pro Station in
   // renderVergleichsTabelle(), zeigt denselben Personennamen wie der
   // Spaltenkopf im Spielbrett (Punkt c), ersetzt keine der beiden
@@ -342,6 +359,10 @@ const UEBERSETZUNGEN = {
   'sprachumschalter.label': { de: 'Sprache', en: 'Language' },
   'sprachumschalter.deutsch': { de: 'Deutsch', en: 'German' },
   'sprachumschalter.englisch': { de: 'Englisch', en: 'English' },
+  // BUGFIX-006 (AK7): aria-label des Sprachumschalters selbst wird jetzt
+  // bei jedem Sprachwechsel mitaktualisiert (vorher dauerhaft "Sprache
+  // wählen" unabhaengig von der gewaehlten Sprache, siehe Backlog.md).
+  'sprachumschalter.ariaLabel': { de: 'Sprache wählen', en: 'Choose language' },
   'sprachumschalter.nurHost': {
     de: 'Nur der Host kann die Sprache für dieses Spiel ändern.',
     en: 'Only the host can change the language for this game.',

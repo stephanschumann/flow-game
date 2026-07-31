@@ -110,6 +110,10 @@
   function wendeSpracheAn() {
     document.documentElement.lang = aktuelleSprache;
     sprachAuswahl.value = aktuelleSprache;
+    // BUGFIX-006 (AK7): aria-label des Sprachumschalters selbst war bislang
+    // dauerhaft "Sprache wählen" (Deutsch), unabhaengig von der
+    // eingestellten Sprache - wird jetzt bei jedem Aufruf mitaktualisiert.
+    sprachAuswahl.setAttribute('aria-label', t('sprachumschalter.ariaLabel'));
     setText('sprach-label', t('sprachumschalter.label'));
     setText('label-kicker', t('startseite.kicker'));
     setText('label-titel', t('startseite.titel'));

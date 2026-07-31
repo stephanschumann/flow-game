@@ -213,9 +213,9 @@
 <div class="wrap">
   <div class="stage">
     <div class="hero">
-      <div class="logo" id="spiel-kicker">Spiel-Räume</div>
+      <div class="logo" id="spiel-kicker"></div>
       <h1 id="titel">Flow Game</h1>
-      <div class="tag" id="untertitel">Lädt…</div>
+      <div class="tag" id="untertitel"></div>
     </div>
 
     <div class="panel" id="auswahl-panel" hidden>
@@ -402,6 +402,9 @@
      rundenwechsel.js ruft window.FlowGame.starteRunde() (aus rundenStart.js)
      jeweils beim eigenen IIFE-Aufruf, nicht erst zur Klickzeit. -->
 <script src="js/game/stapelTor.js"></script>
+<!-- FEATURE-010: braucht window.FlowGame.stapelTorSchwelle/zaehleAngekommeneKartenAusListe
+     aus stapelTor.js oben - deshalb direkt danach. -->
+<script src="js/game/stationVerfuegbarkeit.js"></script>
 <script src="js/game/rundenStart.js"></script>
 <script src="js/game/kartenBewegung.js"></script>
 <script src="js/game/fehlversuch.js"></script>
@@ -544,6 +547,10 @@
   function wendeSpracheAufStatischeTexteAn() {
     document.documentElement.lang = aktuelleSprache;
     sprachAuswahl.value = aktuelleSprache;
+    // BUGFIX-006 (AK7): aria-label des Sprachumschalters selbst war bislang
+    // dauerhaft "Sprache wählen" (Deutsch), unabhaengig von der
+    // eingestellten Sprache - wird jetzt bei jedem Aufruf mitaktualisiert.
+    sprachAuswahl.setAttribute('aria-label', t('sprachumschalter.ariaLabel'));
 
     setText('titel', t('startseite.titel'));
     setText('spiel-kicker', t('lobby.kicker'));
@@ -860,7 +867,12 @@
   function berechneLobbyRolleHinweisText() {
     if (lobbyRolleHinweisArt === 'hostSchlicht') return t('lobby.duBistHostSchlicht');
     if (lobbyRolleHinweisArt === 'hostMitTeilen') return t('lobby.duBistHostMitTeilen');
-    if (lobbyRolleHinweisArt === 'teilnehmendeRolle') return t('lobby.duBistRolleInSpiel', { rolle: rollenLabel(eigeneRolle) });
+    // BUGFIX-006 (AK5): Singular-Schluessel rollen.spielendeEinzeln statt
+    // rollenLabel() nur fuer diesen Einzelperson-Satz (Badge bleibt gleich).
+    if (lobbyRolleHinweisArt === 'teilnehmendeRolle') {
+      const rolleImSatz = eigeneRolle === 'spielende' ? t('rollen.spielendeEinzeln') : rollenLabel(eigeneRolle);
+      return t('lobby.duBistRolleInSpiel', { rolle: rolleImSatz });
+    }
     return '';
   }
 
@@ -979,9 +991,19 @@
         const daten = teilnehmendeCache[uid];
         const li = document.createElement('li');
         const name = document.createElement('span');
-        const stationsAnzeige = daten.stationName
-          || (typeof daten.station === 'string' ? daten.station : null);
-        name.textContent = daten.anzeigename + (stationsAnzeige ? ' – ' + stationsAnzeige : '');
+        // BUGFIX-006 (AK1): stationsAnzeige lief bislang direkt aus den
+        // rohen Firestore-Feldern (daten.stationName/daten.station) an der
+        // zentralen Uebersetzungstabelle vorbei - jetzt ueber
+        // stationsLabel()/stationsNameVonRohemWert() aufgeloest, sowohl fuer
+        // den String-Zustand (vor der Spielbrett-Migration) als auch fuer
+        // den Zahl-Zustand danach.
+        const stationsAnzeige = stationsLabel(daten.stationName || stationsNameVonRohemWert(daten.station));
+        // BUGFIX-006 (AK8/Praefung A): eigener Anzeigename ist frei
+        // eingegebener Nutzertext (nie zu uebersetzen) - trotzdem erst in
+        // eine lokale Variable gelegt, statt das rohe daten.-Feld direkt
+        // in dieselbe .textContent-Zuweisung wie oben laufen zu lassen.
+        const eigenerAnzeigename = daten.anzeigename;
+        name.textContent = eigenerAnzeigename + (stationsAnzeige ? ' – ' + stationsAnzeige : '');
         const badge = document.createElement('span');
         badge.className = 'badge ' + (daten.rolle === 'host' ? 'host' : daten.rolle === 'spielende' ? 'spielende' : 'beobachtende');
         badge.textContent = rollenLabel(daten.rolle);
@@ -1111,7 +1133,21 @@
   // Funktionen statt statischer Tabellen, damit sie bei jedem Aufruf die
   // aktuell eingestellte Sprache widerspiegeln (aktuelleSprache), statt nur
   // einmal beim Laden der Seite berechnet zu werden.
+  // BUGFIX-006 (AK1/AK2): liefert den rohen internen Stationsnamen (z. B.
+  // "wareneingang"), unabhaengig davon ob die Station noch als deutscher
+  // String vorliegt (vor der Spielbrett-Migration, siehe
+  // stelleEigeneStationsnummerSicher() in kartenBewegung.js) oder bereits
+  // als 1-5-Zahl (danach) - Grundlage fuer stationsLabel() an allen drei
+  // betroffenen Anzeigestellen (Lobby-Liste, "Your station: ..." bei
+  // Beitritt UND Rejoin).
+  function stationsNameVonRohemWert(roheStation) {
+    if (roheStation == null) return null;
+    if (typeof roheStation === 'number') return window.FlowGame.STATIONEN[roheStation - 1] || null;
+    return roheStation;
+  }
+
   function stationsLabel(name) {
+    if (!name) return null; // BUGFIX-006: keine Station zugewiesen (z. B. Beobachtende) -> keine Anzeige
     const schluessel = 'station.' + name;
     const uebersetzt = t(schluessel);
     if (uebersetzt !== schluessel) return uebersetzt;
@@ -1283,6 +1319,12 @@
                 kartenId: change.doc.id,
                 wann: daten.letzteBewegungAm,
                 station: Math.max(daten.position - 1, 1),
+                // FEATURE-010: welcher Stapel bewegt wurde - wird gebraucht,
+                // um in Runde 2 "den eigenen Stapel" der ersten Bewegung
+                // einer Station zu bestimmen (siehe kennzahlen.js). In
+                // Runde 1/3 immer null (kein Stapel-Konzept, siehe
+                // stapelFuerKarte() in rundenStart.js).
+                stapel: daten.stapel || null,
               });
             }
           }
@@ -1292,6 +1334,7 @@
         });
         renderBrett(db, code);
         versucheRundenEnde(db, code);
+        versucheStationVerfuegbarkeit(db, code);
       }, function (err) {
         zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
       });
@@ -1471,7 +1514,9 @@
           chip.className = 'karte-chip' + (karte.stapel ? ' stapel-' + karte.stapel : '')
             + (istFalschPlatziert ? ' falsch-platziert' : '');
           const label = document.createElement('span');
-          label.textContent = karte.id.replace('karte-', 'Karte ') + (karte.stapel ? ' (' + karte.stapel + ')' : '');
+          // BUGFIX-006 (AK3): Kartenbeschriftung ueber Uebersetzungsschluessel
+          // statt hartcodierter deutscher String-Verkettung.
+          label.textContent = t('spielbrett.kartenLabel', { nummer: karte.id.replace('karte-', '') }) + (karte.stapel ? ' (' + karte.stapel + ')' : '');
           chip.appendChild(label);
 
           if (istFalschPlatziert) {
@@ -1663,10 +1708,35 @@
         durchlaufzeitStart: aktuelleRundenDaten.durchlaufzeitStart,
         bearbeitungszeitStart: aktuelleRundenDaten.bearbeitungszeitStart,
         bewegungsLog,
+        // FEATURE-010: fließen additiv in proStation[].wartezeitVorher/
+        // .wartezeitNachher ein, siehe kennzahlen.js.
+        dorAbgeschlossenAm: aktuelleRundenDaten.dorAbgeschlossenAm,
+        stationVerfuegbarAb: aktuelleRundenDaten.stationVerfuegbarAb,
       }, db);
     } finally {
       rundenEndeSchreibversuchLaeuft = false;
     }
+  }
+
+  // FEATURE-010 (Gate 1, Option B; Gate 2 "jede anwesende Person"): analoges
+  // Muster zu versucheRundenEnde() oben - jeder verbundene Client versucht
+  // opportunistisch, sobald sich das Stapel-Tor einer Station öffnet, den
+  // dazugehörigen "verfügbar seit"-Zeitpunkt EINMALIG servergesetzt zu
+  // schreiben. Kein eigenes Busy-Flag nötig (anders als
+  // rundenEndeSchreibversuchLaeuft): pruefeUndSetzeStationVerfuegbarkeit()
+  // prüft selbst je Schlüssel, ob schon gesetzt, und schlägt bei einem
+  // parallelen "Wettlauf" zwischen zwei Clients serverseitig einfach fehl
+  // (siehe firestore.rules, Fall D) - identisches Toleranzmuster wie beim
+  // bestehenden Rundenende-Wettlauf.
+  async function versucheStationVerfuegbarkeit(db, code) {
+    if (!aktuelleRundenDaten || aktuelleRundenDaten.phase === 'beendet') return;
+    if (aktuelleRundenNummer === 4) return; // kein Stapel-Tor-Konzept in Runde 4
+    await window.FlowGame.pruefeUndSetzeStationVerfuegbarkeit({
+      code,
+      rundenNummer: aktuelleRundenNummer,
+      karten: aktuelleKartenListe,
+      stationVerfuegbarAb: aktuelleRundenDaten.stationVerfuegbarAb,
+    }, db);
   }
 
   // ---- FEATURE-004: Runde 4 (Kontextwechsel) - "Fokus + Warteschlange" ----
@@ -1797,7 +1867,11 @@
       const kartenNr = parseInt(element.id.replace('karte-', ''), 10);
       const positionsAnzeige = document.createElement('div');
       positionsAnzeige.className = 'rv-karten-position';
-      positionsAnzeige.textContent = 'Karte ' + kartenNr + ' von 6';
+      // BUGFIX-006 (AK3, Regressionsschutz BUGFIX-009): jetzt ueber
+      // Uebersetzungsschluessel statt hartcodierter deutscher
+      // Verkettung - siehe tests/game-round4.logic.test.js fuer den
+      // mitgezogenen Regressionstest.
+      positionsAnzeige.textContent = t('rundeVier.kartenPosition', { nummer: kartenNr });
       rvFokusCard.appendChild(positionsAnzeige);
 
       const landAnzeige = document.createElement('div');
@@ -2102,6 +2176,19 @@
         const eintrag = r.proStation && r.proStation[station];
         return eintrag ? formatiereZeit(eintrag.beteiligungsspanne) : '00:00';
       });
+      // FEATURE-010: zwei zusätzliche, additive Zeilen - ersetzen die
+      // bestehende Beteiligungsspanne-Zeile NICHT (AK8, Regressionsschutz).
+      // Fehlt eine der beiden Kennzahlen bei einer alten, vor FEATURE-010
+      // gespielten Runde (kein stationVerfuegbarAb im Dokument), bleibt die
+      // Zeile bei '—' statt eines irreführenden 00:00.
+      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.wartezeitVorher'), function (r) {
+        const eintrag = r.proStation && r.proStation[station];
+        return eintrag && typeof eintrag.wartezeitVorher === 'number' ? formatiereZeit(eintrag.wartezeitVorher) : '—';
+      });
+      zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.wartezeitNachher'), function (r) {
+        const eintrag = r.proStation && r.proStation[station];
+        return eintrag && typeof eintrag.wartezeitNachher === 'number' ? formatiereZeit(eintrag.wartezeitNachher) : '—';
+      });
       // BUGFIX-003 (d): additive dritte Zeile - ersetzt die beiden
       // bestehenden Zeilen oben NICHT, liest denselben
       // teilnehmendeNamenMap['station:' + N]-Wert wie renderBrett() (Punkt
@@ -2307,6 +2394,13 @@
         const wert = document.createElement('span');
         wert.textContent = eintrag.anzahlBewegungen + ' ' + t('kennzahlen.bewegungen') + ', '
           + formatiereZeit(eintrag.beteiligungsspanne) + ' ' + t('kennzahlen.beteiligungsspanne');
+        // FEATURE-010: zusätzlich, additiv - nur angezeigt, wenn die Runde
+        // die neuen Felder tatsächlich mitbringt (Regressionsschutz für
+        // ältere, vor FEATURE-010 gespielte Runden ohne diese Felder).
+        if (typeof eintrag.wartezeitVorher === 'number' && typeof eintrag.wartezeitNachher === 'number') {
+          wert.textContent += ', ' + formatiereZeit(eintrag.wartezeitVorher) + ' ' + t('kennzahlen.wartezeitVorher')
+            + ', ' + formatiereZeit(eintrag.wartezeitNachher) + ' ' + t('kennzahlen.wartezeitNachher');
+        }
         li.appendChild(name);
         li.appendChild(wert);
         liste.appendChild(li);
@@ -2389,6 +2483,17 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
+    // BUGFIX-006 (AK6, Auth-Timing): aktuelleSprache steht bereits synchron
+    // aus localStorage fest (siehe SPRACHE_LOCALSTORAGE_KEY weiter oben) -
+    // wendeSpracheAufStatischeTexteAn() muss deshalb nicht auf den
+    // Firebase-Auth-Roundtrip warten. Vorher stand dieser Aufruf ERST NACH
+    // await auth.signInAnonymously()/onAuthStateChanged() unten, wodurch der
+    // hartcodierte deutsche Platzhaltertext (u. a. "Lädt…") waehrend der
+    // gesamten, netzwerklatenz-abhaengigen Anmeldezeit sichtbar blieb, obwohl
+    // die Sprache laengst bekannt war (siehe Backlog.md BUGFIX-006, AK6).
+    untertitelModus = 'tagline';
+    wendeSpracheAufStatischeTexteAn();
+
     let user = auth.currentUser;
     if (!user) {
       const cred = await auth.signInAnonymously();
@@ -2404,9 +2509,6 @@
     // wodurch die eigene Station in zeigeLobby() nie erkannt wurde und somit
     // NIEMAND je einen Bewegen-Button auf dem Spielbrett sehen konnte.
     eigeneUid = user.uid;
-
-    untertitelModus = 'tagline';
-    wendeSpracheAufStatischeTexteAn();
 
     const letztesSpiel = localStorage.getItem('flowGameLetztesSpiel');
     if (letztesSpiel) {
@@ -2474,8 +2576,11 @@
           );
           versteckeVerbindungsRetryHinweis();
           if (ergebnis.rolle !== 'stationenVoll') {
+            // BUGFIX-006 (AK2): rohen station-Wert (String ODER Zahl) ueber
+            // stationsLabel()/stationsNameVonRohemWert() aufloesen, statt
+            // ihn direkt an den uebersetzten Label-Text anzuhaengen.
             lobbyEigeneStation.textContent = ergebnis.station
-              ? t('lobby.deineStation') + ' ' + ergebnis.station
+              ? t('lobby.deineStation') + ' ' + stationsLabel(stationsNameVonRohemWert(ergebnis.station))
               : t('lobby.duBistBeobachtende');
             zeigeLobby(
               db,
@@ -2644,8 +2749,11 @@
         // ermöglicht den automatischen Rejoin beim nächsten Laden, ohne dass
         // Code/Name/Rolle erneut eingegeben werden müssen.
         speichereTeilnehmerSession(code, ergebnis.rolle, anzeigename);
+        // BUGFIX-006 (AK2): rohen station-Wert (String ODER Zahl) ueber
+        // stationsLabel()/stationsNameVonRohemWert() aufloesen, statt ihn
+        // direkt an den uebersetzten Label-Text anzuhaengen.
         lobbyEigeneStation.textContent = ergebnis.station
-          ? t('lobby.deineStation') + ' ' + ergebnis.station
+          ? t('lobby.deineStation') + ' ' + stationsLabel(stationsNameVonRohemWert(ergebnis.station))
           : t('lobby.duBistBeobachtende');
         zeigeLobby(db, code, 'teilnehmendeRolle', ergebnis.rolle);
       } catch (err) {
