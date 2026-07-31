@@ -10,11 +10,12 @@
 |------|------|
 | **Typ** | BugFix |
 | **Priorität** | Hoch |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-30 |
 | **Analyse am** | 2026-07-31 |
 | **Spec freigegeben am** | 2026-07-31 |
 | **In Progress seit** | 2026-07-31 19:17 |
+| **Done seit** | 2026-07-31 21:08 |
 
 **Beschreibung:** Beim Ziehen einer Karte von einer Spalte in eine andere markiert der Browser sporadisch stattdessen einen großen Textbereich der Seite (Spaltenüberschriften, Prozess-Kürzel, Gate-Anzeigen, übrige Karten) blau, so wie bei einer klassischen Textauswahl per Maus. Die Karte selbst bewegt sich in diesem Moment sichtbar nicht, der Mauszeiger wechselt zwischen Hand-Symbol und Text-/Pfeil-Cursor. Nach ein paar Sekunden verschwindet die Markierung wieder, danach funktioniert das nächste Ziehen normal. Stephan hat das anhand einer Bildschirmaufnahme gemeldet (Verschieben zwischen den Spalten "2. Picking" und "3. Packing") und weist darauf hin, dass das Kartenverschieben im Schwesterprojekt "Spec or Regret" spürbar zuverlässiger funktioniert.
 
@@ -30,11 +31,11 @@
 Eingeschlossen: Verhindern, dass ein Zieh-Versuch auf einer Karte irgendwo im Spielbrett-Bereich zu einer Textmarkierung führt – sowohl direkt auf der Karte als auch auf benachbarten Elementen (Spaltenüberschriften, Kürzel, Gate-Anzeigen, andere Karten), die während eines fehlerhaften Zieh-Versuchs mit erfasst wurden. Ausgeschlossen: jede Änderung am eigentlichen Zieh-Mechanismus selbst (Anheben der Karte, Zurückschnappen bei falscher Spalte, Sperre während Serverbestätigung) – der bleibt unverändert. Auch ausgeschlossen: Textmarkierung außerhalb des Spielbretts (z. B. der Beitritts-Code bleibt normal markierbar).
 
 **Akzeptanzkriterien:**
-- [ ] Beim Ziehen einer Karte wird zu keinem Zeitpunkt mehr Text markiert – unabhängig davon, wo auf der Karte das Ziehen beginnt und zwischen welchen Spalten gezogen wird.
-- [ ] Der Mauszeiger bleibt während des gesamten Zieh-Vorgangs als Hand-Symbol sichtbar, wechselt nicht zwischenzeitlich zu einem Text-Cursor.
-- [ ] Das bestehende Zieh-Verhalten (Karte hebt sich sichtbar ab, schnappt bei ungültiger Zielspalte zurück, ist während der Serverbestätigung kurz gesperrt) bleibt unverändert beobachtbar.
-- [ ] Auf dem Tablet (Touch-Bedienung) ändert sich das Zieh-Verhalten nicht gegenüber heute.
-- [ ] Text außerhalb des Spielbretts (z. B. der Beitritts-Code) lässt sich weiterhin normal markieren.
+- [x] Beim Ziehen einer Karte wird zu keinem Zeitpunkt mehr Text markiert – unabhängig davon, wo auf der Karte das Ziehen beginnt und zwischen welchen Spalten gezogen wird.
+- [x] Der Mauszeiger bleibt während des gesamten Zieh-Vorgangs als Hand-Symbol sichtbar, wechselt nicht zwischenzeitlich zu einem Text-Cursor.
+- [x] Das bestehende Zieh-Verhalten (Karte hebt sich sichtbar ab, schnappt bei ungültiger Zielspalte zurück, ist während der Serverbestätigung kurz gesperrt) bleibt unverändert beobachtbar.
+- [x] Auf dem Tablet (Touch-Bedienung) ändert sich das Zieh-Verhalten nicht gegenüber heute.
+- [x] Text außerhalb des Spielbretts (z. B. der Beitritts-Code) lässt sich weiterhin normal markieren.
 
 **Analyse & Planung:**
 - [x] Aktuellen Zustand verstanden: eigener `pointerdown`-basierter Zieh-Mechanismus in `public/spiel.html`, `touch-action:none` vorhanden, aber kein `user-select:none` an den Karten-Elementen gefunden – am echten Code verifiziert.
@@ -55,11 +56,11 @@ Eingeschlossen: Verhindern, dass ein Zieh-Versuch auf einer Karte irgendwo im Sp
 3. **Umstieg auf native Browser-Drag-Funktion (wie Spec or Regret):** Bewusst NICHT empfohlen – wurde beim Bau von FEATURE-008 extra vermieden, weil diese Funktion auf dem Tablet nicht gut funktioniert.
 
 **Testplan:**
-- [ ] Manuelle Testschritte: Am Rechner mehrfach hintereinander Karten zwischen verschiedenen Spalten ziehen, dabei bewusst auch auf Textstellen der Karte und in der Nähe von Spaltenüberschriften starten – keine Textmarkierung darf auftreten.
-- [ ] Manueller Test auf dem Tablet: bestehendes Zieh-Verhalten unverändert bestätigen.
+- [x] Manuelle Testschritte: Am Rechner mehrfach hintereinander Karten zwischen verschiedenen Spalten ziehen, dabei bewusst auch auf Textstellen der Karte und in der Nähe von Spaltenüberschriften starten – keine Textmarkierung darf auftreten.
+- [x] Manueller Test auf dem Tablet: bestehendes Zieh-Verhalten unverändert bestätigen.
 - [x] Regressionstest: bestehende automatisierte Tests zu FEATURE-008 (Drag-and-Drop) laufen weiterhin grün (nur statischer Teil `test:static:feature-008`; `test:emulator:feature-008` konnte in der Geräte-Werkstatt-VM nicht laufen, siehe Implementierungsnotizen).
 - [x] Automatisierte statische Tests (BDD, flow-game-bdd, tests/game-bugfix-013-textmarkierung.static.test.js): CSS-Absicherung (user-select:none) existiert; CSS-Absicherung deckt gesamten Spielbrett-Bereich ab (Pre-Mortem-Risiko 1); Zieh-Handler unterbindet Standardauswahl aktiv (Pre-Mortem-Risiko 2); Absicherung bleibt auf Spielbrett-Bereich beschränkt, Beitritts-Code bleibt markierbar (AK5).
-- [ ] Dokumentierte manuelle Testfälle (tests/game-bugfix-013-manual-checks.test.js, bewusst nicht automatisierbar laut Pre-Mortem): keine Textmarkierung bei mehreren Zieh-Versuchen mit unterschiedlichen Startpunkten/Spaltenpaaren am Rechner (AK1); Mauszeiger bleibt durchgehend Hand-Symbol (AK2); Zieh-Verhalten auf dem Tablet unverändert (AK4).
+- [x] Dokumentierte manuelle Testfälle (tests/game-bugfix-013-manual-checks.test.js, bewusst nicht automatisierbar laut Pre-Mortem): keine Textmarkierung bei mehreren Zieh-Versuchen mit unterschiedlichen Startpunkten/Spaltenpaaren am Rechner (AK1); Mauszeiger bleibt durchgehend Hand-Symbol (AK2); Zieh-Verhalten auf dem Tablet unverändert (AK4).
 
 **Scope-Änderungen** *(chronologisches Log):*
 *(leer bei Erstellung)*
@@ -72,6 +73,7 @@ Eingeschlossen: Verhindern, dass ein Zieh-Versuch auf einer Karte irgendwo im Sp
 - Node/Browser-Sync-Check: `grep -rln "pointerdown\|userSelect\|user-select" src/` liefert keine Treffer – die Zieh-/Textmarkierungs-Logik existiert nur im Browser-Code (`public/spiel.html`), keine Node-Referenzfassung zum Synchronhalten nötig.
 - Testläufe: `npm run test:static:bugfix-013` grün (2 Suites, 7 Tests). `npm run test:static:feature-008` grün (2 Suites, 16 Tests, Regression ok). `npm run test:emulator:feature-008` in der Geräte-Werkstatt-VM NICHT gelaufen: Firebase-Emulator-Download scheitert mit „download failed, status 403: Connection blocked by network allowlist" (Netzwerksperre der VM, kein Code-Fehler) – Stephan müsste diesen Emulator-Regressionstest bei Bedarf selbst lokal laufen lassen.
 - Offen vor Freigabe zu Done: die drei manuellen Testplan-Punkte (Maus am Rechner mit verschiedenen Startpunkten/Spaltenpaaren, Mauszeiger bleibt Hand-Symbol, Tablet/Touch-Verhalten unverändert) sind NICHT automatisiert geprüft und müssen von Stephan selbst verifiziert werden.
+- 2026-07-31 21:08: Stephan hat die manuelle Prüfung (Textmarkierung, Mauszeiger, Tablet) bestätigt und die Freigabe zu Done erteilt.
 
 ### TASK-003 Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen
 
