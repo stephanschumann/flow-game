@@ -58,6 +58,8 @@ Eingeschlossen: Verhindern, dass ein Zieh-Versuch auf einer Karte irgendwo im Sp
 - [ ] Manuelle Testschritte: Am Rechner mehrfach hintereinander Karten zwischen verschiedenen Spalten ziehen, dabei bewusst auch auf Textstellen der Karte und in der Nähe von Spaltenüberschriften starten – keine Textmarkierung darf auftreten.
 - [ ] Manueller Test auf dem Tablet: bestehendes Zieh-Verhalten unverändert bestätigen.
 - [ ] Regressionstest: bestehende automatisierte Tests zu FEATURE-008 (Drag-and-Drop) laufen weiterhin grün.
+- [ ] Automatisierte statische Tests (BDD, flow-game-bdd, tests/game-bugfix-013-textmarkierung.static.test.js): CSS-Absicherung (user-select:none) existiert; CSS-Absicherung deckt gesamten Spielbrett-Bereich ab (Pre-Mortem-Risiko 1); Zieh-Handler unterbindet Standardauswahl aktiv (Pre-Mortem-Risiko 2); Absicherung bleibt auf Spielbrett-Bereich beschränkt, Beitritts-Code bleibt markierbar (AK5).
+- [ ] Dokumentierte manuelle Testfälle (tests/game-bugfix-013-manual-checks.test.js, bewusst nicht automatisierbar laut Pre-Mortem): keine Textmarkierung bei mehreren Zieh-Versuchen mit unterschiedlichen Startpunkten/Spaltenpaaren am Rechner (AK1); Mauszeiger bleibt durchgehend Hand-Symbol (AK2); Zieh-Verhalten auf dem Tablet unverändert (AK4).
 
 **Scope-Änderungen** *(chronologisches Log):*
 *(leer bei Erstellung)*
