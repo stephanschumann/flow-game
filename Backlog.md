@@ -1895,8 +1895,10 @@ Bereit für `flow-game-impl`.
 | **Typ** | Bug |
 | **Priorität** | Hoch |
 | **Erstellt** | 2026-07-27 |
-| **Status** | In Progress |
+| **Status** | Done |
 | **In Progress seit** | 2026-07-30 |
+| **Done seit** | 2026-07-31 |
+| **Release-Commit** | fe8124c (GitHub Actions grün, Live-Deploy per Chrome-Subagent verifiziert; echter Solo-Mehrpersonentest im Live-Spiel von Stephan bestätigt, echte Gleichzeitigkeits-Situation bewusst nicht Teil dieses Tests) |
 
 **Beschreibung:** Im frischen FEATURE-004-Gate-3-Durchlauf (2026-07-27, nach BUGFIX-009/FEATURE-019) zeigte die Auswertung „Processing Time 00:00" für die gesamte Runde 4, obwohl die Runde über 7 Minuten lief und sichtbar bearbeitet wurde.
 
