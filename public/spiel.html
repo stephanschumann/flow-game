@@ -289,6 +289,19 @@
         </div>
       </div>
 
+      <!-- FEATURE-012 (AK9): rundenunabhängiger, immer sichtbarer Hinweis, warum
+           die Uhr schon während der Klärungsphase mitläuft - Text wird über
+           t('spielbrett.zeitErklaerung') gesetzt, siehe
+           wendeSpracheAufStatischeTexteAn(). -->
+      <div class="hinweis info" id="zeit-erklaerung"></div>
+
+      <!-- FEATURE-012 (AK1-AK3, AK11, AK12): EIN zentrales Element für die
+           rundenspezifische Rundenstart-Erklärung (Runde 1-3) - wird bei jedem
+           Rundenwechsel/Sprachwechsel über renderBrett() neu gesetzt (siehe
+           dort), unabhängig von der Rolle. Für Runde 4 bleibt es ausgeblendet
+           (eigenes Element #rv-rundenstart-erklaerung weiter unten, AK4). -->
+      <div class="hinweis info" id="rundenstart-erklaerung"></div>
+
       <div class="dor-bereich" id="dor-bereich" hidden>
         <p class="muted" id="label-dor-hinweis">Bevor Karten bewegt werden können, muss die Gruppe die Aufgabe verstanden haben.</p>
         <button type="button" class="btn primary" id="btn-dor">Definition of Ready abschließen</button>
@@ -296,12 +309,22 @@
 
       <div class="brett" id="brett" hidden></div>
 
+      <!-- FEATURE-012 (AK6, AK10): EIN zentrales Element für die Gate-Erklärung -
+           nur für Runde 1/3 gesetzt (renderBrett()); für Runde 2 und Runde 4
+           bleibt es ausgeblendet (siehe wechsleZuRunde()). -->
+      <div class="hinweis info" id="gate-erklaerung" hidden></div>
+
       <!-- FEATURE-004: Runde 4 (Kontextwechsel) - ersetzt "brett" oben,
            sobald Runde 4 aktiv ist (siehe wechsleZuRunde()/renderRundenStatus()
            im Skript unten). "Fokus + Warteschlange": nur das laut Wechselregel
            aktuell erlaubte Element wird gross dargestellt, alle anderen bei
            dieser Person wartenden Elemente erscheinen darunter als kleine,
            nicht bedienbare Chips samt Warte-Grund. -->
+      <!-- FEATURE-012 (AK4, AK10, AK12): eigene, ausführliche Rundenstart-
+           Erklärung für Runde 4 (Würfel-Regel + Länderkarten-Regel) - eigenes
+           Element statt #rundenstart-erklaerung, da Runde 4 keine Gate-/
+           Losgrößen-Erklärung braucht (AK10), siehe renderRundeVier(). -->
+      <div class="hinweis info" id="rv-rundenstart-erklaerung" hidden></div>
       <div id="rv-brett" hidden>
         <div class="rv-fokus-bereich" id="rv-fokus-bereich" hidden>
           <div class="rv-fokus-card" id="rv-fokus-card"></div>
@@ -475,6 +498,13 @@
   const btnDor = document.getElementById('btn-dor');
   const brett = document.getElementById('brett');
   const eigeneHinweis = document.getElementById('eigene-hinweis');
+  // FEATURE-012: Sichtbarkeit hängt nur von der Rundennummer ab (siehe
+  // wechsleZuRunde()) - der eigentliche Text kommt aus renderBrett()
+  // (rundenstart-erklaerung, gate-erklaerung) bzw. renderRundeVier()
+  // (rv-rundenstart-erklaerung).
+  const rundenstartErklaerung = document.getElementById('rundenstart-erklaerung');
+  const gateErklaerung = document.getElementById('gate-erklaerung');
+  const rvRundenstartErklaerung = document.getElementById('rv-rundenstart-erklaerung');
   const kennzahlenPanel = document.getElementById('kennzahlen-panel');
   const kennzahlenGrid = document.getElementById('kennzahlen-grid');
   const kennzahlenBeteiligung = document.getElementById('kennzahlen-beteiligung');
@@ -569,6 +599,10 @@
     setText('label-bearbeitungszeit', t('spielbrett.bearbeitungszeit'));
     setText('label-dor-hinweis', t('spielbrett.dorHinweis'));
     setText('btn-dor', t('spielbrett.dorButton'));
+    // FEATURE-012 (AK9): statischer, rundenunabhängiger Hinweis - läuft schon
+    // während der Klärungsphase mit, wie alle anderen statischen Texte hier
+    // (kein "einmal gesehen"-Zustand, AK14; sofortiger Sprachwechsel, AK11).
+    setText('zeit-erklaerung', t('spielbrett.zeitErklaerung'));
     setText('rv-leer-hinweis', t('rundeVier.leerHinweis'));
     setText('tab-inaktiv-hinweis', t('hinweis.tabInaktiv'));
     setText('label-kennzahlen-titel', t('kennzahlen.titel'));
@@ -1223,6 +1257,15 @@
     rvLeerHinweis.hidden = true;
     rvWarteschlange.innerHTML = '';
     rvEigeneHinweis.hidden = true;
+    // FEATURE-012 (AK1-AK4, AK10): Rundenstart-/Gate-Erklärung richtet sich
+    // rein nach der Rundennummer, unabhängig von dorAbgeschlossen (AK9-Analogie:
+    // sie erklärt, was in dieser Runde passiert, deshalb schon während der
+    // Klärungsphase sichtbar) - Runde 1/3 zeigen beide, Runde 2 nur die
+    // Rundenstart-Erklärung (kein Gate-Konzept in diesem Sinn), Runde 4 zeigt
+    // stattdessen ausschliesslich ihre eigene rv-rundenstart-erklaerung (AK10).
+    rundenstartErklaerung.hidden = rundenNummer === 4;
+    gateErklaerung.hidden = rundenNummer === 2 || rundenNummer === 4;
+    rvRundenstartErklaerung.hidden = rundenNummer !== 4;
     rundeNummerEl.textContent = String(rundenNummer);
 
     const rundenRef = db.collection('spiele').doc(code).collection('runden').doc(String(rundenNummer));
@@ -1434,6 +1477,22 @@
     const positionLabelsAktuell = positionLabels();
     brett.innerHTML = '';
 
+    // FEATURE-012 (AK1-AK3, AK11, AK12): rundenspezifische Rundenstart-
+    // Erklärung - EIN zentrales, statisches Element (#rundenstart-erklaerung,
+    // siehe Markup weiter oben), nicht pro Spalte wiederholt (Pre-Mortem-
+    // Risiko 2). Wird bei jedem Aufruf (Rundenwechsel UND Sprachwechsel, AK11)
+    // neu gesetzt, unabhängig von der Rolle (AK12: hier VOR jeder rollen-
+    // abhängigen Verzweigung wie eigeneHinweis weiter unten).
+    const RUNDENSTART_ERKLAERUNG_SCHLUESSEL_NACH_RUNDE = {
+      1: 'spielbrett.rundenstartErklaerungRunde1',
+      2: 'spielbrett.rundenstartErklaerungRunde2',
+      3: 'spielbrett.rundenstartErklaerungRunde3',
+    };
+    setText(
+      'rundenstart-erklaerung',
+      t(RUNDENSTART_ERKLAERUNG_SCHLUESSEL_NACH_RUNDE[rundenNummer] || RUNDENSTART_ERKLAERUNG_SCHLUESSEL_NACH_RUNDE[1])
+    );
+
     for (let position = 0; position <= 6; position += 1) {
       const spalte = document.createElement('div');
       spalte.className = 'spalte';
@@ -1473,7 +1532,12 @@
             });
             const zeile = document.createElement('div');
             zeile.className = offen ? 'offen' : '';
-            zeile.textContent = stapel + ': ' + anzahl + '/3' + (offen ? ' offen' : '');
+            // FEATURE-012 (AK8): geschlossener Zustand zeigt jetzt ebenfalls
+            // ein erkennbares Wort (spielbrett.torGeschlossen), nicht mehr nur
+            // die nackte Zahl ohne jeden Zusatz - wiederverwendet dieselben,
+            // bereits an anderer Stelle etablierten Schlüssel wie der
+            // Runde-1/3-Zweig unten (torOffen/torGeschlossen).
+            zeile.textContent = stapel + ': ' + anzahl + '/3 ' + (offen ? t('spielbrett.torOffen') : t('spielbrett.torGeschlossen'));
             torInfo.appendChild(zeile);
           });
         } else {
@@ -1487,6 +1551,11 @@
           torInfo.className = 'spalte-tor' + (offen ? ' offen' : '');
           torInfo.textContent = t('spielbrett.torPraefix') + ': ' + anzahl + '/' + schwelle
             + ' ' + (offen ? t('spielbrett.torOffen') : t('spielbrett.torGeschlossen'));
+          // FEATURE-012 (AK6): zentrale, EINMALIGE Gate-Erklärung (siehe
+          // Markup weiter oben, #gate-erklaerung) - nur für Runde 1/3 gesetzt
+          // (dieser Zweig läuft nie für Runde 2 und nie für Runde 4, da
+          // renderRundeVier() ein eigenes, gate-loses Konzept nutzt, AK10).
+          setText('gate-erklaerung', t('spielbrett.gateErklaerung'));
         }
         spalte.appendChild(torInfo);
       }
@@ -1973,6 +2042,15 @@
 
   function renderRundeVier(db, code) {
     if (!aktuelleRundenDaten) return;
+
+    // FEATURE-012 (AK4, AK10, AK12): eigene, ausführliche Rundenstart-
+    // Erklärung für Runde 4 (Würfel-Regel + Länderkarten-Regel) - bewusst VOR
+    // dem frühen Host/Beobachtende-Return weiter unten gesetzt, damit sie für
+    // ALLE Rollen sichtbar bleibt (AK12), nicht nur für die fünf zuständigen
+    // Personen. Runde 4 hat kein eigenes Tor-/Gate-Konzept (AK10) - deshalb
+    // bewusst kein weiterer Bezug auf den Gate-Erklärungs- oder den
+    // Tor-Präfix-Schlüssel an dieser Stelle.
+    setText('rv-rundenstart-erklaerung', t('spielbrett.rundenstartErklaerungRunde4'));
 
     // Host/Beobachtende haben keine eigene Zuständigkeit in Runde 4 (analog
     // zu eigeneHinweis in renderBrett() für Runde 1-3).

@@ -137,9 +137,14 @@ const UEBERSETZUNGEN = {
   'spielbrett.runde': { de: 'Runde', en: 'Round' },
   'spielbrett.durchlaufzeit': { de: 'Durchlaufzeit', en: 'Lead time' },
   'spielbrett.bearbeitungszeit': { de: 'Bearbeitungszeit', en: 'Processing time' },
+  // FEATURE-012 (AK5, freigegebener Wortlaut Stephan 2026-08-01, zweite
+  // Korrekturrunde): erklärt sowohl die Bedeutung der DoR-Bestätigung selbst
+  // ("alle Informationen, um loszulegen") als auch die Vorher-/Nachher-Rechte
+  // (Fragen klären/abstimmen/planen vorher, Kartenbewegung + Start der
+  // Bearbeitungszeit danach) - ersetzt den bisherigen, vagen Einzeiler.
   'spielbrett.dorHinweis': {
-    de: 'Bevor Karten bewegt werden können, muss die Gruppe die Aufgabe verstanden haben.',
-    en: 'Before cards can be moved, the group needs to understand the task.',
+    de: 'Der Knopf „Definition of Ready abschließen“ bestätigt, dass ihr alle Informationen habt, um loszulegen. Bis zu dieser Bestätigung dürft ihr alle Fragen klären, euch abstimmen und planen — danach dürfen Karten bewegt werden und die Bearbeitungszeit beginnt zu laufen.',
+    en: 'The button \'Complete Definition of Ready\' confirms that you have all the information you need to get started. Until you confirm it, you can clarify questions, coordinate, and plan — afterwards, cards can be moved and the processing time starts running.',
   },
   'spielbrett.dorButton': { de: 'Definition of Ready abschließen', en: 'Complete Definition of Ready' },
   'spielbrett.auftragseingang': { de: 'Auftragseingang', en: 'Order intake' },
@@ -151,7 +156,52 @@ const UEBERSETZUNGEN = {
   'station.qualitaetskontrolle': { de: 'Qualitätskontrolle', en: 'Quality control' },
   'spielbrett.torOffen': { de: 'offen', en: 'open' },
   'spielbrett.torGeschlossen': { de: 'geschlossen', en: 'closed' },
-  'spielbrett.torPraefix': { de: 'Tor', en: 'Gate' },
+  // FEATURE-012 (AK7, Begriffs-Umbenennung, Stephan 2026-08-01): "Tor" -> "Gate"
+  // auf Deutsch, Englisch bleibt unverändert "Gate" - Anzeigestellen nutzen
+  // weiterhin ausschließlich t('spielbrett.torPraefix'), kein hartcodierter
+  // Text an der Anzeigestelle selbst (siehe renderBrett()).
+  'spielbrett.torPraefix': { de: 'Gate', en: 'Gate' },
+  // FEATURE-012 (AK6, freigegebener Wortlaut Stephan 2026-08-01): erklärt, was
+  // die "X/Y offen/geschlossen"-Anzeige an einer Station bedeutet - nur für
+  // Runde 1/3 gesetzt (renderBrett()), da Runde 2 kein Gate-Konzept in diesem
+  // Sinn hat (AK10 analog für Runde 4) und Runde 4 renderBrett() gar nicht
+  // aufruft.
+  'spielbrett.gateErklaerung': {
+    de: 'Das Gate zeigt, wie viele Karten an dieser Station schon angekommen sind, im Vergleich zu der Anzahl, die nötig ist, damit die Station weiterarbeiten darf.',
+    en: 'The gate shows how many cards have already arrived at this station, compared to how many are needed before the station can continue working.',
+  },
+  // FEATURE-012 (AK9, freigegebener Wortlaut Stephan 2026-08-01): ordnet die
+  // bereits während der Klärungsphase laufende Uhr in den Analysezweck ein,
+  // ohne die Zeitmessung selbst zu verändern (siehe renderRundenStatus(),
+  // Regressionsschutz) - statisch, alle Runden, gesetzt über
+  // wendeSpracheAufStatischeTexteAn().
+  'spielbrett.zeitErklaerung': {
+    de: 'Wir messen in diesem Spiel verschiedene Zeiten, um sie im Nachgang gemeinsam zu analysieren. Deshalb läuft die angezeigte Uhr schon jetzt.',
+    en: 'In this game, we measure several different times so we can analyze them together afterwards. That\'s why the clock shown is already running.',
+  },
+  // FEATURE-012 (AK1-AK3, freigegebener Wortlaut Stephan 2026-08-01, zweite
+  // Korrekturrunde): rundenspezifische Rundenstart-Erklärung für Runde 1-3 -
+  // einziger Unterschied ist die Losgröße (6 Karten / 3 Karten in einem
+  // Stapel / 1 Karte), siehe renderBrett().
+  'spielbrett.rundenstartErklaerungRunde1': {
+    de: 'In dieser Runde bewegt ihr Karten vom Auftragseingang durch alle Stationen bis ins Ziel. Eine Station darf erst weiterarbeiten, wenn 6 Karten bei ihr angekommen sind.',
+    en: 'In this round, you move cards from the inbox through all stations to the goal. A station can only continue once 6 cards have arrived there.',
+  },
+  'spielbrett.rundenstartErklaerungRunde2': {
+    de: 'In dieser Runde bewegt ihr Karten vom Auftragseingang durch alle Stationen bis ins Ziel. Eine Station darf erst weiterarbeiten, wenn 3 Karten in einem Stapel bei ihr angekommen sind.',
+    en: 'In this round, you move cards from the inbox through all stations to the goal. A station can only continue once 3 cards in a stack have arrived there.',
+  },
+  'spielbrett.rundenstartErklaerungRunde3': {
+    de: 'In dieser Runde bewegt ihr Karten vom Auftragseingang durch alle Stationen bis ins Ziel. Eine Station darf erst weiterarbeiten, wenn 1 Karte bei ihr angekommen ist.',
+    en: 'In this round, you move cards from the inbox through all stations to the goal. A station can only continue once 1 card has arrived there.',
+  },
+  // FEATURE-012 (AK4, freigegebener Wortlaut Stephan 2026-08-01, zweite
+  // Korrekturrunde): eigene, ausführlichere Rundenstart-Erklärung für Runde 4
+  // (Würfel-Regel + Länderkarten-Regel), siehe renderRundeVier().
+  'spielbrett.rundenstartErklaerungRunde4': {
+    de: 'In dieser Runde bearbeitet jede Person abwechselnd ein Würfel-Element und eine Länderkarte, bevor beides an die nächste Person weitergegeben wird. Beim Würfeln zählt nur ein Ergebnis über 3 (also 4, 5 oder 6) als erledigt — bei 1, 2 oder 3 wird so lange erneut gewürfelt, bis eine höhere Zahl fällt. Bei der Länderkarte tragt ihr eine Stadt aus dem angegebenen Land ein; ihr dürft euch dabei helfen lassen oder recherchieren, wenn ihr eine Stadt nicht kennt. Eine im Spiel bereits genannte Stadt zählt bei der späteren Auswertung als Dublette.',
+    en: 'In this round, each person alternates between a dice element and a country card before passing both on to the next person. When rolling the dice, only a result above 3 (i.e. 4, 5, or 6) counts as done — on 1, 2, or 3, you keep rolling until a higher number comes up. For the country card, you enter a city from the given country; you\'re allowed to get help or look it up if you don\'t know a city. A city already used elsewhere in the game will count as a duplicate in the later evaluation.',
+  },
   'spielbrett.hostHinweis': {
     de: 'Du bist Host und beobachtest das Spielfeld - eigene Kartenzüge macht das Team.',
     en: 'You are the host and observe the board - the team makes the actual card moves.',
