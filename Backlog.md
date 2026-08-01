@@ -75,6 +75,8 @@ Eingeschlossen: Verhindern, dass ein Zieh-Versuch auf einer Karte irgendwo im Sp
 - Offen vor Freigabe zu Done: die drei manuellen Testplan-Punkte (Maus am Rechner mit verschiedenen Startpunkten/Spaltenpaaren, Mauszeiger bleibt Hand-Symbol, Tablet/Touch-Verhalten unverändert) sind NICHT automatisiert geprüft und müssen von Stephan selbst verifiziert werden.
 - 2026-07-31 21:08: Stephan hat die manuelle Prüfung (Textmarkierung, Mauszeiger, Tablet) bestätigt und die Freigabe zu Done erteilt.
 
+**Release/Live-Verifikation (nachträglich ergänzt, 2026-08-01):** Commit `8ac654c` ("BUGFIX-013: Textmarkierung beim Kartenziehen verhindert") ist auf `main` und über den automatischen GitHub-Actions-Hosting-Deploy live. Direkt gegen die echte Produktions-Seite geprüft (Chrome-Automation, `https://flow-game-19f01.web.app/spiel.html`, Seitenquelltext durchsucht): die CSS-Regel `.brett{...user-select:none;-webkit-user-select:none}` ist live vorhanden, ebenso der `BUGFIX-013`-Kommentar samt `ev.preventDefault()` direkt nach der `ziehendeKartenBusy`-Prüfung im `pointerdown`-Handler — beides deckungsgleich mit Commit `8ac654c`. Damit ist die im Ticket zuvor nur lokal dokumentierte manuelle Prüfung um den fehlenden Beleg für Release + Live-Stand ergänzt; am Done-Status ändert sich nichts.
+
 ### TASK-003 Mehrfach-Identitäten für Entwicklertests auf einem Rechner ermöglichen
 
 | Feld | Wert |
@@ -494,10 +496,11 @@ Ticket bleibt „In Progress" – die eigentliche Spieler-Oberfläche für Runde
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Mittel |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-21 |
 | **Spec freigegeben am** | 2026-07-22 |
 | **In Progress seit** | 2026-07-22 |
+| **Done seit** | 2026-08-01 |
 
 **Beschreibung:** Drei zusammenhängende Beobachtungen aus dem echten Testlauf (Host + 1 Teilnehmende via privatem Safari-Fenster) darüber, was eine spielende Person auf ihrem Bildschirm sieht, bevor und während gespielt wird:
 
@@ -708,14 +711,15 @@ Zwei neue Testdateien, bewusst OHNE Firestore-Emulator (reine Text-/Struktur-Än
 - Vollständiger Nicht-Emulator-Regressionslauf (12 Suiten, u. a. `game-a11y-static.test.js`, `game-connection-retry.logic/.integration/.static.test.js`, `game-round4.logic.test.js`, `game-evaluation.logic.test.js`, `game-connection-status.logic.test.js`, `game-feature-005-manual-checks.test.js`, `game-i18n.manual-checks.test.js`, `game-form-loading-state.static.test.js`, plus die zwei neuen BUGFIX-003-Tests) → **133/133 grün**, keine Regression.
 - **Nicht ausführbar in dieser Sandbox (Umgebungseinschränkung, kein Codefehler):** alle Firestore-Emulator-gestützten Suiten (`game-evaluation.security.rules.test.js`, `game-i18n.logic.test.js`, `game-i18n.security.rules.test.js`, `game-rejoin.logic.test.js`, `game-rooms.logic.test.js`, `game-rooms.security.rules.test.js`, `game-round.logic.test.js`, `game-round.security.rules.test.js`, `game-round.stapel-zaehlung.test.js`, `game-round4.security.rules.test.js`) sowie die beiden Live-URL-Deploy-Regressionstests (403 vom Proxy) — muss Stephan separat auf seinem eigenen Rechner laufen lassen, bevor das Ticket auf Done gehen kann.
 
-**Was Stephan noch lokal bestätigen muss, bevor dieses Ticket auf Done gesetzt werden kann:**
+**Was noch lokal bestätigt werden musste (jetzt alles erledigt):**
 
-1. Emulator-gestützter Regressionslauf auf seinem Rechner (Firestore-abhängige Suiten, siehe Liste oben) — in der Sandbox nicht möglich.
-2. Übertragung des jetzt gegen den mehrsprachigen Stand gebauten Codes auf seinen Rechner (noch nicht erfolgt).
-3. Echter Cross-Device/Browser-Test: Lobby mit mehreren getrennten Geräten/Browser-Profilen betreten und den Live-Zähler beim Beitreten weiterer Personen tatsächlich hochzählen sehen; eine Runde starten und prüfen, dass der Kopfbereich (`#untertitel`) den Rundenkontext zeigt statt des alten Landingpage-Texts, auch über einen Rundenwechsel hinweg; das Spielbrett mit allen fünf besetzten Stationen ansehen und die Namenszeile unter jeder Stationsbezeichnung visuell prüfen (inkl. Platzhalter bei einer erst nach Rundenstart beigetretenen Person); die Auswertungsansicht (`renderVergleichsTabelle()`) auf die neue „Zuständige Person"-Zeile prüfen; zusätzlich in beiden Sprachen (DE/EN) prüfen, da alle neuen Texte jetzt übersetzt sind.
-4. Danach: Deploy auf die Live-URL (Push auf `main`, wie bei allen bisherigen Tickets über GitHub Actions).
+1. Emulator-gestützter Regressionslauf auf Stephans Rechner (alle vier Firestore-abhängigen Suiten) — real ausgeführt, Ergebnis von mir per Datei-Export gelesen: `test:emulator` 103/103, `test:emulator:feature-004` 60/60, `test:emulator:feature-005` 8/8, `test:emulator:feature-006` 19/19 → **190/190 grün**, keine Regression.
+2. Übertragung des Codes auf Stephans Rechner — per Geräte-Brücke geschrieben, `git diff --stat` und ein erneuter Jest-Lauf auf seinem Rechner (26/26 grün) bestätigten Byte-für-Byte-Übereinstimmung mit der Sandbox-Implementierung.
+3. Echte Browser-Verifikation — durchgeführt vom Hauptthread selbst per Chrome-Automation, direkt auf der **Produktions-Seite** `https://flow-game-19f01.web.app` (nicht nur lokaler Emulator): Lobby-Erläuterung + Live-Zähler ("0 von 5 Spielenden beigetreten") sichtbar; Rundenkontext-Text ("Runde 1 läuft – Aufgabe vorgestellt" / "– Bereit – Karten können bewegt werden") ersetzt den alten Landingpage-Text korrekt; alle fünf Stationsspalten zeigen den Platzhalter "noch nicht besetzt" als eigene Zeile, "Auftragseingang"/"Ziel" unverändert ohne Namenszusatz; Sprachumschaltung Deutsch→Englisch live geprüft ("not yet assigned", "Round 1 in progress – Ready – cards can be moved" etc.), sofortiger Re-Render ohne Reload.
+4. **Wichtiger Nebenfund:** Der Code war zum Zeitpunkt dieser Prüfung bereits live deployed — zwischen dem letzten Implementierungsschritt dieser Session (Commit `fc14c4c`) und dieser Abschluss-Prüfung sind 22 weitere Commits auf `main` gelandet (u. a. BUGFIX-005/-006/-011/-012/-013, FEATURE-008), im Zuge derer die zuvor nur lokal auf Stephans Rechner liegenden BUGFIX-003-Änderungen mit committet und automatisch über GitHub Actions deployed wurden. Ein separater Deploy-Schritt war für den Abschluss dieses Tickets daher nicht mehr nötig.
+5. Mehrpersonentest (echte Namen statt Platzhalter bei tatsächlich beigetretenen Personen, Live-Zähler bei echten Beitritten, Vergleichsansicht-Zeile "Zuständige Person") — von Stephan selbst durchgeführt und am 2026-08-01 als erfolgreich bestätigt.
 
-**Status bleibt In Progress** (Ticket wird nicht eigenständig auf Done gesetzt — das ist Gate 3, das erst nach Stephans expliziter Bestätigung der obigen Punkte erfolgt).
+**Gate 3 – Freigabe (Stephan, 2026-08-01):** Alle obigen Punkte bestätigt, Ticket auf Done gesetzt.
 
 ---
 
@@ -1256,7 +1260,7 @@ Drei neue Testdateien im Repo angelegt (Muster: `tests/game-*.test.js`, wie bei 
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
-| **Status** | Geschlossen – bereits erfüllt durch FEATURE-002 |
+| **Status** | Done |
 | **Erstellt** | 2026-07-21 |
 | **Geschlossen am** | 2026-07-30 |
 
@@ -1610,8 +1614,11 @@ Nächster Schritt: Implementierung (`flow-game-impl`).
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Hoch |
-| **Status** | ToDo |
+| **Status** | In Progress |
 | **Erstellt** | 2026-07-23 |
+| **Analyse am** | 2026-08-01 |
+| **Spec freigegeben am** | 2026-08-01 |
+| **In Progress seit** | 2026-08-01 |
 
 **Beschreibung:** Begriffe wie "Gate: 0/6 closed" und "Complete Definition of Ready" werden nirgends im Spiel erklärt. Ohne mündliche Moderation ist nicht ersichtlich, was ein "Tor" bedeutet, wann es sich schließt oder warum das wichtig ist — dabei ist genau das (Losgrößen/Batch Sizing) offenbar der Kern der Lernerfahrung laut Untertitel der Startseite. Ohne Erklärung im Spiel hängt der Lerneffekt komplett von einer erfahrenen Moderation ab.
 
@@ -1620,6 +1627,177 @@ Nächster Schritt: Implementierung (`flow-game-impl`).
 **Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
 
 **Zweite, unabhängige Bestätigung (Stephan, 2026-07-27, während des FEATURE-004-Gate-3-Mehrpersonen-Durchlaufs):** Nach Spielstart (Zustand „Round 1 / Task Presented", Zeitmessung läuft bereits) ist für die Spielenden nicht klar und deutlich erklärt, was die eigentliche Aufgabe ist und wann es nach Abschluss der Definition of Ready wirklich losgeht. Deckt sich mit der obigen Beschreibung (fehlende Erklärung zentraler Spielbegriffe/-abläufe im Spiel selbst) – hier zusätzlich mit Blick auf den Rundenstart-Moment konkret bestätigt, kein separates Ticket nötig.
+
+#### Analyse-Spec (2026-08-01)
+
+**Zugriffsart:** Keine Geräte-Brücke zu Stephans Mac verbunden in dieser Session (`connectedFolders` leer, per `get_device_info` geprüft, nicht angenommen). Repo frisch von `github.com/stephanschumann/flow-game` in eine eigene Sandbox-Kopie geklont (`/home/claude/flow-game`, HEAD `b3182ad`, 2026-08-01, per `git log -1` verifiziert).
+
+**Pflicht-Code-Verifikation der Prämissen (2b) — am echten Code gelesen, nicht vermutet:**
+
+- **„Gate: X/Y closed" existiert tatsächlich, aber uneinheitlich:** In `public/spiel.html` (Zeile 1461–1492, `renderBrett()`) wird die Tor-Anzeige pro Station (Position 1–5) für **Runde 1 und Runde 3** als `t('spielbrett.torPraefix') + ': ' + anzahl + '/' + schwelle + ' ' + (offen ? 'offen'/'open' : 'geschlossen'/'closed')` erzeugt — genau das im Ticket zitierte Muster. **Runde 2 zeigt denselben Sachverhalt aber anders und unvollständiger** (Zeile 1466–1478): pro Stapel („A"/„B") wird nur `'A: 0/3'` bzw. bei offenem Zustand zusätzlich `' offen'`/`' open'` angehängt — im geschlossenen Zustand erscheint **kein** Wort für „geschlossen", nur die nackte Zahl. Das ist ein bisher unbemerktes UI-Detail, das für diese Spec relevant ist (siehe Fundstellen-Sweep und AK8 unten): Eine neue Erklärung des Begriffs „geschlossen" muss zu dem passen, was tatsächlich auf dem Bildschirm steht.
+- **Runde 4 hat explizit KEIN Tor/Gate-Konzept:** `renderBrett()` wird für Runde 4 gar nicht aufgerufen (Zeile 755–756: `if (aktuelleRundenNummer !== 4) renderBrett(...)`), und eine weitere Funktion enthält den expliziten Kopf-Kommentar „kein Stapel-Tor-Konzept in Runde 4" (Zeile 1737). Runde 4 verwendet stattdessen eine „Fokus + Warteschlange"-Ansicht (`renderRundeVier()`). Die Gate-Erklärung betrifft also ausschließlich Runde 1–3.
+- **Runde-4-Spielregeln, konkret am Code verifiziert (Stephans Korrektur, 2026-08-01):** Ein Würfel-Element gilt erst als erledigt, wenn eine Zahl **größer als 3** (also 4, 5 oder 6) gewürfelt wird — bestätigt in `src/game/rundeVier/wuerfelLogik.js`, `istWurfErfolgreich(wert)`: `return typeof wert === 'number' && wert > 3`. Bei 1, 2 oder 3 bleibt das Element bei derselben Person und wird erneut gewürfelt, bis eine höhere Zahl fällt (siehe durchgespieltes Beispiel im FEATURE-004-Abschnitt: „würfelt 2, 1, 3, 5 → erst beim vierten Wurf (5 > 3) gilt ihr Anteil an diesem Element als erledigt"). Bei der Länderkarte trägt jede Person eine Stadt aus dem zugeordneten Land ein; es gibt **keine Live-Blockade** bei falschem Land oder bereits verwendeter Stadt — beides (`falschesLand`, `dublette`) wird erst **nach Rundenende** in der Qualitätsauswertung sichtbar (`src/game/rundeVier/qualitaetsauswertung.js`, `wertungFuerEintrag()`; Dublettenprüfung ist land-bezogen und normalisiert Schreibweisen, z. B. „Rom"/„Roma"/„Rome" gelten als dieselbe Stadt). Da währenddessen keine Eingabe verhindert wird, ist es technisch bereits heute folgenlos möglich, sich extern helfen zu lassen oder eine Stadt nachzuschlagen — diese Erlaubnis wird mit diesem Ticket erstmals auch den Spielenden selbst im Spiel mitgeteilt (Stephans Vorgabe), ändert aber kein bestehendes Verhalten.
+- **„Definition of Ready" / DoR-Bereich existiert unabhängig vom Tor/Gate-Konzept und gilt für ALLE vier Runden:** `dor-bereich`/`btn-dor` (Zeile 292–295) wird ausschließlich über `dorBereich.hidden = Boolean(runde.dorAbgeschlossen)` gesteuert (Zeile 1362), ohne Sonderfall für Runde 4 — die DoR-Erklärung betrifft also alle Runden gleichermaßen, anders als die Gate-Erklärung.
+- **Aktueller DoR-Hinweistext ist vage:** `spielbrett.dorHinweis` lautet „Bevor Karten bewegt werden können, muss die Gruppe die Aufgabe verstanden haben." (DE) — erklärt nicht, was der Knopf inhaltlich bestätigt (dass alle Informationen zum Loslegen vorliegen) und nicht, dass bis zur Bestätigung ausdrücklich Raum für Fragen, Abstimmung und Planung besteht (Stephans Korrektur, 2026-08-01).
+- **Keine einzige Erklärung der eigentlichen Aufgabe existiert im Code:** Grep nach `Anleitung|erklär|erklaer` in `public/spiel.html` liefert ausschließlich Code-Kommentare, keine an Spielende gerichteten Texte. Es gibt also – anders als z. B. bei `eigeneHinweis` für Host/Beobachtende (Zeile 1693–1698) – keinerlei Text, der einer Person AN einer Station sagt, was ihre Aufgabe konkret ist.
+- **Die Durchlaufzeit-Uhr läuft bewusst schon während der Klärungsphase** (`Flow-Game-Entscheidungen.md`, Abschnitt „Zeitmessung": „automatisch, sobald dem Team eine neue Aufgabe zur Erledigung vorgestellt wird" + „Pausenzeit zählt in alle Zeiten mit … Warten ist Verschwendung (Lean Waste) und soll sichtbar bleiben"). Das ist eine bestätigte Produktentscheidung, kein Bug. Stephans Rahmung (2026-08-01): Das Spiel misst grundsätzlich mehrere verschiedene Zeiten, um sie im Nachgang gemeinsam auszuwerten — die Erklärung ordnet die schon laufende Uhr in diesen größeren Zweck ein, ohne die Zeitmessung selbst zu ändern (siehe Scope-Abgrenzung zu `BUGFIX-007` unten).
+- **Sowohl Host als auch Team können DoR auslösen** (`Flow-Game-Entscheidungen.md`, 2026-07-17, bestätigte Entscheidung) — der Button ist im Code nicht rollenspezifisch ausgeblendet (`btnDor` wird unabhängig von `eigeneRolle` sichtbar/aktiv geschaltet), das deckt sich mit dieser Produktentscheidung.
+- **Begriff „Tor" wird auf Wunsch Stephans (2026-08-01) auch auf Deutsch zu „Gate":** `spielbrett.torPraefix` liefert aktuell `{ de: 'Tor', en: 'Gate' }` (identisch in `src/i18n/uebersetzungen.js` Zeile 154 und `public/js/i18n/uebersetzungen.js` Zeile 124) — einzige Fundstelle des sichtbaren Worts „Tor" in beiden i18n-Tabellen (per Grep bestätigt). Der deutsche Wert wird auf „Gate" geändert, sodass beide Sprachen denselben Begriff verwenden. Kein Test im Repo (`tests/`) prüft aktuell auf den String „Tor" (per Grep bestätigt) — die Umbenennung ist damit eine isolierte, risikoarme Änderung an genau einer Zeile je i18n-Datei, keine Änderung an internen Bezeichnern (`torPraefix`, `spalte-tor`-CSS-Klasse bleiben unverändert, da nicht nutzersichtbar).
+- **i18n-Struktur (Node/Browser-Sync, Pflichtabgleich 4b):** Die relevanten Schlüssel (`spielbrett.torPraefix`, `spielbrett.torOffen`, `spielbrett.torGeschlossen`, `spielbrett.dorHinweis`, `spielbrett.dorButton`, `phase.aufgabeVorgestellt`, `phase.dorAbgeschlossen`) existieren **identisch** in `src/i18n/uebersetzungen.js` (Zeile 137–192) und `public/js/i18n/uebersetzungen.js` (Zeile 107–152) — Inhalt wortgleich verglichen, kein aktuelles Auseinanderlaufen. Für dieses Ticket bedeutet das: neue Schlüssel und die geänderte `torPraefix`-Übersetzung müssen nach demselben, bereits etablierten Zwei-Kopien-Muster in **beiden** Dateien ergänzt/geändert werden — sonst entsteht dasselbe Fehlerbild wie in BUGFIX-011 (Node korrekt, Browser weicht ab) bzw. fällt `t()` bei einer fehlenden Übersetzung auf den rohen Schlüsselnamen zurück.
+- **Etabliertes visuelles Muster für Erklärtexte bereits vorhanden:** `.hinweis.info` (Zeile 57, blauer Info-Kasten) wird bereits mehrfach für erklärende Hinweistexte verwendet, u. a. `kennzahlen-gesperrt-hinweis` (FEATURE-003) und der BUGFIX-003-Kontexthinweis — kein neues Design-Muster nötig.
+- **Layout-Enge auf dem Spielbrett bestätigt:** `.brett` ist ein 7-spaltiges Grid mit `minmax(120px, 1fr)` (Zeile 86), jede Spalte trägt bereits Titel, Personenname UND Tor-Text bei 11px Schriftgröße (Zeile 88/93/94) — wenig Platz für zusätzlichen Text pro Spalte. Runde 4 nutzt dagegen eine eigene, andere Ansicht (`renderRundeVier()`) ohne dieses 7-Spalten-Grid — die dort nötige, deutlich ausführlichere Erklärung (Würfel-Regel + Länderkarten-Regel) hat spürbar mehr Platz zur Verfügung als die kompakten Runde-1–3-Texte.
+- **Kein Modal/Dialog/Tooltip-Pattern im Code vorhanden:** Grep nach `modal|dialog|tooltip|title="` in `public/spiel.html` liefert keinen Treffer — ein Overlay/Tooltip wäre ein für dieses Projekt komplett neues UI-Muster, keine Erweiterung eines bestehenden.
+
+**Fundstellen-Sweep (Pflicht, 2d):** Suche nach `torPraefix|torOffen|torGeschlossen|spalte-tor` (3 Fundstellen: beide i18n-Kopien + Erzeugung/CSS in `spiel.html`) und nach `dorButton|dorHinweis|dor-bereich|btn-dor` (ebenfalls beide i18n-Kopien + `spiel.html`) über `public/` und `src/`: alle Fundstellen betreffen ausschließlich `public/spiel.html` und die beiden i18n-Dateien, keine weitere, unentdeckte Stelle (nicht in `public/index.html`, das laut FEATURE-007 bereits erledigt und bewusst nur die allgemeine Spielidee erklärt, nicht die Begriffe während des Spiels selbst). Zusätzlich gefunden, aber **bewusst außerhalb dieses Tickets belassen**: Runde 4 erzwingt einen Wechsel zwischen Würfel- und Länderaufgabe (`rundeVier.wartetAufAufgabe`/`leerHinweis`), ohne dass irgendwo erklärt wird, *warum* dieser Wechsel erzwungen wird bzw. dass genau das den Kontextwechsel-Lerneffekt simuliert — das ist dieselbe Fehlerklasse „zentraler Spielbegriff/-mechanismus unerklärt", aber vom Ticket-Titel nicht benannt (der nennt nur „Gate, Definition of Ready"). Empfehlung: als eigenes, kleines Ticket (z. B. FEATURE-012-Folgeticket) erfassen, statt den Scope hier ungefragt zu erweitern.
+
+**Zustands-Check (Pflicht, 2d):**
+- **Wartezustand:** Kein neuer Wartezustand nötig — alle Erklärungstexte sind statisch (Teil des ausgelieferten Codes) und erscheinen synchron mit den bereits vorhandenen, bestehenden Elementen (Torzeile, DoR-Bereich), für die schon heute kein Ladezustand existiert.
+- **Leerzustand:** Kein eigener Leerzustand — die Erklärung ist an ohnehin schon vorhandene, bedingt sichtbare Elemente gekoppelt (Torzeile nur für Position 1–5 in Runde 1/3, DoR-Bereich nur solange `dorAbgeschlossen` falsch ist); sie erscheint nie „leer", sondern nur zusammen mit dem Element, das sie erklärt.
+- **Fehlerfall:** Kein Netzwerk-/Server-Fehlerfall möglich, da reiner statischer Text ohne Firestore-Bezug. Einziger denkbarer Fehlerfall ist ein vergessener Übersetzungsschlüssel in einer der beiden Sprachen — bestehendes, bereits etabliertes Verhalten zeigt in diesem Fall den rohen Schlüsselnamen an (kein Absturz, kein leeres Feld); dieses bestehende Verhalten reicht als Fallback und wird durch dieses Ticket nicht verändert.
+
+---
+
+**Scope:**
+
+Eingeschlossen:
+- Eine kurze, für alle Rollen (Host, Spielende, Beobachtende) sichtbare Erklärung direkt beim Rundenstart, was die eigentliche Aufgabe ist — rundenspezifisch formuliert (Runde 1: auf 6 Karten warten, Runde 2: auf 3, Runde 3: auf 1; Runde 4: vollständige Erklärung der Würfel- und Länderkarten-Regeln, siehe unten).
+- Eine kurze, jederzeit sichtbare Erklärung, was „Definition of Ready" bewirkt: die Bestätigung, dass die Gruppe alle Informationen hat, um loszulegen; bis zur Bestätigung dürfen offene Fragen geklärt, Absprachen getroffen und geplant werden; danach dürfen Karten bewegt werden und die Bearbeitungszeit beginnt.
+- Eine kurze, jederzeit sichtbare Erklärung des Gate-Begriffs für Runde 1 und Runde 3 (was „X/Y" bedeutet, was „offen"/„geschlossen" für die jeweilige Station bedeutet).
+- **Umbenennung des Begriffs „Tor" zu „Gate" auch in der deutschen Oberfläche** (Stephans Vorgabe, 2026-08-01), sodass Deutsch und Englisch denselben Begriff verwenden — betrifft `spielbrett.torPraefix` in beiden i18n-Dateien.
+- Eine ausführliche Erklärung der Runde-4-Regeln: dass ein Würfel-Element erst nach einer Zahl größer 3 als erledigt gilt und sonst so lange erneut gewürfelt wird, bis das eintritt; dass bei der Länderkarte externe Hilfe oder Nachschlagen ausdrücklich erlaubt ist, wenn eine Stadt nicht bekannt ist; und dass eine im Spiel bereits genannte Stadt bei der Auswertung nach Rundenende als Dublette zählt.
+- Ein kurzer Hinweis, der einordnet, dass in diesem Spiel grundsätzlich verschiedene Zeiten gemessen werden, um sie im Nachgang zu analysieren — deshalb läuft die Uhr schon während der Klärungsphase, ohne dass sich die Zeitmessung selbst ändert (siehe Abgrenzung zu `BUGFIX-007`).
+- Ergänzung/Änderung der neuen bzw. betroffenen Texte in beiden i18n-Dateien (Deutsch/Englisch) nach dem etablierten Muster.
+
+Ausgeschlossen:
+- Jede Änderung an der Zeitmessung selbst (Startzeitpunkt der Durchlaufzeit, ob/wann die Uhr pausiert) — das ist ausschließlich Gegenstand von `BUGFIX-007`.
+- Jede Änderung an den tatsächlichen Runde-4-Spielregeln (Würfel-Schwelle >3, Dubletten-/Länder-Prüfung, fehlende Live-Blockade) — dieses Ticket erklärt die bestehenden Regeln, ändert sie nicht.
+- Die allgemeine Erklärung von Spielzweck/Lernziel/Ablauf auf der Startseite — bereits durch `FEATURE-007` (Done) abgedeckt, andere Datei (`public/index.html`).
+- Der Wartehinweis für beigetretene Mitspielende in der Lobby vor Rundenstart — Gegenstand von `FEATURE-014` (ToDo), zeitlich vorgelagert, keine Berührung.
+- Die Kontext-Anzeige (Stationsname/Personenname in den Spaltenköpfen) — Gegenstand von `BUGFIX-003` (In Progress); dieses Ticket darf dessen erst kürzlich überarbeitete Spaltenkopf-Struktur nicht verändern, nur um sie ergänzen.
+- Jede weitere Änderung an Spielregeln/-mechanik (Gate-Schwellen, wer DoR auslösen darf, Bewegungsregeln) — reine Erklärung plus die eine bestätigte Begriffsumbenennung (Tor→Gate), kein sonstiges Verhalten ändert sich.
+- Die Erklärung der Kontextwechsel-Zwangsregel in Runde 4 (siehe Fundstellen-Sweep oben — bewusst ausgeklammert, da nicht im Ticket-Titel benannt, Empfehlung: eigenes Folgeticket).
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+1. Sobald Runde 1 startet (Zustand „Aufgabe vorgestellt"), sieht jede Person einen Text in Alltagssprache: Karten werden vom Auftragseingang durch die Stationen bis ins Ziel bewegt, und eine Station darf erst weiterarbeiten, wenn 6 Karten bei ihr angekommen sind.
+2. Dieselbe Erklärung erscheint bei Runde 2, aber mit der für Runde 2 richtigen Zahl (3 Karten je Stapel).
+3. Dieselbe Erklärung erscheint bei Runde 3, aber mit der für Runde 3 richtigen Zahl (1 Karte).
+4. Bei Runde 4 erscheint eine eigene, ausführlichere Erklärung statt der Gate-Erklärung: dass jede Person abwechselnd ein Würfel-Element und eine Länderkarte bearbeitet, dass beim Würfeln nur eine Zahl über 3 zählt (bei 1, 2 oder 3 wird so lange weitergewürfelt, bis eine höhere Zahl fällt), dass man sich bei der Länderkarte helfen lassen oder eine Stadt nachschlagen darf, wenn man sie nicht kennt, und dass eine im Spiel bereits genannte Stadt bei der späteren Auswertung als Dublette zählt.
+5. Solange die Klärungsphase läuft (vor „Definition of Ready abgeschlossen"), erklärt ein Text neben dem entsprechenden Knopf, was die Bestätigung bedeutet: dass die Gruppe alle Informationen hat, um loszulegen. Derselbe Text macht deutlich, dass bis zu dieser Bestätigung Fragen geklärt, Absprachen getroffen und geplant werden dürfen, und dass danach Karten bewegt werden dürfen und die Bearbeitungszeit beginnt.
+6. In Runde 1 und Runde 3 sieht jede Person an jeder Station zusätzlich zur bisherigen „X/Y offen/geschlossen"-Anzeige eine kurze, jederzeit sichtbare Erklärung, was das bedeutet: wie viele Karten dort ankommen müssen, bevor die Station weiterarbeiten darf.
+7. Der Begriff dafür heißt jetzt auch auf Deutsch „Gate" statt „Tor" — die Anzeige an jeder Station liest sich z. B. „Gate: 3/6 offen", nicht mehr „Tor: 3/6 offen"; auf Englisch bleibt „Gate" unverändert.
+8. In Runde 2 wird der geschlossene Zustand eines Stapels genauso mit einem erkennbaren Wort dargestellt wie der offene Zustand (heute steht dort im geschlossenen Zustand nur die nackte Zahl ohne Wort).
+9. Ein kurzer Hinweis erklärt, dass in diesem Spiel grundsätzlich verschiedene Zeiten gemessen werden, um sie im Nachgang zu analysieren, und dass deshalb die angezeigte Uhr schon während der Klärungsphase mitläuft — ohne dass sich die angezeigte Zeit oder ihr Startzeitpunkt dadurch ändert.
+10. Runde 4 zeigt keine Gate-Erklärung (da sie kein Gate-Konzept verwendet), aber weiterhin die Erklärungen aus AK4 (Rundenstart), AK5 (DoR) und AK9 (Zeit).
+11. Alle neuen und geänderten Erklärungstexte liegen auf Deutsch und Englisch vor und wechseln sofort mit, wenn die Sprache umgeschaltet wird — genau wie alle bestehenden Texte auf dieser Seite.
+12. Alle neuen Erklärungstexte sind für Host, Spielende und Beobachtende gleichermaßen sichtbar, keine Rolle wird ausgeschlossen.
+13. Alle neuen Erklärungstexte lassen sich lesen, ohne die Maus über ein Element zu halten (kein reiner Hover-Tooltip), und ihre Bedeutung hängt nicht allein von einer Farbe ab.
+14. Erklärungstexte bleiben bei jedem erneuten Betreten oder Neuladen der Seite unverändert sichtbar — es gibt keinen „einmal gesehen, danach dauerhaft ausgeblendet"-Zustand, der beim Geräte- oder Rollenwechsel verloren gehen oder falsch hängen bleiben könnte.
+15. Das bisherige Spielverhalten (wann eine Karte bewegt werden darf, wann ein Gate offen/geschlossen ist, wann welche Zeit startet/stoppt, wie Runde 4 gewertet wird) ändert sich durch dieses Ticket nicht — nur die Erklärungen kommen hinzu, plus die eine bestätigte Begriffsumbenennung Tor→Gate.
+
+**Freigegebene Erklärungstexte (Stephan, 2026-08-01, nach Korrektur der ursprünglichen Entwürfe):**
+
+- **Rundenstart Runde 1** — DE: „In dieser Runde bewegt ihr Karten vom Auftragseingang durch alle Stationen bis ins Ziel. Eine Station darf erst weiterarbeiten, wenn 6 Karten bei ihr angekommen sind." EN: „In this round, you move cards from the inbox through all stations to the goal. A station can only continue once 6 cards have arrived there."
+- **Rundenstart Runde 2** — DE: gleicher Text, „3 Karten in einem Stapel" statt „6 Karten". EN: analog mit „3 cards in a stack".
+- **Rundenstart Runde 3** — DE: gleicher Text, „1 Karte" statt „6 Karten". EN: analog mit „1 card".
+- **Rundenstart Runde 4** — DE: „In dieser Runde bearbeitet jede Person abwechselnd ein Würfel-Element und eine Länderkarte, bevor beides an die nächste Person weitergegeben wird. Beim Würfeln zählt nur ein Ergebnis über 3 (also 4, 5 oder 6) als erledigt — bei 1, 2 oder 3 wird so lange erneut gewürfelt, bis eine höhere Zahl fällt. Bei der Länderkarte tragt ihr eine Stadt aus dem angegebenen Land ein; ihr dürft euch dabei helfen lassen oder recherchieren, wenn ihr eine Stadt nicht kennt. Eine im Spiel bereits genannte Stadt zählt bei der späteren Auswertung als Dublette." EN: „In this round, each person alternates between a dice element and a country card before passing both on to the next person. When rolling the dice, only a result above 3 (i.e. 4, 5, or 6) counts as done — on 1, 2, or 3, you keep rolling until a higher number comes up. For the country card, you enter a city from the given country; you're allowed to get help or look it up if you don't know a city. A city already used elsewhere in the game will count as a duplicate in the later evaluation."
+- **Definition of Ready (alle Runden)** — DE: „Der Knopf „Definition of Ready abschließen" bestätigt, dass ihr alle Informationen habt, um loszulegen. Bis zu dieser Bestätigung dürft ihr alle Fragen klären, euch abstimmen und planen — danach dürfen Karten bewegt werden und die Bearbeitungszeit beginnt zu laufen." EN: „The button 'Complete Definition of Ready' confirms that you have all the information you need to get started. Until you confirm it, you can clarify questions, coordinate, and plan — afterwards, cards can be moved and the processing time starts running."
+- **Gate-Erklärung (Runde 1/3)** — DE: „Das Gate zeigt, wie viele Karten an dieser Station schon angekommen sind, im Vergleich zu der Anzahl, die nötig ist, damit die Station weiterarbeiten darf." EN: „The gate shows how many cards have already arrived at this station, compared to how many are needed before the station can continue working."
+- **Zeit-Erklärung (alle Runden)** — DE: „Wir messen in diesem Spiel verschiedene Zeiten, um sie im Nachgang gemeinsam zu analysieren. Deshalb läuft die angezeigte Uhr schon jetzt." EN: „In this game, we measure several different times so we can analyze them together afterwards. That's why the clock shown is already running."
+- **Begriffs-Umbenennung:** `spielbrett.torPraefix` DE ändert sich von „Tor" zu „Gate" (EN bleibt „Gate").
+
+**Pre-Mortem — was könnte schiefgehen:**
+
+1. **Node/Browser-i18n-Sync-Risiko:** Neue bzw. geänderte Übersetzungsschlüssel (inkl. der `torPraefix`-Umbenennung) werden nur in einer der beiden Kopien (`src/i18n/uebersetzungen.js` oder `public/js/i18n/uebersetzungen.js`) ergänzt/geändert. Folge: entweder ein automatisierter Test schlägt fehl (gut sichtbar) oder — schlimmer — die Browser-Anzeige zeigt lautlos den rohen Schlüsselnamen oder noch „Tor" statt „Gate" an. Gegenmaßnahme: beide Dateien im selben Arbeitsschritt ändern, bestehende i18n-Tests (`game-i18n.*`) als Regressionsnetz nutzen, zusätzlich manuell in beiden Sprachen sichtprüfen.
+2. **Visuelle Überladung des ohnehin schon engen Spielbretts (Runde 1–3):** Bei 7 Spalten à `minmax(120px, 1fr)` und bereits drei Textzeilen pro Spalte (Titel, Person, Gate) könnte eine zusätzliche, pro Spalte wiederholte Erklärung auf Tablet-Bildschirmen (Haupt-Zielgerät laut `Product.md` §9) unleserlich eng werden. Gegenmaßnahme: Erklärung nicht pro Spalte wiederholen, sondern einmal zentral platzieren (siehe Implementierungsoptionen).
+3. **Die ausführliche Runde-4-Erklärung ist deutlich länger als die übrigen Texte** — auf der eigenen Runde-4-Ansicht (`renderRundeVier()`, kein 7-Spalten-Grid) ist zwar mehr Platz vorhanden, aber ein einzelner, sehr langer Fließtext könnte trotzdem unübersichtlich wirken. Gegenmaßnahme: bei der Umsetzung prüfen, ob der Runde-4-Text durch zwei kurze Sätze (Würfel-Regel, Länderkarten-Regel) statt eines einzigen langen Absatzes besser lesbar wird — inhaltlich unverändert, nur strukturiert.
+4. **Ein „einmal gesehen"-Zustand wäre bei Rejoin/Multi-Device strukturell riskant:** `Product.md` §9 verlangt zuverlässiges Wiederbetreten nach Neuladen/Verbindungsverlust „ohne Doppel-Anmeldung"; ein lokal gespeichertes „schon erklärt"-Flag würde bei Gerätewechsel erneut anzeigen (kein Problem) oder bei falscher Umsetzung (z. B. spielweiter statt geräteweiter Schlüssel) fälschlich dauerhaft ausgeblendet bleiben. Gegenmaßnahme: bewusst KEINE Dismiss-/Once-Logik einführen — Text bleibt einfach sichtbar, solange der zugehörige Spielzustand aktiv ist.
+5. **Ausgerechnet in der zeitkritischen Klärungsphase könnte ein zu langer Erklärungstext den in BUGFIX-007 beschriebenen Eindruck von unfairem Zeitdruck verstärken statt lindern.** Gegenmaßnahme: kurze, prägnante Formulierungen für Runde 1–3 (siehe freigegebene Texte oben); die längere Runde-4-Erklärung ist dort vertretbar, weil sie beim Rundenstart einmalig gelesen wird, nicht wiederholt pro Station.
+6. **Regressionsrisiko gegenüber FEATURE-005 (Barrierefreiheit, Done):** Jede neue DOM-Struktur im Spielbrett-Bereich muss weiterhin gegen `tests/game-a11y-static.test.js` bestehen (u. a. Tastaturbedienbarkeit, kein reines Farbsignal, siehe AK13). Gegenmaßnahme: bestehendes `.hinweis.info`-Muster wiederverwenden statt eines neuen, ungetesteten UI-Bausteins.
+7. **BUGFIX-006-Erkenntnis (2026-07-29) könnte sich wiederholen:** Der bisherige i18n-Vollständigkeitstest prüft nur, ob ein Tabelleneintrag beide Sprachen hat, nicht ob er an der richtigen Stelle im UI tatsächlich in beiden Sprachen erscheint. Gegenmaßnahme: für die neuen Texte denselben Sprachrein-Test-Ansatz verwenden wie in `game-bugfix-006-sprachreine-anzeige.static.test.js` bereits etabliert — gilt auch für die `torPraefix`-Umbenennung.
+
+**Zusammenspiel bestehender Bausteine (4a):**
+
+- **Berührte Bausteine:** `renderBrett()` (Torzeilen-Erzeugung, Zeile 1431–1492), der `dor-bereich`/`btn-dor`-Block (Zeile 292–295, 1362), die Phasen-Badge-Logik (`phase.aufgabeVorgestellt` u. a., Zeile 1166), `renderRundeVier()` (neue, ausführlichere Erklärung), `wendeSpracheAufStatischeTexteAn()` (statische Textpflege bei Sprachwechsel, ab Zeile 560), sowie beide i18n-Tabellen (inkl. `torPraefix`). Zusätzlich berührt (nur lesend/beobachtend, nicht zu verändern): die gerade erst überarbeitete Spaltenkopf-Struktur aus `BUGFIX-003` (In Progress), da die neue Erklärung optisch direkt daneben/darunter erscheinen wird.
+- **Reihenfolge des Zusammenwirkens:** Host startet Runde bzw. Team/Host löst DoR aus → Firestore-Rundendokument ändert sich → der bestehende `onSnapshot`-Listener aktualisiert `aktuelleRundenDaten` im Browser → `renderBrett()`/`renderRundeVier()`/die Phasen-Badge-Logik zeichnen die UI neu, inklusive Gate-Zeilen und DoR-Bereich-Sichtbarkeit → unabhängig davon setzt `wendeSpracheAufStatischeTexteAn()` bei jedem Sprachwechsel alle als „statisch" geführten Texte neu.
+- **Zustandskombinationen, die zu einem Fehler führen könnten:**
+  1. Eine Person wechselt die Sprache genau in dem Moment, in dem ein Firestore-Update das Brett neu zeichnet: Wird der neue Erklärungstext nur in `renderBrett()` gesetzt statt (wie der bestehende Gate-Text bereits heute) bei jedem Aufruf über `t()` neu erzeugt, könnte er kurzzeitig in der falschen Sprache hängen bleiben. Gegenmaßnahme: neue Erklärungstexte genau wie den bestehenden Gate-Text direkt in `renderBrett()`/der jeweiligen Render-Funktion über `t()` erzeugen, nicht separat und einmalig setzen.
+  2. Eine Person tritt als Spätzusteiger(in)/nach Rejoin bei, während die Runde bereits läuft: Der Erklärungstext muss beim allerersten Rendern korrekt erscheinen, nicht erst nach der nächsten Zustandsänderung.
+  3. `BUGFIX-003` (In Progress, gleiche Datei, angrenzender Codebereich) könnte parallel an denselben Zeilen (Spaltenkopf-Bereich) arbeiten — vor der Implementierung sollte der dortige Fortschritt geprüft werden, um Merge-Konflikte bzw. widersprüchliche Anzeigeentscheidungen zu vermeiden.
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- `public/spiel.html`: neue statische Textelemente/Ergänzungen rund um den DoR-Bereich (Zeile 292–295) und die Gate-Zeilen-Erzeugung (Zeile 1461–1492), die neue, ausführlichere Erklärung in `renderRundeVier()`, zugehörige Ergänzung in `wendeSpracheAufStatischeTexteAn()` (ab Zeile 560) bzw. direkte `t()`-Aufrufe in den jeweiligen Render-Funktionen.
+- `src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js`: neue Übersetzungsschlüssel für Rundenstart- (je Runde inkl. der ausführlichen Runde-4-Variante), DoR- und Gate-Erklärung, **plus Änderung des bestehenden Werts** `spielbrett.torPraefix.de` von „Tor" zu „Gate" (beide Dateien synchron).
+- Keine Änderung an `firestore.rules`, keine Änderung am Firestore-Datenmodell, keine neue Cloud Function (reiner Anzeige-Text plus eine Label-Umbenennung, kein neues Feld, kein neuer Server-Zustand — bleibt vollständig im kostenlosen Spark-Tarif, `Product.md` §10).
+- Keine Änderung an den Zeit-/Regel-Berechnungen selbst (`stapelTor.js`, `wuerfelLogik.js`, `qualitaetsauswertung.js` bleiben unangetastet, nur ihre Ausgabe/ihr Verhalten wird zusätzlich erklärt).
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:** `FEATURE-002`/`FEATURE-003` (Spielfeld/Runden 1–3, Auswertung, Done) — die bestehenden Akzeptanzkriterien zum Rundenablauf (Zeiten starten/stoppen, Gate-Verhalten) dürfen sich nicht ändern, nur die Anzeige wird ergänzt bzw. umbenannt; Regressionslauf gegen `tests/game-round.logic.test.js`, `tests/game-round.stapel-zaehlung.test.js`. `FEATURE-005` (Barrierefreiheit, Done) — `tests/game-a11y-static.test.js` muss weiterhin grün bleiben. `FEATURE-006` (Mehrsprachigkeit, Done) — bestehende i18n-Tests (`game-i18n.*`) müssen weiterhin grün bleiben, neue/geänderte Schlüssel folgen demselben Muster. `FEATURE-004`/`BUGFIX-012` (Runde 4, Done) — die Würfel- und Länderkarten-LOGIK selbst darf sich nicht ändern, nur ihre Erklärung kommt hinzu; Regressionslauf gegen `tests/game-round4.logic.test.js` und die Runde-4-Qualitätsauswertungs-Tests. `BUGFIX-003` (Kontext-Anzeige, **In Progress**, gleicher Codebereich) — vor Implementierungsbeginn den dortigen Stand prüfen, um Überschneidungen an denselben Zeilen zu vermeiden.
+
+**Implementierungsoptionen:**
+
+1. **Persistenter, immer sichtbarer Erklärungstext (empfohlen).** Erweitert das bereits etablierte `.hinweis.info`-Muster: ein kurzer, zentral über/neben dem Spielbrett platzierter Text erklärt einmalig (nicht pro Spalte wiederholt) das Gate-Prinzip für Runde 1/3, kombiniert mit einer überarbeiteten, aussagekräftigeren Version des bestehenden `dorHinweis`-Texts direkt beim DoR-Knopf; Runde 4 bekommt ihre eigene, ausführlichere Erklärung in ihrer eigenen Ansicht. Kein Dismiss-Zustand, kein „einmal gesehen". *Vorteile:* nutzt ein im Projekt bereits etabliertes, getestetes visuelles Muster; keine neue Interaktion nötig, damit von Haus aus tastatur- und touch-freundlich; kein Risiko durch einen bei Rejoin/Gerätewechsel inkonsistenten „gesehen"-Zustand; geringste Änderungsfläche, geringstes Regressionsrisiko gegenüber dem parallel laufenden BUGFIX-003. *Nachteile:* nimmt dauerhaft sichtbaren Platz ein, auch für Personen, die das Spiel schon kennen.
+2. **Einmaliges Onboarding-Overlay/Modal beim ersten Rundenstart.** *Nachteile* wie zuvor analysiert (neues UI-Muster, unterbricht die zeitkritische Klärungsphase, Rejoin-Risiko) — durch die jetzt noch umfangreichere Runde-4-Erklärung zusätzlich unattraktiver, da ein Modal mit viel Text die Unterbrechung noch verstärken würde.
+3. **Info-Icon („?") pro Torzeile bzw. neben dem DoR-Knopf mit Klick-Popover.** *Nachteile* wie zuvor analysiert (fünffache Wiederholung auf engem Spielbrett, aktives Anklicken nötig) — bleibt schlechtere Wahl.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar — Stephan hat zugestimmt):** Option 1. Sie verwendet ein im Projekt bereits etabliertes, getestetes visuelles Muster, erfüllt die Barrierefreiheits-Anforderungen aus `Product.md` §9 ohne zusätzlichen Aufwand, vermeidet das strukturelle Rejoin-/Multi-Device-Risiko eines „einmal gesehen"-Zustands und die Platzprobleme einer fünffach wiederholten Erklärung, und hat die geringste Überschneidungsfläche mit dem parallel laufenden BUGFIX-003.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+- Given eine Runde (1, 2 oder 3) wechselt in den Zustand „Aufgabe vorgestellt", When das Spielbrett gerendert wird, Then ist der rundenspezifische Erklärungstext zur eigentlichen Aufgabe sichtbar (AK1–AK3).
+- Given Runde 4 wechselt in den Zustand „Aufgabe vorgestellt", When die Runde-4-Ansicht gerendert wird, Then ist die ausführliche Erklärung zu Würfel-Regel (>3), Länderkarten-Regel (Hilfe/Recherche erlaubt) und Dubletten-Hinweis sichtbar (AK4).
+- Given die Klärungsphase läuft noch (DoR nicht abgeschlossen), When der DoR-Bereich sichtbar ist, Then erklärt ein Text die Bedeutung der Bestätigung inkl. Hinweis auf Fragen/Abstimmung/Planung davor (AK5).
+- Given Runde 1 oder Runde 3 läuft, When eine Gate-Zeile an einer Station gerendert wird, Then ist eine Erklärung sichtbar, was die Zahl und der Zustand bedeuten, UND die Zeile zeigt „Gate" statt „Tor" auf Deutsch (AK6, AK7).
+- Given Runde 2 läuft und ein Stapel ist geschlossen, When die Stapelzeile gerendert wird, Then erscheint ein erkennbares Wort für „geschlossen", nicht nur eine nackte Zahl (AK8).
+- Given eine Runde läuft, When die Durchlaufzeit angezeigt wird, Then erklärt ein Hinweistext den Zeit-Analyse-Zweck (AK9) — Regressionstest: der tatsächliche Startzeitpunkt/die Zeitmessung selbst bleibt dabei unverändert.
+- Given Runde 4 läuft, When das Rundenbrett gerendert wird, Then erscheint keine Gate-Erklärung, aber weiterhin Rundenstart-/DoR-/Zeit-Erklärung (AK10, Regressionstest gegen `tests/game-round4.logic.test.js`).
+- Given die Sprache wird umgeschaltet, When irgendeiner der neuen oder geänderten Erklärungstexte (inkl. „Gate"-Umbenennung) sichtbar ist, Then wechselt er sofort mit, ohne Neuladen (AK11).
+- Given Host, Spielende(r) oder Beobachtende(r), When dieselbe Spielsituation angezeigt wird, Then sind die neuen Erklärungstexte für alle drei Rollen identisch sichtbar (AK12).
+- Regressionstests: `tests/game-a11y-static.test.js`, `tests/game-i18n.*`, `tests/game-round.logic.test.js`, `tests/game-round.stapel-zaehlung.test.js`, `tests/game-round4.logic.test.js` sowie die Runde-4-Qualitätsauswertungs-Tests bleiben vollständig grün. Node/Browser-i18n-Sync-Check erneut durchführen (Grep über `src/i18n/` und `public/js/i18n/` nach den neuen/geänderten Schlüsseln, inkl. `torPraefix`) und im Ticket dokumentieren.
+
+---
+
+#### BDD-Testergebnis (`flow-game-bdd`, 2026-08-01)
+
+**Zugriffsart:** Weiterhin keine Geräte-Brücke zu Stephans Mac (`connectedFolders` leer, per `get_device_info` zu Beginn UND erneut am Ende der Session geprüft, unverändert leer – BUGFIX-011-Konvention). Gearbeitet im bereits vorhandenen Sandbox-Klon `/home/claude/flow-game` (`git pull` vor Beginn: "Already up to date", HEAD unverändert `b3182ad`).
+
+**Neue Testdatei:** `tests/game-feature-012-erklaerungstexte.static.test.js` – kein Firestore-Emulator nötig, reine Textmuster-Prüfung gegen `public/spiel.html` und beide i18n-Kopien (gleiches Muster wie `tests/game-startseite-erklaerung.static.test.js`/`tests/game-bugfix-006-sprachreine-anzeige.static.test.js`), da dieses Ticket laut Scope weder `firestore.rules` noch das Datenmodell ändert.
+
+**NAMENSGEBUNG (eigene, begründete Festlegung dieser BDD-Phase – bitte mit `flow-game-impl` abgleichen statt stillschweigend zu ignorieren):**
+- Neue i18n-Schlüssel (beide Kopien): `spielbrett.rundenstartErklaerungRunde1`/`-Runde2`/`-Runde3`/`-Runde4`, `spielbrett.gateErklaerung`, `spielbrett.zeitErklaerung`.
+- Geänderter Inhalt bei bestehenden Schlüsseln: `spielbrett.dorHinweis` (ausführlicherer Text), `spielbrett.torPraefix.de` ("Tor" → "Gate").
+- Neue Element-IDs (statisches Markup, jeweils genau einmal, Klasse `hinweis info`): `#rundenstart-erklaerung`, `#gate-erklaerung`, `#zeit-erklaerung` (Runde 1-3 bzw. rundenunabhängig), `#rv-rundenstart-erklaerung` (eigene Runde-4-Ansicht).
+
+**Testszenarien (43 Testfälle über 15 Szenario-Gruppen):**
+- AK1-3: Rundenstart-Erklärung Runde 1/2/3 (Schlüssel-Existenz DE/EN, Wortlaut-Inhalt je Runde, Referenzierung in `renderBrett()`, genau ein zentrales Markup-Element) – 6 Testfälle.
+- AK4: Ausführliche Rundenstart-Erklärung Runde 4 (Schlüssel-Existenz, Würfel-/Länderkarten-Inhalt, Referenzierung in `renderRundeVier()`, eigenes Markup-Element, Sichtbarkeit VOR dem Host/Beobachtende-Early-Return) – 5 Testfälle.
+- AK5: Definition-of-Ready-Erklärung (neuer Wortlaut DE/EN für `dorHinweis`, Node/Browser-Sync) – 3 Testfälle.
+- AK6+AK7: Gate-Erklärung Runde 1/3 + Umbenennung Tor→Gate (Schlüssel-Existenz, `torPraefix.de` = "Gate" in beiden Kopien, Referenzierung im Runde-1/3-Zweig, kein hartcodiertes "Gate", genau ein zentrales Markup-Element) – 6 Testfälle.
+- AK8: Runde-2-Anzeige zeigt "geschlossen"/"closed" als Wort statt nackter Zahl (alte lückenhafte Formel weg, neue vollständige Fallunterscheidung, `torGeschlossen`-Wortlaut unverändert) – 3 Testfälle.
+- AK9: Zeit-Erklärung, Zeitmessung selbst unverändert (Schlüssel-Existenz, Markup-Element, `wendeSpracheAufStatischeTexteAn()`-Anbindung, Regressionsschutz auf die bestehende Zeitformel) – 4 Testfälle.
+- AK10: Runde 4 ohne Gate-Erklärung, aber weiterhin AK4/AK5/AK9 (kein `gateErklaerung`/`torPraefix` in `renderRundeVier()`, `dorBereich` weiterhin rundenunabhängig, `zeit-erklaerung` nicht für Runde 4 versteckt) – 4 Testfälle.
+- AK11: Sofortiger Sprachwechsel (bestehende Re-Render-Kette `wendeSpracheAufSichtbareAnsichtenAn()`→`renderRundenStatus()`/`renderBrett()`/`renderRundeVier()` bleibt intakt, `wendeSpracheAufStatischeTexteAn()` setzt neue statische Texte) – 3 Testfälle.
+- AK12: Sichtbarkeit für Host/Spielende/Beobachtende gleichermaßen (Reihenfolge-Check: neue Erklärungen stehen vor der einzigen rollenabhängigen Verzweigung bzw. vor dem Runde-4-Early-Return) – 2 Testfälle.
+- AK13: Kein Hover-only, keine reine Farbcodierung (Wiederverwendung der etablierten Klasse `hinweis info`, kein `title`-Attribut) – 2 Testfälle.
+- AK14: Kein „einmal gesehen"-Zustand (kein `localStorage.setItem`/Dismiss-Muster rund um die neuen Schlüssel, kein „nur beim ersten Aufruf"-Flag) – 2 Testfälle.
+- AK15: Regressionsschutz bestehendes Verhalten (`stapelTorSchwelle()` weiterhin 6/3/1, `istWurfErfolgreich()` weiterhin Schwelle `>3`, `torOffen`/`dorButton` inhaltlich unverändert) – 3 Testfälle.
+
+**Tatsächlicher erster Testlauf (2026-08-01, gegen unveränderten Code, `npx jest tests/game-feature-012-erklaerungstexte.static.test.js`): 29 rot / 14 grün von 43 Testfällen** – echte Assertion-Fehlschläge (kein Modul- oder Syntaxfehler), wie erwartet, weil die neuen Schlüssel/Elemente im unveränderten Code noch nicht existieren und `torPraefix.de` noch „Tor" ist. Die 14 grünen Fälle sind ausschließlich Regressions-/Struktur-Checks auf bereits bestehendes, unverändertes Verhalten (u. a. `stapelTorSchwelle()`/`istWurfErfolgreich()` liefern weiterhin die alten Werte, `torGeschlossen`/`torOffen`/`dorButton` inhaltlich unverändert, `wendeSpracheAufSichtbareAnsichtenAn()` ruft bereits `renderRundenStatus()`/`renderBrett()` auf, `renderRundenStatus()` behandelt `dorBereich` bereits rundenunabhängig, kein bestehendes Dismiss-Muster im Code) – keiner der grünen Fälle prüft bereits neue Funktionalität fälschlich als erfüllt.
+
+**Regressionslauf vor Hinzufügen der neuen Tests (sauberer Ausgangspunkt, 2026-08-01, `npm install` + `npx jest`, ohne Emulator):** `tests/game-a11y-static.test.js` und `tests/game-i18n.manual-checks.test.js` liefen grün (13 bestanden, 1 bewusst übersprungen laut FEATURE-008-Kommentar in der Datei selbst). Nach Hinzufügen der neuen Testdatei erneut zusammen mit `tests/game-startseite-erklaerung.static.test.js` und `tests/game-bugfix-006-sprachreine-anzeige.static.test.js` laufen lassen: alle vier bestehenden Suiten weiterhin grün, keine Querbeeinflussung durch die neue Datei.
+
+**Bekannte Lücke, an `flow-game-impl` zu übergeben:** Die Firestore-Emulator-gestützten Regressionstests aus dem Testplan (`tests/game-i18n.logic.test.js`, `tests/game-i18n.security.rules.test.js`, `tests/game-round.logic.test.js`, `tests/game-round.security.rules.test.js`, `tests/game-round.stapel-zaehlung.test.js`, `tests/game-round4.logic.test.js`, `tests/game-round4.security.rules.test.js`) konnten in dieser Sandbox-Session NICHT ausgeführt werden – `firebase emulators:exec` scheitert beim Download des Firestore-Emulator-Jars am Netzwerk-Proxy der Sandbox (`storage.googleapis.com` und `firebase-public.firebaseio.com` als "host not permitted" abgelehnt, per `curl "$HTTPS_PROXY/__agentproxy/status"` und dem tatsächlichen Fehlschlag von `firebase emulators:exec` verifiziert, kein Umgehungsversuch unternommen). Da dieses Ticket laut Scope weder `firestore.rules` noch das Datenmodell berührt, ist das Regressionsrisiko dafür strukturell gering – der volle Emulator-Regressionslauf MUSS aber trotzdem vor Ticket-Abschluss nachgeholt werden (z. B. in einer Umgebung mit Netzwerkzugriff bzw. auf Stephans Mac), bevor `flow-game-impl` dieses Ticket auf Done setzt.
+
+---
+
+**Freigabe-Entscheidungen (Stephan, 2026-08-01):**
+
+1. Die Zeit-Erklärung (AK9) bleibt Teil dieses Tickets (nicht `BUGFIX-007` überlassen) — Wortlaut wie oben, Framing: verschiedene Zeiten werden gemessen, um sie im Nachgang zu analysieren.
+2. Die Rundenstart-Erklärung ist rundenspezifisch (Runde 1: 6, Runde 2: 3, Runde 3: 1 Karte; Runde 4: eigene, ausführliche Erklärung) statt eines einzigen generischen Textes.
+3. Korrektur nach erster Vorabansicht (2026-08-01): Die ursprünglich vorgeschlagene Runde-4-Erklärung war unvollständig (Würfel->3-Regel und Länderkarten-Regeln fehlten) und die DoR-Erklärung zu knapp (Bestätigungs- und Vorher-Aspekt fehlten) — beides oben korrigiert und freigegeben. Zusätzlich neu aufgenommen: Umbenennung „Tor" → „Gate" auch auf Deutsch.
+
+⚠️ Annahme (⚪ konventionell, blockiert nicht): Die neuen Texte werden nach dem bestehenden Namensschema ergänzt (z. B. `spielbrett.torErklaerung`, `spielbrett.dorErklaerung`, `phase.aufgabeVorgestelltErklaerung`, `rundeVier.regelnErklaerung`) statt eines neuen Namensraums — bitte bei der Umsetzung bestätigen, falls ein anderes Schema gewünscht ist.
 
 ---
 
@@ -2427,7 +2605,7 @@ Ausgeschlossen: Änderung der acht Länder selbst oder ihrer Zuordnung zu den se
 
 **Live-Verifikation (per Claude-in-Chrome, Stephans echter Browser, 2026-08-01):** `https://flow-game-19f01.web.app/data/staedte-referenz.json` liefert die neue Referenzdatei live aus (Metadaten bestätigt: 11.781 Städte, GeoNames-Attribution, Ticket BUGFIX-012). `https://flow-game-19f01.web.app/spiel.html` lädt fehlerfrei, keine anwendungsbezogenen Konsolenfehler (eine einzelne Warnung stammt nachweislich von einer fremden Browser-Erweiterung, nicht von der App). Kein vollständiger Mehrpersonen-Durchlauf durch Runde 4 im Rahmen dieser Live-Verifikation (reine Daten-/Logik-Änderung, bereits durch 82/82 automatisierte Tests abgedeckt) — bei Bedarf kann Stephan das zusätzlich selbst real testen.
 
-**Status:** Release + Live-Verifikation abgeschlossen. Ticket bleibt bewusst auf „In Progress", bis Stephan die verbleibenden 🔴/🟡-Punkte (siehe oben, insbesondere die lokal nachzuholenden Emulator-Tests) zur Kenntnis genommen und „Done" ausdrücklich bestätigt hat.
+**Status:** Release + Live-Verifikation abgeschlossen. Von Stephan am 2026-08-01 auf Done bestätigt.
 
 ---
 
