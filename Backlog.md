@@ -2228,8 +2228,9 @@ Damit sind die BDD-Tests geschrieben und ausgeführt. Nächster Schritt: Impleme
 | **Erstellt** | 2026-07-27 |
 | **Analyse am** | 2026-08-01 |
 | **Spec freigegeben am** | 2026-08-01 (Stephan) |
-| **Status** | In Progress |
+| **Status** | Done |
 | **In Progress seit** | 2026-08-01 |
+| **Done am** | 2026-08-01 (Stephan) |
 
 **Beschreibung:** Im selben Durchlauf wurden zahlreiche tatsächlich korrekte Städte als „wrong country" gewertet, u. a. Roma/Bozen/Turino (Italien), Leeds/Aberdeen/Dover (UK), Leipzig (Deutschland), Nantes/Calais (Frankreich) — alle real existierende, korrekte Städte des jeweils zugeordneten Landes.
 
@@ -2417,6 +2418,18 @@ Ausgeschlossen: Änderung der acht Länder selbst oder ihrer Zuordnung zu den se
 3. 🟡 Datenqualität/Umfang: Die automatische Auswahl der Alternativnamen je Stadt ist HEURISTISCH (lateinschriftlich, großgeschrieben, Prioritäts-Liste für bekannte Exonyme + alte 48er-Liste), NICHT sprachlich getaggt oder von Hand kuratiert. Die acht Ticket-Beispielstädte und alle bisher unterstützten Schreibweisen sind dadurch nachweislich abgedeckt (siehe Tests), für die übrigen rund 11.770 Städte ist die Mehrsprachigkeits-Abdeckung aber Bestenfalls-Ergebnis, keine verifizierte Übersetzung — wie im Ticket als möglicher Zwischenschritt vorgesehen, mit dieser Einschränkung transparent benannt.
 4. 🟡 Attribution: GeoNames-Lizenzhinweis (CC BY 4.0) liegt aktuell nur im `_meta`-Block der JSON-Datei und im Kopfkommentar von `laenderStaedte.js` — falls das Spiel öffentlich sichtbar attribution-pflichtig sein soll (z. B. Impressum/Credits-Seite), sollte Stephan entscheiden, ob das zusätzlich sichtbar gemacht werden soll.
 5. Kein Release ist bisher erfolgt (Sandbox hat keinen Push-Zugriff) — Ticket bleibt laut Release-vor-Done-Gate auf "In Progress", bis Release + Live-Verifikation abgeschlossen sind und Stephan Done bestätigt.
+
+#### Release (2026-08-01)
+
+**Übergabe aus Sandbox:** Da die Implementierung in der Cloud-Sandbox ohne Push-Zugriff entstand, wurden die sechs betroffenen Dateien (`public/data/staedte-referenz.json`, `src/game/rundeVier/laenderStaedte.js`, `public/js/game/rundeVier.js`, `src/game/rundeVier/qualitaetsauswertung.js`, `tests/game-round4.logic.test.js`, `Backlog.md`) per Geräte-Brücke in Stephans echtes lokales Repo übertragen (Prüfsummen-verifiziert) und die lokale `Backlog.md` mit dem BUGFIX-012-Abschnitt der Cloud-Version synchronisiert (Sync-Check nach Schritt 0 von `flow-game-release`: keine weitere Drift-Stelle gefunden).
+
+**Commit & Push (Stephan, eigenes Terminal):** Commit `486deb6` ("BUGFIX-012: Städteprüfung Runde 4 auf kanonische GeoNames-Referenzdatei umgestellt"), gepusht `667b06f..486deb6 main -> main`. Automatischer GitHub-Actions-Hosting-Deploy ausgelöst.
+
+**Live-Verifikation (per Claude-in-Chrome, Stephans echter Browser, 2026-08-01):** `https://flow-game-19f01.web.app/data/staedte-referenz.json` liefert die neue Referenzdatei live aus (Metadaten bestätigt: 11.781 Städte, GeoNames-Attribution, Ticket BUGFIX-012). `https://flow-game-19f01.web.app/spiel.html` lädt fehlerfrei, keine anwendungsbezogenen Konsolenfehler (eine einzelne Warnung stammt nachweislich von einer fremden Browser-Erweiterung, nicht von der App). Kein vollständiger Mehrpersonen-Durchlauf durch Runde 4 im Rahmen dieser Live-Verifikation (reine Daten-/Logik-Änderung, bereits durch 82/82 automatisierte Tests abgedeckt) — bei Bedarf kann Stephan das zusätzlich selbst real testen.
+
+**Status:** Release + Live-Verifikation abgeschlossen. Ticket bleibt bewusst auf „In Progress", bis Stephan die verbleibenden 🔴/🟡-Punkte (siehe oben, insbesondere die lokal nachzuholenden Emulator-Tests) zur Kenntnis genommen und „Done" ausdrücklich bestätigt hat.
+
+---
 
 ### BUGFIX-009 Länderkarten werden mehrfach im selben Spiel verwendet (Runde 4)
 
