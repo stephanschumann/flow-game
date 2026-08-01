@@ -22,6 +22,16 @@
  * (früher erfasst) und "Munich" (später erfasst) gelten dadurch als dieselbe,
  * bereits erfasste Stadt, unabhängig von der UI-Sprache der eintragenden
  * Person (siehe laenderStaedte.js).
+ *
+ * BUGFIX-012-ERGÄNZUNG (2026-08-01, Pre-Mortem-Risiko 6): Der Dubletten-
+ * Schlüssel ist jetzt LAND-BEZOGEN (`land + '|' + normalisiereStadt(stadt)`)
+ * statt nur `normalisiereStadt(stadt)` ohne Land. Grund: normalisiereStadt()
+ * bleibt bewusst ein reiner, land-unabhängiger String-Normalisierer (siehe
+ * Signatur-Hinweis in laenderStaedte.js) - mit der jetzt deutlich größeren
+ * Referenzdatenquelle kommt es real vor, dass derselbe Städtename in zwei
+ * verschiedenen der acht Länder existiert (z. B. "London" in UK UND Kanada,
+ * "Rome" in Italy UND als reale US-Stadt) - ohne Land-Bezug würde die zweite,
+ * tatsächlich andere Stadt fälschlich als Dublette der ersten gewertet.
  */
 
 const { istStadtInLand, normalisiereStadt } = require('./laenderStaedte');
@@ -62,7 +72,9 @@ async function berechneQualitaet({ karten } = {}) {
   sortiertNachZeit.forEach((eintrag) => {
     const schluessel = `${eintrag.kartenIndex}-${eintrag.eintragIndex}`;
     const richtigesLand = istStadtInLand(eintrag.land, eintrag.stadt);
-    const stadtSchluessel = normalisiereStadt(eintrag.stadt);
+    // Land-bezogener statt globaler Dublettenschlüssel (Pre-Mortem-Risiko 6,
+    // siehe BUGFIX-012-ERGÄNZUNG oben).
+    const stadtSchluessel = `${eintrag.land}|${normalisiereStadt(eintrag.stadt)}`;
     const istDublette = bereitsGeseheneStaedte.has(stadtSchluessel);
     if (!istDublette) {
       bereitsGeseheneStaedte.add(stadtSchluessel);

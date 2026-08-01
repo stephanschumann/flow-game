@@ -55,10 +55,25 @@
   'use strict';
 
   // ---- Referenzdaten (Browser-Port von src/game/rundeVier/laenderStaedte.js) ----
+  //
+  // BUGFIX-012 (2026-08-01): Statt einer im Quelltext gedoppelten Städteliste
+  // wird hier dieselbe kanonische Referenzdatei geladen wie auf der Node-
+  // Seite (per fs.readFileSync() in src/game/rundeVier/laenderStaedte.js) -
+  // hier per fetch() gegen public/data/staedte-referenz.json, einmalig beim
+  // Laden dieses Skripts. Das eliminiert das bisherige Node/Browser-
+  // Duplikat-Risiko strukturell (Pre-Mortem-Risiko 3 der Analyse-Spec) statt
+  // es weiterhin nur durch manuelle Synchronhaltung zu vermeiden.
+  //
+  // Bis der fetch()-Aufruf abgeschlossen ist (bzw. falls er fehlschlägt,
+  // AK7/Stephans Entscheidung 4) arbeitet dieses Modul mit einer kleinen,
+  // eingebetteten Kern-Liste weiter, damit Runde 4 nie blockiert wird - der
+  // einmalige Ladevorgang passiert bereits beim Seitenaufbau, deutlich vor
+  // dem tatsächlichen Erreichen von Runde 4/deren Rundenende (kein
+  // wahrnehmbares Warten, AK5).
 
   const LAENDER_LISTE = ['USA', 'UK', 'Germany', 'India', 'Spain', 'France', 'Italy', 'Canada'];
 
-  const LAENDER_STAEDTE = {
+  const KERN_LAENDER_STAEDTE = {
     USA: ['New York', 'Los Angeles', 'Chicago', 'Houston', 'San Francisco', 'Boston', 'Miami'],
     UK: ['London', 'Manchester', 'Liverpool', 'Birmingham', 'Edinburgh', 'Glasgow'],
     Germany: ['Berlin', 'Hamburg', 'München', 'Köln', 'Frankfurt', 'Stuttgart'],
@@ -69,10 +84,7 @@
     Canada: ['Toronto', 'Vancouver', 'Montreal', 'Ottawa', 'Calgary', 'Quebec'],
   };
 
-  // FEATURE-006 (AK 6, Pre-Mortem-Risiko 4/8, Browser-Port von
-  // src/game/rundeVier/laenderStaedte.js) - identische Alias-Tabelle, muss
-  // synchron gehalten werden.
-  const STADT_ALIAS = {
+  const KERN_STADT_ALIAS = {
     munich: 'münchen',
     cologne: 'köln',
     rome: 'rom',
@@ -82,17 +94,74 @@
     venice: 'venedig',
   };
 
-  function normalisiereStadt(stadt) {
+  const LAENDER_STAEDTE = KERN_LAENDER_STAEDTE; // Export-Kompatibilität (siehe FlowGame-Export unten).
+
+  function normalisiereMitAliasTabelle(stadt, aliasTabelle) {
     if (typeof stadt !== 'string') return '';
     const bereinigt = stadt.trim().toLowerCase();
-    return STADT_ALIAS[bereinigt] || bereinigt;
+    return aliasTabelle[bereinigt] || bereinigt;
+  }
+
+  function baueIndexAusKernliste() {
+    const staedteJeLand = {};
+    LAENDER_LISTE.forEach(function (land) {
+      const menge = {};
+      (KERN_LAENDER_STAEDTE[land] || []).forEach(function (stadt) {
+        menge[normalisiereMitAliasTabelle(stadt, KERN_STADT_ALIAS)] = true;
+      });
+      staedteJeLand[land] = menge;
+    });
+    return { staedteJeLand: staedteJeLand, aliasTabelle: KERN_STADT_ALIAS };
+  }
+
+  // Baut den Lookup-Index (Land -> Menge normalisierter Städtenamen) aus dem
+  // per fetch() geladenen JSON der Referenzdatei (dieselbe Struktur wie die
+  // Node-Seite in src/game/rundeVier/laenderStaedte.js verwendet).
+  function baueIndexAusReferenzdaten(daten) {
+    const aliasTabelle = (daten && daten.aliase) || {};
+    const staedteJeLand = {};
+    LAENDER_LISTE.forEach(function (land) {
+      const staedte = (daten && daten.laender && daten.laender[land]) || [];
+      const menge = {};
+      staedte.forEach(function (eintrag) {
+        menge[normalisiereMitAliasTabelle(eintrag.name, aliasTabelle)] = true;
+        (eintrag.alt || []).forEach(function (alt) {
+          menge[normalisiereMitAliasTabelle(alt, aliasTabelle)] = true;
+        });
+      });
+      staedteJeLand[land] = menge;
+    });
+    return { staedteJeLand: staedteJeLand, aliasTabelle: aliasTabelle };
+  }
+
+  // Referenzdaten-Index: startet mit der Kern-Liste, wird nach erfolgreichem
+  // fetch() unten durch den vollständigen, umfangreichen Datensatz ersetzt.
+  var staedteIndex = baueIndexAusKernliste();
+
+  function normalisiereStadt(stadt) {
+    return normalisiereMitAliasTabelle(stadt, staedteIndex.aliasTabelle);
   }
 
   function istStadtInLand(land, stadt) {
-    const liste = LAENDER_STAEDTE[land] || [];
-    const eingabeSchluessel = normalisiereStadt(stadt);
-    return liste.some(function (kandidat) { return normalisiereStadt(kandidat) === eingabeSchluessel; });
+    const menge = staedteIndex.staedteJeLand[land];
+    if (!menge) return false;
+    return Boolean(menge[normalisiereStadt(stadt)]);
   }
+
+  // Einmaliger, asynchroner Ladevorgang der vollständigen Referenzdatei
+  // (BUGFIX-012, AK1-AK6). Läuft im Hintergrund; solange er nicht
+  // abgeschlossen ist, bleibt die oben gesetzte Kern-Liste aktiv - kein
+  // sichtbarer Wartezustand.
+  fetch('data/staedte-referenz.json')
+    .then(function (antwort) {
+      if (!antwort.ok) throw new Error('Referenzdatei-Ladefehler: HTTP ' + antwort.status);
+      return antwort.json();
+    })
+    .then(function (daten) { staedteIndex = baueIndexAusReferenzdaten(daten); })
+    // Referenzdatei nicht erreichbar/beschädigt (AK7, Stephans Entscheidung 4):
+    // Rückfall auf die Kern-Liste - Runde 4 bleibt spielbar, nur mit
+    // reduzierter Reichweite. Kein Absturz, kein blockierender Fehlerzustand.
+    .catch(function (fehler) { staedteIndex = baueIndexAusKernliste(); });
 
   // BUGFIX-009 (2026-07-27, Spec freigegeben): Fisher-Yates-Shuffle statt
   // Ziehung mit Zurücklegen – identische Implementierung wie im Node-Modul
@@ -181,7 +250,10 @@
     sortiertNachZeit.forEach(function (eintrag) {
       const schluessel = eintrag.kartenIndex + '-' + eintrag.eintragIndex;
       const richtigesLand = istStadtInLand(eintrag.land, eintrag.stadt);
-      const stadtSchluessel = normalisiereStadt(eintrag.stadt);
+      // BUGFIX-012 (Pre-Mortem-Risiko 6): Land-bezogener statt globaler
+      // Dublettenschlüssel - siehe gleichlautende Änderung/Begründung im
+      // Node-Original (src/game/rundeVier/qualitaetsauswertung.js).
+      const stadtSchluessel = eintrag.land + '|' + normalisiereStadt(eintrag.stadt);
       const istDublette = Boolean(bereitsGeseheneStaedte[stadtSchluessel]);
       if (!istDublette) {
         bereitsGeseheneStaedte[stadtSchluessel] = true;

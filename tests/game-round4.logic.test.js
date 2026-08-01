@@ -104,6 +104,51 @@
  * ERWARTUNGSGEMÄSS ROT — mit Ausnahme der explizit als "bereits GRÜN"
  * markierten Wiederverwendungsnachweise gegen die bestehende
  * berechneQualitaet().
+ *
+ * NACHTRAG (flow-game-bdd, BUGFIX-012, 2026-08-01, Spec von Stephan
+ * freigegeben): `src/game/rundeVier/laenderStaedte.js` prüft Städte bislang
+ * ausschließlich gegen eine kuratierte 5–7-Städte-Liste je Land (48 Einträge
+ * insgesamt) — reale, korrekte Städte außerhalb dieser Liste werden dadurch
+ * fälschlich als "falsches Land" gewertet (u. a. Bozen, Turin, Leeds,
+ * Aberdeen, Dover, Leipzig, Nantes, Calais). Freigegebene Lösung (Option 2
+ * der Analyse-Spec): Ersatz durch eine einzelne, kanonische, umfangreiche
+ * Referenzdatenquelle (z. B. JSON, gefiltert auf die acht bestehenden Länder,
+ * Populationsschwelle grob 15.000 Einwohner), von Node UND Browser aus
+ * DERSELBEN Datei geladen (eliminiert das bisherige Node/Browser-Duplikat-
+ * Risiko) — statt der bisherigen, in `laenderStaedte.js` und
+ * `public/js/game/rundeVier.js` manuell synchron gehaltenen Zwei-Kopien-Liste.
+ * "Landessprache" bei mehrsprachigen Ländern (Kanada, Indien, UK) = pragmatisch
+ * nur die im Spiel dominante Hauptsprache, zusätzlich zu Deutsch/Englisch.
+ * Fehlerfall beim Laden der Referenzdatei: Rückfall auf eine kleine,
+ * weiterhin eingebettete Kern-Liste — Runde 4 darf dadurch nicht blockiert
+ * werden.
+ *
+ * NAMENSGEBUNG (eigene, begründete Festlegung dieser BDD-Phase, da die Spec
+ * bewusst die konkrete Datenquelle/den Ladepfad als Implementierungsdetail
+ * offenlässt — bitte mit flow-game-impl abgleichen statt stillschweigend zu
+ * ignorieren): Diese Tests gehen davon aus, dass `laenderStaedte.js` (Node)
+ * die neue Referenzdatei per `fs.readFileSync()` lädt (Modulscope, synchron,
+ * damit `istStadtInLand()`/`normalisiereStadt()` weiterhin synchron bleiben
+ * können, siehe AK5) und bei einem Lesefehler auf eine kleine, weiterhin im
+ * Quelltext eingebettete Kern-Liste zurückfällt (AK7). Für den Browser-Port
+ * (`public/js/game/rundeVier.js`) wird ein `fetch()`-Aufruf gegen eine
+ * JSON-Datei unter `public/data/` angenommen (Beispielpfad aus der Spec:
+ * `public/data/staedte-referenz.json`), ebenfalls mit Rückfall auf eine
+ * kleine Kern-Liste bei Ladefehler.
+ *
+ * Die bestehenden Exportnamen `istStadtInLand(land, stadt)` und
+ * `normalisiereStadt(stadt)` (EIN String-Parameter) bleiben als Signatur
+ * bewusst UNVERÄNDERT (siehe "Betroffene Architektur" der Spec: Ziel ist,
+ * `qualitaetsauswertung.js` NICHT anfassen zu müssen). Die in Pre-Mortem-
+ * Risiko 6 geforderte Land-bezogene statt globale Dublettenprüfung muss daher
+ * im AUFRUFER (`qualitaetsauswertung.js`, dessen Dubletten-Schlüssel bisher
+ * ausschließlich `normalisiereStadt(stadt)` OHNE Land ist) korrigiert werden,
+ * nicht durch eine Signaturänderung von `normalisiereStadt()` selbst.
+ *
+ * Die neuen BUGFIX-012-Testfälle stehen als eigene Abschnitte am Ende dieser
+ * Datei und sind zum Zeitpunkt des Schreibens ERWARTUNGSGEMÄSS ROT — mit
+ * Ausnahme der explizit als "bereits GRÜN, bleibt es auch nach der
+ * Implementierung" markierten bewussten Grenzfall-/Regressionstests.
  */
 
 function ladeOderUndefined(pfad, exportName) {
@@ -892,5 +937,240 @@ describe('FEATURE-019 Anzeige: Detailtabelle (Land, Stadt, Fehlergrund je Zeile)
     const vergleichsTabelleKoerper = funktionsKoerper(spielHtmlInhalt, 'function renderVergleichsTabelle(container, vergleich)', 'async function ladeUndRenderHostVorschau');
     expect(zeigeKennzahlenKoerper).not.toMatch(/\.von\b/);
     expect(vergleichsTabelleKoerper).not.toMatch(/\.von\b/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUGFIX-012 (flow-game-bdd, 2026-08-01, Spec von Stephan freigegeben) — siehe
+// NACHTRAG im Kopfkommentar dieser Datei für Hintergrund und NAMENSGEBUNG-
+// Annahmen. Alle Testfälle rufen weiterhin die BEREITS BESTEHENDE, fertige
+// berechneQualitaet() auf (kein neues Modul nötig) — sie sind trotzdem
+// ERWARTUNGSGEMÄSS ROT, weil die zugrunde liegende Referenzdatenquelle
+// (LAENDER_STAEDTE in src/game/rundeVier/laenderStaedte.js) die neuen Städte
+// noch nicht kennt bzw. die Dublettenprüfung in qualitaetsauswertung.js noch
+// nicht länderbezogen arbeitet.
+// ---------------------------------------------------------------------------
+
+describe('BUGFIX-012 Korrektheit: Reale Städte außerhalb der alten 48er-Liste werden als korrekt gewertet (AK1)', () => {
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test.each([
+    ['Bozen', 'Italy'],
+    ['Turin', 'Italy'],
+    ['Leeds', 'UK'],
+    ['Aberdeen', 'UK'],
+    ['Dover', 'UK'],
+    ['Leipzig', 'Germany'],
+    ['Nantes', 'France'],
+    ['Calais', 'France'],
+  ])('Szenario: Die reale Stadt "%s" (Land: %s) wird als korrekt gewertet, obwohl sie nicht auf der alten 48er-Liste stand (Ticket-Beispiel, AK1)', async (stadt, land) => {
+    const karten = [karteMit(land, [{ stadt, am: 1000 }])];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.korrekt).toBe(1);
+    expect(ergebnis.gesamt.falschesLand).toBe(0);
+    expect(ergebnis.proKarte[0].staedte[0].wertung).toBe('korrekt');
+  });
+});
+
+describe('BUGFIX-012 Mehrsprachigkeit: Dieselbe Stadt wird unabhängig von Landessprache/Deutsch/Englisch als dieselbe Stadt erkannt (AK2)', () => {
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test.each([
+    ['Rom', 'Italy'], // Deutsch — bereits heute unterstützt
+    ['Roma', 'Italy'], // Landessprache (Italienisch) — heute NOCH NICHT als Alias hinterlegt
+    ['Rome', 'Italy'], // Englisch — bereits heute unterstützt
+  ])('Szenario: Die Schreibweise "%s" wird für %s als korrekte, gültige Stadt erkannt (Korrektheitsprüfung, AK2)', async (stadt, land) => {
+    const karten = [karteMit(land, [{ stadt, am: 1000 }])];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.korrekt).toBe(1);
+    expect(ergebnis.proKarte[0].staedte[0].wertung).toBe('korrekt');
+  });
+
+  test('Szenario: Dieselbe Stadt in drei Schreibweisen (Landessprache "Roma", Deutsch "Rom", Englisch "Rome") liefert denselben Vergleichsschlüssel — nur der früheste Eintrag zählt als korrekt, die beiden späteren als Dublette (AK2, Dublettenprüfung)', async () => {
+    const karten = [
+      karteMit('Italy', [{ stadt: 'Roma', am: 1000 }]),
+      karteMit('Italy', [{ stadt: 'Rom', am: 2000 }]),
+      karteMit('Italy', [{ stadt: 'Rome', am: 3000 }]),
+    ];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.korrekt).toBe(1);
+    expect(ergebnis.gesamt.dublette).toBe(2);
+    expect(ergebnis.proKarte[0].staedte[0].wertung).toBe('korrekt');
+    expect(ergebnis.proKarte[1].staedte[0].wertung).toBe('dublette');
+    expect(ergebnis.proKarte[2].staedte[0].wertung).toBe('dublette');
+  });
+});
+
+describe('BUGFIX-012 Regression: Eine Stadt in einem tatsächlich anderen Land bleibt weiterhin "falschesLand" (AK3)', () => {
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test('Szenario: Eine neu abgedeckte, real existierende Stadt (Leipzig, Deutschland) wird als "falschesLand" gewertet, wenn sie fälschlich einer andere Land zugeordneten Karte eingetragen wird', async () => {
+    const karten = [karteMit('France', [{ stadt: 'Leipzig', am: 1000 }])];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.falschesLand).toBe(1);
+    expect(ergebnis.gesamt.korrekt).toBe(0);
+    expect(ergebnis.proKarte[0].staedte[0].wertung).toBe('falschesLand');
+  });
+
+  test('Szenario: Eine Stadt aus der ALTEN, bereits bestehenden Liste bleibt bei falscher Landeszuordnung weiterhin "falschesLand" (Regression gegen bestehendes Verhalten, siehe Test Zeile ~407 oben in dieser Datei)', async () => {
+    const karten = [karteMit('France', [{ stadt: 'Rom', am: 1000 }])];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.falschesLand).toBe(1);
+    expect(ergebnis.gesamt.korrekt).toBe(0);
+  });
+});
+
+describe('BUGFIX-012 Regression: Groß-/Kleinschreibung und umgebende Leerzeichen bleiben irrelevant, auch für neu abgedeckte Städte (AK4)', () => {
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test.each([
+    'Leeds', 'leeds', 'LEEDS', '  Leeds  ', 'lEeDs',
+  ])('Szenario: Die Schreibweise "%s" wird trotz Groß-/Kleinschreibung bzw. umgebender Leerzeichen als dieselbe, korrekte Stadt "Leeds" (UK) erkannt (AK4)', async (schreibweise) => {
+    const karten = [karteMit('UK', [{ stadt: schreibweise, am: 1000 }])];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.korrekt).toBe(1);
+  });
+});
+
+describe('BUGFIX-012 Performance: Die Auswertung bleibt spürbar sofort, auch wenn sie die neuen, bislang nicht erkannten Städte korrekt bewerten muss (AK5)', () => {
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test('Szenario: Eine volle Runde (sechs Karten mit je fünf Einträgen, gemischt aus alten und neu abgedeckten Städten) wird in deutlich unter einer Sekunde ausgewertet — kein wahrnehmbares Warten', async () => {
+    const staedteJeLand = {
+      USA: ['New York', 'Los Angeles', 'Chicago', 'Houston', 'San Francisco'],
+      UK: ['London', 'Leeds', 'Aberdeen', 'Dover', 'Manchester'],
+      Germany: ['Berlin', 'Leipzig', 'Hamburg', 'München', 'Köln'],
+      India: ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Kolkata'],
+      Spain: ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao'],
+      France: ['Paris', 'Nantes', 'Calais', 'Lyon', 'Marseille'],
+    };
+    const karten = Object.entries(staedteJeLand).map(([land, staedte]) => karteMit(
+      land,
+      staedte.map((stadt, i) => ({ stadt, am: 1000 * (i + 1) })),
+    ));
+
+    const start = Date.now();
+    const ergebnis = await berechneQualitaet({ karten });
+    const dauerMs = Date.now() - start;
+
+    // Alle 30 Einträge müssen korrekt erkannt werden (u. a. die neu
+    // abgedeckten Städte Leeds/Aberdeen/Dover/Leipzig/Nantes/Calais).
+    expect(ergebnis.gesamt.korrekt).toBe(30);
+    // Grosszügige, aber konkrete Obergrenze für "spürbar sofort" (AK5) — siehe
+    // NACHTRAG/NAMENSGEBUNG am Kopf dieser Datei: eine echte Grössenordnungs-
+    // prüfung gegen die tatsächliche, künftig geladene Referenzdatei ist vor
+    // Existenz dieser Datei nicht sinnvoll möglich; dieser Test sichert
+    // zumindest ab, dass die Erweiterung nicht zu einer spürbaren Verlangsamung
+    // führt (siehe auch offene Frage im Abschlussbericht zu diesem Ticket).
+    expect(dauerMs).toBeLessThan(200);
+  });
+});
+
+describe('BUGFIX-012 Bewusste Grenze: Eine sehr kleine, nicht in der Referenzquelle enthaltene Ortschaft bleibt "falschesLand" (AK6, bewusste, kommunizierte Grenze — kein Fehlverhalten)', () => {
+  function karteMit(land, staedte) {
+    return { land, staedte };
+  }
+
+  test('Szenario: Ein sehr kleiner, real existierender Ort deutlich unter der Populationsschwelle (~15.000 Einwohner) bleibt als "falschesLand" gewertet (bereits heute GRÜN, bleibt es bewusst auch nach der Implementierung)', async () => {
+    // Schiltach (Baden-Württemberg) hat real ca. 3.700 Einwohner — deutlich
+    // unter der von Stephan bestätigten ~15.000er-Schwelle (Entscheidung 2,
+    // 2026-08-01) und ist deshalb auch nach der Implementierung bewusst NICHT
+    // in der neuen Referenzdatenquelle enthalten.
+    const karten = [karteMit('Germany', [{ stadt: 'Schiltach', am: 1000 }])];
+    const ergebnis = await berechneQualitaet({ karten });
+    expect(ergebnis.gesamt.falschesLand).toBe(1);
+    expect(ergebnis.gesamt.korrekt).toBe(0);
+  });
+});
+
+describe('BUGFIX-012 Pre-Mortem-Risiko 6: Gleichlautende Städtenamen in unterschiedlichen der acht Länder werden pro Land, NICHT global, auf Dubletten geprüft', () => {
+  afterEach(() => {
+    jest.dontMock('../src/game/rundeVier/laenderStaedte');
+    jest.resetModules();
+  });
+
+  test('Szenario: "London" wird sowohl in UK als auch in Kanada eingetragen (zwei tatsächlich unterschiedliche, real existierende Städte, z. B. London/UK und das kanadische London, Ontario) — nach Erweiterung der Referenzdaten müssen beide unabhängig voneinander als korrekt gelten, keine darf durch eine global statt länderspezifisch geführte Normalisierung fälschlich als Dublette der anderen erkannt werden', async () => {
+    jest.resetModules();
+    // Simuliert den Zustand NACH der Implementierung: beide Einträge sind in
+    // ihrem jeweiligen Land gültig (istStadtInLand() liefert für beide true) —
+    // dieser Test bleibt dadurch unabhängig davon lauffähig, ob die echte,
+    // umfangreiche Referenzdatei zum Zeitpunkt des Schreibens bereits existiert.
+    jest.doMock('../src/game/rundeVier/laenderStaedte', () => ({
+      istStadtInLand: () => true,
+      normalisiereStadt: (stadt) => (typeof stadt === 'string' ? stadt.trim().toLowerCase() : ''),
+    }));
+    // eslint-disable-next-line global-require
+    const { berechneQualitaet: berechneQualitaetFrisch } = require('../src/game/rundeVier/qualitaetsauswertung');
+
+    const karten = [
+      { land: 'UK', staedte: [{ stadt: 'London', am: 1000 }] },
+      { land: 'Canada', staedte: [{ stadt: 'London', am: 2000 }] },
+    ];
+    const ergebnis = await berechneQualitaetFrisch({ karten });
+
+    expect(ergebnis.gesamt.korrekt).toBe(2);
+    expect(ergebnis.gesamt.dublette).toBe(0);
+  });
+});
+
+describe('BUGFIX-012 Fehlerfall (Node-Seite): Rückfall auf eine kleine, eingebettete Kern-Liste, wenn die neue Referenzdatei nicht geladen werden kann (AK7, Stephans Entscheidung 4)', () => {
+  afterEach(() => {
+    jest.dontMock('fs');
+    jest.resetModules();
+  });
+
+  test('Szenario: Beim Laden von laenderStaedte.js wird tatsächlich versucht, eine externe Referenzdatei zu lesen (Voraussetzung für den Fehlerfall) UND bei einem simulierten Lesefehler bricht das Modul nicht ab, sondern bleibt mit einer kleinen Kern-Liste funktionsfähig', () => {
+    jest.resetModules();
+    const readFileSyncMock = jest.fn(() => {
+      throw new Error('ENOENT: simulierter Ladefehler der Referenzdatei');
+    });
+    jest.doMock('fs', () => ({
+      ...jest.requireActual('fs'),
+      readFileSync: readFileSyncMock,
+    }));
+
+    let modulFrisch;
+    expect(() => {
+      // eslint-disable-next-line global-require
+      modulFrisch = require('../src/game/rundeVier/laenderStaedte');
+    }).not.toThrow();
+
+    // Es wurde tatsächlich versucht, die neue Referenzdatei zu lesen — nicht
+    // nur die alte, vollständig eingebettete 48er-Liste ohne jeden
+    // Dateizugriff (die könnte diesen Fehlerfall gar nicht erst auslösen).
+    expect(readFileSyncMock).toHaveBeenCalled();
+
+    // Trotz Ladefehler bleibt Runde 4 spielbar: mindestens eine bekannte
+    // Kern-Stadt (aus der alten, bewusst weiterhin eingebetteten Liste) wird
+    // weiterhin korrekt erkannt, statt dass istStadtInLand()/normalisiereStadt()
+    // abstürzen oder unbrauchbar werden.
+    expect(modulFrisch.istStadtInLand('Germany', 'Berlin')).toBe(true);
+  });
+});
+
+describe('BUGFIX-012 Fehlerfall (Browser-Seite): public/js/game/rundeVier.js versucht die Referenzdatei zu laden und fällt bei einem Ladefehler auf eine Kern-Liste zurück, statt Runde 4 stillschweigend zu blockieren (AK7) — Textmuster-Test, erwartungsgemäß ROT', () => {
+  test('Szenario: Der Quelltext enthält einen fetch()-Aufruf gegen eine Referenzdaten-Datei UND in dessen Nähe eine Fehlerbehandlung mit erkennbarem Fallback-/Kernlisten-Bezug', () => {
+    // Bewusst allgemein formuliert (flow-game-bdd, Schritt 3b): geprüft wird
+    // nur, DASS ein fetch()-Aufruf gegen eine Referenzdaten-Ressource
+    // existiert und DASS in dessen Nähe eine Fehlerbehandlung mit einem
+    // erkennbaren Fallback-/Kernlisten-Bezug steht — nicht WIE genau (Promise
+    // .catch(), try/catch um await, eigene Hilfsfunktion) das umgesetzt wird.
+    const fetchMuster = /fetch\(\s*['"][^'"]*(staedte|cities)[^'"]*\.json['"]/i;
+    expect(fetchMuster.test(rundeVierJsInhalt)).toBe(true);
+
+    const fetchIndex = rundeVierJsInhalt.search(fetchMuster);
+    const umgebungAbFetch = rundeVierJsInhalt.slice(fetchIndex, fetchIndex + 800);
+    expect(umgebungAbFetch).toMatch(/catch/);
+    expect(umgebungAbFetch).toMatch(/(kern|fallback|core)/i);
   });
 });
