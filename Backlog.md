@@ -1614,11 +1614,13 @@ Nächster Schritt: Implementierung (`flow-game-impl`).
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Hoch |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-23 |
 | **Analyse am** | 2026-08-01 |
 | **Spec freigegeben am** | 2026-08-01 |
 | **In Progress seit** | 2026-08-01 |
+| **Release-Commit** | 33ad97f (Implementierung, main), 787ee01 (Backlog.md-Sync, main) |
+| **Done seit** | 2026-08-02 |
 
 **Beschreibung:** Begriffe wie "Gate: 0/6 closed" und "Complete Definition of Ready" werden nirgends im Spiel erklärt. Ohne mündliche Moderation ist nicht ersichtlich, was ein "Tor" bedeutet, wann es sich schließt oder warum das wichtig ist — dabei ist genau das (Losgrößen/Batch Sizing) offenbar der Kern der Lernerfahrung laut Untertitel der Startseite. Ohne Erklärung im Spiel hängt der Lerneffekt komplett von einer erfahrenen Moderation ab.
 
@@ -1798,6 +1800,35 @@ Ausgeschlossen:
 3. Korrektur nach erster Vorabansicht (2026-08-01): Die ursprünglich vorgeschlagene Runde-4-Erklärung war unvollständig (Würfel->3-Regel und Länderkarten-Regeln fehlten) und die DoR-Erklärung zu knapp (Bestätigungs- und Vorher-Aspekt fehlten) — beides oben korrigiert und freigegeben. Zusätzlich neu aufgenommen: Umbenennung „Tor" → „Gate" auch auf Deutsch.
 
 ⚠️ Annahme (⚪ konventionell, blockiert nicht): Die neuen Texte werden nach dem bestehenden Namensschema ergänzt (z. B. `spielbrett.torErklaerung`, `spielbrett.dorErklaerung`, `phase.aufgabeVorgestelltErklaerung`, `rundeVier.regelnErklaerung`) statt eines neuen Namensraums — bitte bei der Umsetzung bestätigen, falls ein anderes Schema gewünscht ist.
+
+#### Implementierungs-Ergebnis (`flow-game-impl`, 2026-08-01)
+
+**Zugriffsart:** Zu Beginn dieser Phase weiterhin keine Geräte-Brücke zu Stephans Mac verbunden — Implementierung im bereits vorhandenen Sandbox-Klon `/home/claude/flow-game` (HEAD `b3182ad`, unverändert zur BDD-Phase). Nach Abschluss der Implementierung wurde die Geräte-Brücke verbunden; die vier geänderten Dateien wurden per `SendUserFile` + `device_commit_files` auf Stephans echtes Repo übertragen und per `md5sum` byte-genau gegen die Sandbox-Fassung verifiziert.
+
+**Geänderte Dateien:** `public/spiel.html` (vier neue `hinweis info`-Elemente `#zeit-erklaerung`/`#rundenstart-erklaerung`/`#gate-erklaerung`/`#rv-rundenstart-erklaerung`, Sichtbarkeits-Umschaltung in `wechsleZuRunde()`, `renderBrett()`/`renderRundeVier()` setzen die rundenspezifischen Texte, `wendeSpracheAufStatischeTexteAn()` erweitert, Runde-2-Stapelzeile zeigt `torOffen`/`torGeschlossen` jetzt als Wort), `src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js` synchron geändert (neue Schlüssel `spielbrett.gateErklaerung`/`zeitErklaerung`/`rundenstartErklaerungRunde1-4`, erweiterter `dorHinweis`-Text, `torPraefix.de` „Tor“ → „Gate“), `tests/game-feature-012-erklaerungstexte.static.test.js` (neu, aus der BDD-Phase).
+
+**Testergebnis nach Implementierung (2026-08-01, `npx jest`, Sandbox-Klon, ohne Emulator):**
+- Neue BDD-Testdatei `tests/game-feature-012-erklaerungstexte.static.test.js`: **43/43 grün** (vorher 29 rot/14 grün in der BDD-Phase).
+- Regressionslauf der nicht-Emulator-abhängigen Suiten (25 Test-Suites, u. a. `game-a11y-static`, `game-i18n.manual-checks`, `game-startseite-erklaerung.static`, `game-bugfix-006-sprachreine-anzeige.static`, plus alle weiteren rein statischen/logischen Suiten im Repo): **alle 25 Suiten grün, 312 Tests bestanden, 1 bewusst übersprungen** (FEATURE-008-Kommentar in der Testdatei selbst), keine Regression.
+- Die 7 Firestore-Emulator-abhängigen Suiten aus der BDD-Phase (`game-i18n.logic`, `game-i18n.security.rules`, `game-round.logic`, `game-round.security.rules`, `game-round.stapel-zaehlung`, `game-round4.logic`, `game-round4.security.rules`) konnten auch hier nicht laufen — `ECONNREFUSED 127.0.0.1:8080`, erwartetes Bild, kein neuer Fehlschlag, da kein Firestore-Emulator in der Sandbox läuft (Netzwerk-Proxy blockiert den Emulator-Jar-Download, siehe BDD-Phase). *Korrektur (2026-08-01): Eine erste Fassung dieses Abschnitts nannte hier fälschlich „14 Suiten“ — das war eine Verwechslung mit der Gesamtzahl fehlgeschlagener Suiten aus einem parallel laufenden, ticketfremden Vollständigkeits-Check über das gesamte Repo. Die tatsächlich für dieses Ticket relevante Liste aus der BDD-Phase umfasst 7 Dateien, siehe oben.*
+
+**Weiterhin offene, bereits in der BDD-Phase benannte Lücke (zum Zeitpunkt dieses Absatzes noch NICHT nachgeholt):** Der volle Emulator-gestützte Regressionslauf auf Stephans Mac (dieselben 7 Dateien) steht noch aus. Da dieses Ticket laut Scope weder `firestore.rules` noch das Datenmodell ändert, ist das Regressionsrisiko dafür strukturell gering — der Lauf **muss** aber vor der Bestätigung auf „Done“ trotzdem nachgeholt werden.
+
+**Release:** Commit `33ad97f` „FEATURE-012: Zentrale Spielbegriffe im Spiel selbst erklären (Gate, Definition of Ready)“ auf `main` gepusht, GitHub-Actions-Lauf „Deploy to Firebase Hosting on merge“ (Run 42, `https://github.com/stephanschumann/flow-game/actions/runs/30721547007`) per Chrome-Automation als „completed successfully“ abgelesen.
+
+**Live-Verifikation (2026-08-01, direkter Fetch gegen die echte Produktions-URL, nicht nur Actions-Status):** `https://flow-game-19f01.web.app/spiel.html` und `https://flow-game-19f01.web.app/js/i18n/uebersetzungen.js` per `javascript_tool`-Fetch aus einem auf diese Origin navigierten Chrome-Tab gelesen. Bestätigt vorhanden: alle vier neuen DOM-Element-IDs, alle neuen i18n-Schlüssel (`gateErklaerung`, `zeitErklaerung`, `rundenstartErklaerungRunde1-4`, `dorHinweis`), der Runde-4-Wortlaut („über 3“, „Dublette“), sowie `torPraefix.de` = „Gate“ und **kein** verbliebenes `de: 'Tor'` mehr im ausgelieferten Code.
+
+**Backlog.md-Synchronisierung (2026-08-01):** Die git-getrackte `Backlog.md` auf Stephans Mac war vor diesem Ticket bereits längere Zeit nicht mit dem Cloud-Dokument synchronisiert (mehrere Tickets dort noch auf älterem Stand, u. a. FEATURE-012 selbst nur als kurzer ToDo-Stub). Drift-Check durchgeführt (vollständiger Diff beider Stände): kein Informationsverlust festgestellt, einzige inhaltliche Abweichung war eine von Stephan bewusst freigegebene Status-Vereinheitlichung bei FEATURE-009 („Geschlossen – bereits erfüllt durch FEATURE-002“ → „Done“, Begründungstext bleibt im Tickettext erhalten). Cloud-Stand per `SendUserFile` + `device_commit_files` auf Stephans Mac geschrieben, byte-genau verifiziert (`md5sum`), von Stephan committet und gepusht (`787ee01`).
+
+**Status:** Release + Live-Verifikation abgeschlossen. Ticket bleibt bewusst auf „In Progress“, bis Stephan den lokalen Emulator-gestützten Regressionslauf (7 Dateien, siehe oben) nachgeholt und bestätigt sowie „Done“ ausdrücklich freigegeben hat (Gate 3).
+
+#### Emulator-Regressionslauf auf Stephans Mac (2026-08-01, nachgeholt)
+
+Erster Versuch scheiterte an einem hängengebliebenen Firestore-Emulator-Prozess (Java, Port 8080 belegt, `Error: Could not start Firestore Emulator, port taken`) — von einer früheren Sitzung übrig geblieben, per `lsof -nP -iTCP:8080 -sTCP:LISTEN` gefunden und von Stephan beendet. Danach liefen alle drei Test-Skripte sauber durch: `npm run test:emulator` (7 Suiten: `game-rooms.security.rules`, `game-rooms.logic`, `game-round.security.rules`, `game-round.logic`, `game-round.stapel-zaehlung`, `game-evaluation.security.rules`, `game-evaluation.logic` — **106/106 grün**), `npm run test:emulator:feature-004` (`game-round4.security.rules`, `game-round4.logic` — **114/114 grün**), `npm run test:emulator:feature-006` (`game-i18n.security.rules`, `game-i18n.logic` — **19/19 grün**). Zusammen **11 Suiten, 239 Tests, alle grün**, keine Regression — deckt alle 7 in der BDD-Phase benannten Dateien vollständig ab (plus zwei zusätzliche, nicht ticketspezifische Suiten `game-rooms.*`, die ohnehin Teil des allgemeinen `test:emulator`-Laufs sind). Ergebnis von mir per Datei-Export (`grep` auf die Zusammenfassungszeilen) gelesen, nicht nur von Stephan mündlich bestätigt.
+
+Damit ist das Release-vor-Done-Gate vollständig erfüllt: Release + Live-Verifikation (siehe oben) sowie jetzt auch der lokale Emulator-Regressionslauf.
+
+**Gate 3 – Done-Bestätigung (Stephan, 2026-08-02):** „done“, nach Vorlage des vollständigen Release-/Live-/Regressionsbefunds bestätigt.
 
 ---
 
