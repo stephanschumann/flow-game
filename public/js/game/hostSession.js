@@ -13,6 +13,11 @@
  * teilnehmende/{uid}-Dokument mit einer ANDEREN Rolle (spielende/beobachtende)
  * nicht mehr stillschweigend überschreiben – siehe src/game/hostSession.js für
  * die ausführliche Begründung (beide Dateien synchron halten).
+ *
+ * FEATURE-018 (2026-08-04): hostKennung wird nur noch beim erstmaligen
+ * Anlegen dieses Dokuments mitgeschrieben – siehe Kopfkommentar in
+ * src/game/hostSession.js für die vollständige Begründung (Node-Referenz,
+ * muss synchron gehalten werden).
  */
 (function (global) {
   'use strict';
@@ -47,15 +52,13 @@
       throw fehler;
     }
 
+    const daten = { rolle: 'host', wiederhergestelltAm: Date.now() };
+    if (!bestehenderSnap.exists) {
+      daten.hostKennung = hostSessionKennung;
+    }
+
     try {
-      await teilnehmerRef.set(
-        {
-          rolle: 'host',
-          hostKennung: hostSessionKennung,
-          wiederhergestelltAm: Date.now(),
-        },
-        { merge: true }
-      );
+      await teilnehmerRef.set(daten, { merge: true });
     } catch (err) {
       const fehler = new Error('Host-Session-Kennung ist ungültig.');
       fehler.code = 'HOST_KENNUNG_UNGUELTIG';

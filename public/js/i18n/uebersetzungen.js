@@ -33,9 +33,12 @@
       en: "In this game, you'll experience live how your way of working affects speed and quality – often in surprising ways. Together you'll tackle tasks across several short rounds, trying out different approaches rooted in lean and flow thinking (the ideas behind modern, streamlined ways of working). At the end, you'll compare your results and discuss together what it means for how you work.",
     },
     'startseite.spieleranzahlUeberschrift': { de: 'Wie viele Personen braucht ihr?', en: 'How many people do you need?' },
+    // FEATURE-018 (2026-08-04, Gate 1 – Fundstelle A.1): siehe
+    // src/i18n/uebersetzungen.js für die vollständige Begründung (Node-
+    // Referenz, muss synchron gehalten werden).
     'startseite.spieleranzahlText': {
-      de: 'Ihr braucht mindestens fünf Mitspielende an den Stationen sowie einen Host, der/die das Spiel moderiert und steuert – insgesamt also mindestens sechs Personen. Wer zusätzlich zuschauen möchte, kann als Beobachter(in) live dabei sein, ohne selbst einzugreifen.',
-      en: "You need at least five players at the stations, plus a host who moderates and runs the game – so at least six people in total. Anyone who'd like to watch can join as an observer, following along live without taking part.",
+      de: 'Ihr braucht fünf oder sechs Personen, je nach Wahl des Hosts (der gastgebenden Person): Er/Sie kann entweder selbst an einer der fünf Stationen mitspielen (dann reichen insgesamt fünf Personen), oder das Spiel ausschließlich moderieren und steuern (dann kommen fünf Mitspielende plus der Host als sechste Person hinzu). Wer zusätzlich zuschauen möchte, kann als Beobachter(in) live dabei sein, ohne selbst einzugreifen.',
+      en: "You need five or six people, depending on how the hosting person chooses to take part: they can either play at one of the five stations themselves (five people in total is then enough), or moderate and run the game only (in that case, five players plus the host make six people in total). Anyone who'd like to watch can join as an observer, following along live without taking part.",
     },
     'startseite.ablaufUeberschrift': { de: 'Wie läuft es ab?', en: 'How does it work?' },
     'startseite.ablaufText': {
@@ -69,6 +72,11 @@
       en: 'All stations are taken – please choose a role',
     },
     'lobby.rolleBeobachtendeOption': { de: 'Als Beobachtende beitreten', en: 'Join as observer' },
+    // FEATURE-018 (AK1, Option A): siehe src/i18n/uebersetzungen.js.
+    'lobby.hostSpieltMitLabel': {
+      de: 'Ich spiele selbst mit (belegt eine der fünf Stationen)',
+      en: 'I will play myself (takes one of the five stations)',
+    },
     'lobby.rundeStarten': { de: 'Aufgabe vorstellen (Runde 1 starten)', en: 'Present task (start round 1)' },
     'lobby.duBistHostSchlicht': { de: 'Du bist Host dieses Spiels.', en: 'You are the host of this game.' },
     'lobby.duBistHostMitTeilen': {
@@ -82,9 +90,10 @@
     // BUGFIX-003: Lobby-Erläuterung + Live-Zähler, Rundenkontext - siehe
     // Kommentare in src/i18n/uebersetzungen.js (diese Datei muss inhaltlich
     // synchron gehalten werden, siehe Kopfkommentar oben).
+    // FEATURE-018 (Gate 1 – Fundstelle A.2): siehe src/i18n/uebersetzungen.js.
     'lobby.startHinweis': {
-      de: 'Das Spiel beginnt erst, wenn der Host es startet. Dafür werden mindestens 5 Spielende und 1 Host benötigt – wer beitritt, wartet hier in der Lobby, bis es losgeht.',
-      en: 'The game only begins once the host starts it. That requires at least 5 players and 1 host – everyone who joins waits here in the lobby until it begins.',
+      de: 'Das Spiel beginnt erst, wenn der Host es startet. Dafür werden insgesamt 5 oder 6 Personen benötigt, je nachdem, ob die gastgebende Person selbst mitspielt oder nur moderiert – wer beitritt, wartet hier in der Lobby, bis es losgeht.',
+      en: 'The game only begins once the host starts it. That requires 5 or 6 people in total, depending on whether the host plays along or only moderates – everyone who joins waits here in the lobby until it begins.',
     },
     'lobby.liveZaehler': {
       de: '{aktuell} von {minimum} Spielenden beigetreten',
@@ -268,6 +277,12 @@
     'kennzahlen.spielFertigHinweis': {
       de: 'Alle Runden sind gespielt – sobald du die Ergebnisse freigibst, sehen alle den vollständigen Vergleich.',
       en: 'All rounds have been played – once you release the results, everyone will see the full comparison.',
+    },
+    // FEATURE-018 (AK13, Fundstelle B.8, Gate 1 UI/UX Variante 2): siehe
+    // src/i18n/uebersetzungen.js für die vollständige Begründung.
+    'kennzahlen.automatischFreigegebenHinweis': {
+      de: 'Ergebnisse wurden automatisch freigegeben – alle sehen jetzt den vollständigen Vergleich.',
+      en: 'Results were released automatically – everyone can now see the full comparison.',
     },
     'auswertung.titel': { de: 'Auswertung – Vergleich aller Runden', en: 'Evaluation – comparison of all rounds' },
     'auswertung.hinweis': {

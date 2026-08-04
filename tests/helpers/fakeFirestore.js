@@ -24,7 +24,45 @@
  * Bewusst denkbar einfach gehalten (kein echtes Transaktions-Retry, keine
  * Nebenläufigkeitskontrolle) – für die hier geprüften, streng sequentiellen
  * Given/When/Then-Abläufe ausreichend.
+ *
+ * FIX (2026-08-04, FEATURE-018, live beim ersten Sequentiell-mehrere-
+ * joinGame()-Aufrufe-Test dieser Fake-Instanz gefunden): `update()`/
+ * `tx.update()` behandelten einen Schlüssel wie `belegteStationen.station1`
+ * bislang als LITERALEN, flachen Property-Namen (reiner Object-Spread),
+ * statt ihn – wie der echte Firestore-Client – als Punkt-Pfad in das
+ * verschachtelte `belegteStationen`-Objekt zu schreiben. Dadurch blieb das
+ * eigentliche `belegteStationen`-Feld nach einem `tx.update(spielRef, {
+ * ['belegteStationen.' + station]: uid })` (siehe src/game/joinGame.js)
+ * unverändert auf seinem Ausgangsstand stehen – jede weitere Person, die
+ * danach in DERSELBEN Fake-Instanz beitrat, sah dieselbe (veraltete)
+ * Stationsbelegung und bekam dadurch fälschlich immer wieder dieselbe erste
+ * freie Station zugewiesen, statt der jeweils tatsächlich nächsten freien.
+ * Bislang fiel das nie auf, weil vorherige Tests mit dieser Fake-Instanz
+ * (BUGFIX-005) nie mehr als eine tatsächlich NEUE Person nacheinander
+ * derselben Station-Sammlung zuwiesen. `wendeAktualisierungAn()` bildet jetzt
+ * das reale Firestore-Verhalten nach: ein Punkt im Schlüssel adressiert ein
+ * verschachteltes Feld, alle anderen Ebenen bleiben unverändert erhalten.
  */
+
+function wendeAktualisierungAn(bestehend, daten) {
+  const ergebnis = { ...bestehend };
+  Object.keys(daten).forEach((schluessel) => {
+    if (!schluessel.includes('.')) {
+      ergebnis[schluessel] = daten[schluessel];
+      return;
+    }
+    const segmente = schluessel.split('.');
+    let ziel = ergebnis;
+    for (let i = 0; i < segmente.length - 1; i += 1) {
+      const teil = segmente[i];
+      const bisherigerWert = ziel[teil];
+      ziel[teil] = (bisherigerWert && typeof bisherigerWert === 'object') ? { ...bisherigerWert } : {};
+      ziel = ziel[teil];
+    }
+    ziel[segmente[segmente.length - 1]] = daten[schluessel];
+  });
+  return ergebnis;
+}
 
 function erzeugeFakeDb() {
   const speicher = new Map();
@@ -52,7 +90,7 @@ function erzeugeFakeDb() {
       },
       async update(daten) {
         const bestehend = speicher.get(vollerPfad) || {};
-        speicher.set(vollerPfad, { ...bestehend, ...daten });
+        speicher.set(vollerPfad, wendeAktualisierungAn(bestehend, daten));
       },
     };
   }
@@ -83,7 +121,7 @@ function erzeugeFakeDb() {
         },
         update(ref, daten) {
           const bestehend = speicher.get(ref._pfad) || {};
-          speicher.set(ref._pfad, { ...bestehend, ...daten });
+          speicher.set(ref._pfad, wendeAktualisierungAn(bestehend, daten));
         },
       };
       return fn(tx);

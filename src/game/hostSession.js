@@ -26,6 +26,19 @@
  * überschreiben. Ein bereits bestehendes Dokument MIT rolle='host' (der
  * reguläre FEATURE-001-Reload-Fall) bleibt davon unberührt und wird wie
  * bisher per merge aktualisiert.
+ *
+ * FEATURE-018 (2026-08-04, Befund 3/4, Option A): hostKennung wird jetzt NUR
+ * NOCH dann mitgeschrieben, wenn für diese uid noch KEIN Dokument existiert
+ * (neues Gerät/neue uid beansprucht die Host-Rolle für ein bereits
+ * bestehendes Spiel neu – der einzige Fall, in dem firestore.rules
+ * überhaupt noch einen hostKennung-Nachweis verlangt, siehe "allow create"
+ * dort). Existiert das Dokument bereits (der weitaus häufigere Fall:
+ * dieselbe Person lädt ihre eigene Sitzung neu), ist kein Nachweis mehr
+ * nötig – die Update-Regel prüft ohnehin nur, dass `rolle` unverändert
+ * bleibt. Wichtig: ein bereits bestehendes Dokument darf hostKennung NICHT
+ * erneut bekommen, weil ein mitspielender Host (mit station-Feld) sonst
+ * über die jetzt gelockerte Leseregel für andere Teilnehmende sichtbar
+ * würde UND dabei versehentlich die Kennung mit offenlegen würde.
  */
 
 async function restoreHostSession({ code, hostSessionKennung, uid }, db) {
@@ -58,15 +71,13 @@ async function restoreHostSession({ code, hostSessionKennung, uid }, db) {
     throw fehler;
   }
 
+  const daten = { rolle: 'host', wiederhergestelltAm: Date.now() };
+  if (!bestehenderSnap.exists) {
+    daten.hostKennung = hostSessionKennung;
+  }
+
   try {
-    await teilnehmerRef.set(
-      {
-        rolle: 'host',
-        hostKennung: hostSessionKennung,
-        wiederhergestelltAm: Date.now(),
-      },
-      { merge: true }
-    );
+    await teilnehmerRef.set(daten, { merge: true });
   } catch (err) {
     const fehler = new Error('Host-Session-Kennung ist ungültig.');
     fehler.code = 'HOST_KENNUNG_UNGUELTIG';

@@ -210,6 +210,14 @@
      keine aktive Blockade, nur sichtbare Markierung. -->
 <div class="hinweis fehler" id="tab-inaktiv-hinweis" hidden role="status" style="max-width:1080px;margin:10px auto 0;text-align:center">Dieses Fenster ist nicht mehr aktiv – du hast das Spiel in einem neueren Fenster/Tab geöffnet. Bitte dort weiterspielen.</div>
 <!-- Text wird beim Start (wendeSpracheAufStatischeTexteAn()) per t('hinweis.tabInaktiv') neu gesetzt. -->
+<!-- FEATURE-018 (AK13, Gate 1 UI/UX-Entscheidung Variante 2): kurzer,
+     dezenter Hinweis nur für eine mitspielende gastgebende Person, sobald
+     die Ergebnisse automatisch (ohne Klick) freigegeben wurden -
+     verschwindet nach ein paar Sekunden von selbst wieder (siehe
+     versucheAutomatischeFreigabe()). Reines Anzeigen/Ausblenden per
+     [hidden], keine CSS-Animation - dadurch von Natur aus mit
+     prefers-reduced-motion kompatibel (FEATURE-005-Konvention). -->
+<div class="hinweis info" id="automatische-freigabe-hinweis" hidden role="status" style="max-width:1080px;margin:10px auto 0;text-align:center"></div>
 <div class="wrap">
   <div class="stage">
     <div class="hero">
@@ -228,6 +236,12 @@
         <div class="field">
           <label for="host-name" id="label-host-name">Dein Anzeigename (als Host)</label>
           <input id="host-name" name="host-name" type="text" maxlength="40" required autocomplete="off" placeholder="z. B. Chris">
+        </div>
+        <!-- FEATURE-018 (AK1, Option A): nur beim Erstellen wählbar, danach
+             nicht mehr änderbar (geklärte Frage 3). -->
+        <div class="field" style="flex-direction:row;align-items:center;gap:8px">
+          <input id="checkbox-host-spielt-mit" name="host-spielt-mit" type="checkbox">
+          <label for="checkbox-host-spielt-mit" id="label-host-spielt-mit" style="text-transform:none;font-size:15px;font-weight:400;letter-spacing:normal">Ich spiele selbst mit (belegt eine der fünf Stationen)</label>
         </div>
         <div class="row"><button type="submit" id="btn-erstellen-absenden" class="btn primary">Spiel erstellen</button></div>
       </form>
@@ -480,6 +494,9 @@
   // FEATURE-005: Verbindungsstatus-Anzeige (AK4/AK5) + Zwei-Tabs-Erkennung (AK16).
   const verbindungsHinweis = document.getElementById('verbindungs-hinweis');
   const tabInaktivHinweis = document.getElementById('tab-inaktiv-hinweis');
+  // FEATURE-018 (AK13): Hinweis für die automatische Freigabe-Rückmeldung.
+  const automatischeFreigabeHinweis = document.getElementById('automatische-freigabe-hinweis');
+  let automatischeFreigabeHinweisTimeout = null;
   // Ein je Seitenaufruf (Tab/Fenster) eindeutiger Wert - "neuester Tab
   // gewinnt" (geklärte Frage 2): jeder registriereAktivenTab()-Aufruf mit
   // dieser eigenen tabId ueberschreibt einen zuvor registrierten Tab.
@@ -593,6 +610,8 @@
     setText('label-beitritt-name', t('lobby.beitrittNameLabel'));
     setText('label-beitritt-rolle', t('lobby.rolleWahlLabel'));
     setText('option-beobachtende', t('lobby.rolleBeobachtendeOption'));
+    // FEATURE-018 (AK1): Checkbox-Label im Erstellen-Formular.
+    setText('label-host-spielt-mit', t('lobby.hostSpieltMitLabel'));
     setText('btn-runde-starten', t('lobby.rundeStarten'));
     setText('label-runde', t('spielbrett.runde'));
     setText('label-durchlaufzeit', t('spielbrett.durchlaufzeit'));
@@ -967,8 +986,17 @@
     //      sich exakt mit der Regelbedingung "resource.data.rolle != 'host'"
     //      und lässt sich von Firestore im Voraus beweisen, ohne den
     //      Host-Datensatz jemals anzufragen.
-    // Beide Listener aktualisieren einen gemeinsamen Zwischenspeicher und
-    // rendern daraus die komplette Liste neu.
+    // FEATURE-018 (AK3, 2026-08-04): eine DRITTE Collection-Query deckt
+    // genau den neu gelockerten zweiten Zweig der Leseregel ab
+    // ("resource.data.rolle == 'host' && station != null") - ein
+    // mitspielender Host bleibt sonst für andere Teilnehmende unsichtbar
+    // (Query 2 filtert 'host' explizit aus, Query 1 kann diesen Fall nicht
+    // treffen). Analog zu Query 2 exakt auf die Regelbedingung zugeschnitten
+    // (5c-Konvention), damit Firestore die Query im Voraus als sicher
+    // beweisen kann, ohne einen klassischen, nicht mitspielenden Host
+    // (kein station-Feld) jemals anzufragen.
+    // Beide/alle drei Listener aktualisieren einen gemeinsamen
+    // Zwischenspeicher und rendern daraus die komplette Liste neu.
     const teilnehmendeCache = {}; // uid -> Teilnehmenden-Daten
 
     function verarbeiteTeilnehmerDoc(uid, daten) {
@@ -1051,14 +1079,17 @@
       // ein konkretes Zahlenbeispiel hartzucodieren) - ausschliesslich aus der
       // bereits geladenen teilnehmendeCache berechnet (kein zusätzlicher
       // Firestore-Zugriff), zentral hier verankert statt an den
-      // zeigeLobby()-Aufrufstellen dupliziert zu werden. Zählt nur
-      // 'spielende' (nicht 'host'/'beobachtende'), weil die Mindestbesetzung
-      // laut Ticket "mindestens 5 Spielende" lautet - so bleibt der Zähler
-      // unabhängig davon konsistent, ob die aufrufende Person selbst Host ist
-      // (deren eigenes Dokument sonst zu einer Verzerrung um 1 führen würde,
-      // da nur der Host das eigene Host-Dokument überhaupt lesen darf).
+      // zeigeLobby()-Aufrufstellen dupliziert zu werden. Zählt 'spielende'
+      // UND einen mitspielenden Host mit (FEATURE-018, AK11, Fundstelle A.3,
+      // Pre-Mortem-Risiko 8: ein Host mit eigener Station belegt ebenfalls
+      // eine der fünf Stationen und muss deshalb mitgezählt werden, sonst
+      // zeigt der Zähler dauerhaft eine falsche, zu niedrige Zahl an) - ein
+      // klassischer, nicht mitspielender Host (rolle 'host' ohne
+      // station-Feld) zählt weiterhin NICHT mit (Regressionsschutz,
+      // unverändertes Verhalten).
       const anzahlSpielendeBeigetreten = Object.keys(teilnehmendeCache).filter(function (uid) {
-        return teilnehmendeCache[uid].rolle === 'spielende';
+        const daten = teilnehmendeCache[uid];
+        return daten.rolle === 'spielende' || (daten.rolle === 'host' && daten.station != null);
       }).length;
       lobbyLiveZaehler.textContent = t('lobby.liveZaehler', {
         aktuell: anzahlSpielendeBeigetreten,
@@ -1089,6 +1120,23 @@
 
     db.collection('spiele').doc(code).collection('teilnehmende')
       .where('rolle', '!=', 'host')
+      .onSnapshot(function (snapshot) {
+        snapshot.forEach(function (docSnap) {
+          verarbeiteTeilnehmerDoc(docSnap.id, docSnap.data());
+        });
+        renderTeilnehmerListe();
+      }, function (err) {
+        zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
+      });
+
+    // FEATURE-018 (AK3): dritte Query, deckt exakt den gelockerten zweiten
+    // Zweig der Leseregel ab - ein mitspielender Host (rolle=='host' UND
+    // station != null) wird dadurch für andere Teilnehmende sichtbar, ein
+    // klassischer, nicht mitspielender Host (kein station-Feld) bleibt
+    // weiterhin unangefragt/unsichtbar (Regressionsschutz FEATURE-001).
+    db.collection('spiele').doc(code).collection('teilnehmende')
+      .where('rolle', '==', 'host')
+      .where('station', '!=', null)
       .onSnapshot(function (snapshot) {
         snapshot.forEach(function (docSnap) {
           verarbeiteTeilnehmerDoc(docSnap.id, docSnap.data());
@@ -2501,9 +2549,76 @@
     }
 
     hostNaechsteRundeBereich.hidden = !(eigeneRolle === 'host' && !letzteRundeErreicht);
-    hostFreigabeBereich.hidden = !(eigeneRolle === 'host' && letzteRundeErreicht && !ergebnisseFreigegeben);
+    // FEATURE-018 (AK7/AK8): der manuelle Freigabe-Bereich (Knopf +
+    // Bestätigungsdialog) bleibt AUSSCHLIESSLICH für den klassischen, NICHT
+    // mitspielenden Host sichtbar (eigeneStationsNummer === null) - eine
+    // mitspielende gastgebende Person (eigene Station gesetzt) hat keine
+    // eigene Freigabe-Aktion mehr, die Freigabe läuft für sie automatisch
+    // (siehe versucheAutomatischeFreigabe() unten). Ohne diese zusätzliche
+    // Bedingung würden für einen mitspielenden Host zwei parallele,
+    // widersprüchliche Bedienoberflächen entstehen (Pre-Mortem-Risiko
+    // "Kombinationen, die zu Fehlern führen könnten" (b) der Analyse-Spec).
+    const hostSpieltMit = eigeneRolle === 'host' && eigeneStationsNummer !== null;
+    hostFreigabeBereich.hidden = !(eigeneRolle === 'host' && !hostSpieltMit && letzteRundeErreicht && !ergebnisseFreigegeben);
     btnErgebnisseFreigeben.disabled = runde.phase !== 'beendet';
     spielFertigHinweis.hidden = !(letzteRundeErreicht && !ergebnisseFreigegeben);
+
+    // FEATURE-018 (AK7, Gate 1 Frage 2): eine mitspielende gastgebende
+    // Person (eigene Station gesetzt) löst die Gesamtfreigabe automatisch
+    // aus, sobald die letzte gespielte Runde beendet ist - derselbe
+    // Zeitpunkt, an dem der klassische Host heute manuell klicken würde,
+    // nur ohne Klick (keine Pro-Runde-Vorab-Enthüllung, siehe Analyse-Spec
+    // Frage 2). Der klassische, nicht mitspielende Host bleibt davon
+    // unberührt und weiterhin ausschliesslich auf den manuellen Knopf
+    // angewiesen (AK8, Regressionsschutz FEATURE-003).
+    if (hostSpieltMit && letzteRundeErreicht && !ergebnisseFreigegeben) {
+      versucheAutomatischeFreigabe(aktuelleDbInstanz, aktuellerSpielCode, runde.phase);
+    }
+  }
+
+  // FEATURE-018 (AK7): opportunistischer, idempotenter Auslöser - analog zum
+  // bewährten Muster aus rundenEnde.js (Pre-Mortem-Risiko 4: jeder
+  // beobachtete Zustandswechsel, auch nach Reconnect, löst einen erneuten
+  // Versuch aus, kein einmaliger Trigger). Ein stiller Fehlschlag (z. B.
+  // Host-Client kurz offline) ist kein Nutzerfehler - der nächste Snapshot
+  // versucht es erneut. Die eigentliche Durchsetzung (nur Host, nur mit
+  // station-Feld faktisch identisch zum manuellen Pfad, nur wenn die letzte
+  // gespielte Runde bereits beendet ist) liegt unverändert in
+  // firestore.rules (Fall B, istHost() + letzteGespielteRundeBeendet()) -
+  // diese Funktion ruft denselben, bereits bestehenden gibErgebnisseFrei()
+  // auf wie der manuelle Knopf, nur automatisch statt per Klick.
+  let automatischeFreigabeLaeuft = false;
+  async function versucheAutomatischeFreigabe(db, code, rundenPhase) {
+    if (automatischeFreigabeLaeuft) return;
+    automatischeFreigabeLaeuft = true;
+    try {
+      await window.FlowGame.gibErgebnisseFrei({ code, letzteRundePhase: rundenPhase }, db);
+      zeigeAutomatischeFreigabeHinweis();
+    } catch (err) {
+      // Stiller Fehlschlag - kein Fehlertext nötig (analog rundenEnde.js),
+      // der nächste Snapshot/Reconnect versucht es erneut.
+    } finally {
+      automatischeFreigabeLaeuft = false;
+    }
+  }
+
+  // FEATURE-018 (AK13, Gate 1 UI/UX-Entscheidung Variante 2): kurzer,
+  // dezenter Hinweis, verschwindet nach ein paar Sekunden von selbst wieder,
+  // während die Ergebnisansicht im Hintergrund bereits aufgebaut wird (der
+  // ergebnisseFreigegeben-Listener oben löst zeigeAuswertung() für ALLE
+  // Rollen ohnehin unverändert automatisch aus - dieser Hinweis ist eine
+  // zusätzliche, nur für die mitspielende gastgebende Person selbst sichtbare
+  // Rückmeldung, sprachlich klar unterscheidbar vom bestehenden manuellen
+  // Bestätigungsdialog, siehe kennzahlen.automatischFreigegebenHinweis).
+  function zeigeAutomatischeFreigabeHinweis() {
+    if (automatischeFreigabeHinweisTimeout) {
+      clearTimeout(automatischeFreigabeHinweisTimeout);
+    }
+    automatischeFreigabeHinweis.textContent = t('kennzahlen.automatischFreigegebenHinweis');
+    automatischeFreigabeHinweis.hidden = false;
+    automatischeFreigabeHinweisTimeout = setTimeout(function () {
+      automatischeFreigabeHinweis.hidden = true;
+    }, 5000);
   }
 
   btnRundeStarten.addEventListener('click', async function () {
@@ -2692,6 +2807,8 @@
       btnErstellenAbsenden.setAttribute('aria-busy', 'true');
       btnErstellenAbsenden.textContent = t('lobby.wirdBearbeitet');
       const hostAnzeigename = document.getElementById('host-name').value;
+      // FEATURE-018 (AK1, Option A): nur beim Erstellen wählbar.
+      const hostSpieltMit = document.getElementById('checkbox-host-spielt-mit').checked;
       try {
         // BUGFIX-001 (AK7): auch der Host-Erstellungspfad ist auf einem
         // frischen Gerät demselben "client is offline"-Zeitfenster
@@ -2700,7 +2817,9 @@
         // Erstellen fest - übernimmt die gerade eingestellte lokale Vorliebe
         // (Sprachumschalter) als Startwert für das gesamte Spiel.
         const ergebnis = await window.FlowGame.createGame(
-          { hostAnzeigename, uid: user.uid, sprache: aktuelleSprache },
+          {
+            hostAnzeigename, uid: user.uid, sprache: aktuelleSprache, mitspielen: hostSpieltMit,
+          },
           db,
           { onRetry: zeigeVerbindungsRetryHinweis }
         );

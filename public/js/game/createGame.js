@@ -18,6 +18,10 @@
  * wie in joinGame.js beschrieben – deshalb ebenfalls mit
  * mitVerbindungsRetry() (aus verbindungsRetry.js) abgesichert. Die
  * CODE_KOLLISION-Retry-Schleife bleibt davon unberührt.
+ *
+ * FEATURE-018 (2026-08-04): optionaler `mitspielen`-Parameter – siehe
+ * Kopfkommentar in src/game/createGame.js für die vollständige Begründung
+ * (Node-Referenz, muss synchron gehalten werden).
  */
 (function (global) {
   'use strict';
@@ -54,7 +58,9 @@
     return ergebnis;
   }
 
-  async function createGame({ hostAnzeigename, uid, sprache }, db) {
+  async function createGame({
+    hostAnzeigename, uid, sprache, mitspielen,
+  }, db) {
     if (!hostAnzeigename || !hostAnzeigename.trim()) {
       const fehler = new Error('Anzeigename ist erforderlich.');
       fehler.code = 'ANZEIGENAME_ERFORDERLICH';
@@ -87,19 +93,28 @@
             throw new Error('CODE_KOLLISION');
           }
           const jetzt = Date.now();
+          // FEATURE-018: der Host ist die allererste Person in diesem neuen
+          // Spiel – STATIONEN[0] ist deshalb garantiert frei.
+          const hostStation = mitspielen ? STATIONEN[0] : undefined;
+          const belegteStationen = hostStation ? { [hostStation]: uid } : {};
           tx.set(spielRef, {
             code,
             erstelltAm: jetzt,
             letzteAktivitaet: jetzt,
-            belegteStationen: {},
+            belegteStationen,
             sprache: spielSprache,
           });
           tx.set(spielRef.collection('geheim').doc('kennung'), { hostKennung });
-          tx.set(spielRef.collection('teilnehmende').doc(uid), {
+          const teilnehmerDaten = {
             rolle: 'host',
             anzeigename: hostAnzeigename.trim(),
-            hostKennung,
-          });
+          };
+          if (hostStation) {
+            teilnehmerDaten.station = hostStation;
+          }
+          // FEATURE-018 (Befund 3/4, Option A): hostKennung bewusst NICHT
+          // mehr auf dieses Dokument geschrieben.
+          tx.set(spielRef.collection('teilnehmende').doc(uid), teilnehmerDaten);
         });
         return { code, hostSessionKennung: hostKennung };
       } catch (err) {

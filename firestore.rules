@@ -501,14 +501,30 @@ service cloud.firestore {
       match /teilnehmende/{uid} {
         // Das eigene Dokument ist immer lesbar. Dokumente ANDERER
         // Teilnehmender sind nur lesbar, wenn sie NICHT der Host-Datensatz
-        // sind – der Host-Datensatz enthält zur Validierung eine hostKennung
-        // (siehe "allow create" unten) und darf deshalb niemals von jemand
-        // anderem als dem Host selbst gelesen werden (sonst könnte sich
-        // jede/r Mitspielende die Kennung abgreifen und selbst zum Host
-        // erklären).
+        // sind – der Host-Datensatz enthielt bislang zur Validierung eine
+        // hostKennung und durfte deshalb niemals von jemand anderem als dem
+        // Host selbst gelesen werden (sonst könnte sich jede/r Mitspielende
+        // die Kennung abgreifen und selbst zum Host erklären).
+        //
+        // FEATURE-018 (AK3, 2026-08-04, Frage 4 zugestimmt): ein Host-
+        // Dokument bleibt für andere weiterhin verborgen, AUSSER es trägt
+        // ein `station`-Feld (die gastgebende Person spielt selbst mit,
+        // Option A der Spec) – genau dieser Fall setzt zwingend voraus, dass
+        // hostKennung NICHT MEHR auf diesem Dokument liegt (siehe "allow
+        // create" unten, sowie src/game/createGame.js/hostSession.js), sonst
+        // wäre die Kennung ab jetzt für jede andere Person in diesem Zweig
+        // einsehbar. Ein klassischer, nicht mitspielender Host (kein
+        // station-Feld) bleibt exakt wie bisher unsichtbar (Regressionstest
+        // FEATURE-001/AK6).
         allow read: if request.auth != null
           && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
-          && (uid == request.auth.uid || (istTeilnehmer(spielId) && resource.data.rolle != 'host'));
+          && (
+            uid == request.auth.uid
+            || (
+              istTeilnehmer(spielId)
+              && (resource.data.rolle != 'host' || resource.data.get('station', null) != null)
+            )
+          );
 
         // Beitritt bzw. Host-Zurückeroberung: eine Person darf ausschliesslich
         // ihr EIGENES Dokument anlegen (Doc-ID == eigene Auth-UID).
@@ -516,11 +532,29 @@ service cloud.firestore {
         //    passiert serverseitig in der Anwendungslogik über eine
         //    Firestore-Transaktion (siehe src/game/joinGame.js), nicht in
         //    dieser Regel.
-        //  - rolle 'host': nur erlaubt, wenn die mitgeschickte hostKennung
-        //    mit der in spiele/{spielId}/geheim/kennung hinterlegten
-        //    übereinstimmt. getAfter() statt get(), damit das auch beim
-        //    ALLERERSTEN Erstellen funktioniert, wenn geheim/kennung in
-        //    genau derselben Transaktion gerade erst entsteht.
+        //  - rolle 'host': FEATURE-018 (Option A, Frage 4 zugestimmt)
+        //    unterscheidet jetzt zwei Fälle, damit hostKennung NICHT mehr
+        //    redundant auf dieses Dokument geschrieben werden muss (bleibt
+        //    exklusiv in geheim/kennung) – notwendige Voraussetzung dafür,
+        //    dass ein MITSPIELENDER Host (mit station-Feld) oben für andere
+        //    Teilnehmende lesbar gemacht werden kann, ohne dabei die Kennung
+        //    selbst offenzulegen:
+        //     (a) Erstmalige Spielerstellung (createGame()): geheim/kennung
+        //         existiert VOR diesem Commit noch nicht und wird GENAU in
+        //         diesem Commit neu angelegt (existsAfter()) – niemand
+        //         sonst kann die Kennung zu diesem Zeitpunkt kennen, ein
+        //         Nachweis ist hier unnötig. Dieses Dokument darf in diesem
+        //         Fall gar kein hostKennung-Feld tragen.
+        //     (b) Host-Zurückeroberung für ein BEREITS bestehendes Spiel
+        //         (restoreHostSession() auf einem neuen Gerät/einer neuen
+        //         uid, siehe hostSession.js) – hier bleibt der bisherige
+        //         Nachweis über die bereits bestehende Kennung erforderlich
+        //         (getAfter() statt get(), damit das auch beim ALLERERSTEN
+        //         Erstellen funktionieren würde, falls Fall (a) doch nicht
+        //         greift). Dieses neu angelegte Dokument bekommt nie ein
+        //         station-Feld (hostSession.js setzt es nicht), bleibt also
+        //         unabhängig von diesem hostKennung-Feld über die Leseregel
+        //         oben weiterhin für alle anderen unsichtbar.
         allow create: if request.auth != null
           && uid == request.auth.uid
           && (
@@ -531,7 +565,14 @@ service cloud.firestore {
             request.resource.data.rolle in ['spielende', 'beobachtende']
             || (
               request.resource.data.rolle == 'host'
-              && request.resource.data.hostKennung == getAfter(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung).data.hostKennung
+              && (
+                (
+                  !exists(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung)
+                  && existsAfter(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung)
+                  && !('hostKennung' in request.resource.data.keys())
+                )
+                || request.resource.data.hostKennung == getAfter(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung).data.hostKennung
+              )
             )
           );
 

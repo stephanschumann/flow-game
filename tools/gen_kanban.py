@@ -30,8 +30,13 @@ LANE_KEYS = ["todo", "inprogress", "done"]
 
 def status_to_key(status):
     s = (status or "").lower()
-    if "done" in s:         return "done"
-    if "in progress" in s:  return "inprogress"
+    if "done" in s:                       return "done"
+    if "in progress" in s:                return "inprogress"
+    # Geschlossene Tickets (z.B. "Geschlossen - bereits erfuellt durch ...") sind
+    # kein offener Arbeitsauftrag mehr -> gehoeren zu Done, nicht in die ToDo-Lane.
+    # Bug real gefunden 2026-08-01: FEATURE-009 (Status "Geschlossen ...") landete
+    # ohne diese Zeile faelschlich in der ToDo-Lane, weil kein Fall unten griff.
+    if "geschlossen" in s or "closed" in s:  return "done"
     # ToDo / offen / leer / unbekannt -> ToDo
     return "todo"
 

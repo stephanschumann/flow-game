@@ -17,11 +17,11 @@ Konkret sollen die Teilnehmenden erleben und danach besprechen können: wie gro�
 
 ## 2. Zielgruppe und Einsatz
 
-Moderationsgeleitetes Workshop-Format. Ein Spiel besteht aus **einem Host** (Moderation) und **mindestens fünf Spielenden**, die gemeinsam an einem Brett arbeiten. **Mehrere Spiele laufen gleichzeitig** — Zielgröße: bis zu rund **20 parallele Spiele** (Entscheidung 2026-07-17). Jedes Spiel hat einen **Host** und einen **Beitritts-Code**, damit sich die Spielenden im richtigen Spiel beim richtigen Host anmelden. Haupt-Geräte sind Rechner und Tablet.
+Moderationsgeleitetes Workshop-Format. Ein Spiel besteht aus **einem Host** (Moderation) und **mindestens fünf Spielenden**, die gemeinsam an einem Brett arbeiten. Der Host wählt beim Erstellen, ob er/sie ausschließlich moderiert (dann kommen insgesamt mindestens sechs Personen zusammen) oder zusätzlich selbst an einer der fünf Stationen mitspielt (dann reichen insgesamt fünf Personen, siehe FEATURE-018, Abschnitt 3 unten). **Mehrere Spiele laufen gleichzeitig** — Zielgröße: bis zu rund **20 parallele Spiele** (Entscheidung 2026-07-17). Jedes Spiel hat einen **Host** und einen **Beitritts-Code**, damit sich die Spielenden im richtigen Spiel beim richtigen Host anmelden. Haupt-Geräte sind Rechner und Tablet.
 
 ## 3. Rollen
 
-- **Host / Moderation:** erstellt ein Spiel, erhält Code und Beitritts-Link, lässt Spielende zu, weist die Stationen zu, steuert den Rundenablauf, öffnet und gibt die Ergebnisse frei.
+- **Host / Moderation:** erstellt ein Spiel, erhält Code und Beitritts-Link, lässt Spielende zu, weist die Stationen zu, steuert den Rundenablauf. Es gibt zwei Konstellationen (FEATURE-018, 2026-08-04): **moderierend-only** — die gastgebende Person spielt selbst nicht mit, beobachtet das Spielfeld und gibt die Ergebnisse am Ende bewusst per Klick frei; oder **moderierend-mitspielend** — die gastgebende Person belegt zusätzlich eine der fünf Stationen und bewegt dort wie jede andere spielende Person Karten, während die Ergebnisse in diesem Fall automatisch freigegeben werden, sobald die letzte gespielte Runde endet (kein manueller Klick nötig). Die Wahl trifft die gastgebende Person beim Erstellen des Spiels und kann danach nicht mehr geändert werden.
 - **Spielende (mindestens fünf):** bedienen ihre eigene Station, bewegen nur ihre eigenen Karten, sehen ihre Anleitung und ihre Kennzahlen.
 - **Beobachtende:** können das Spiel live mitverfolgen, ohne einzugreifen. **Entscheidung 2026-07-17: von Anfang an Teil des ersten Bausteins**, nicht erst später nachgerüstet — die Rolle wird bereits in Phase 1–3 mitgebaut.
 

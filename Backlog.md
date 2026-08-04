@@ -2136,13 +2136,342 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 | **Typ** | Feature |
 | **Priorität** | Mittel |
 | **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
+| **Status** | In Progress |
+| **Spec freigegeben am** | 2026-08-04 |
 
 **Beschreibung:** Aktuell braucht jedes Spiel einen separaten Host, der nicht gleichzeitig eine Spielstation besetzt. Gewünscht: Der Host soll wahlweise auch selbst als Spielender teilnehmen können, statt zwingend eine eigenständige, nicht-spielende Rolle zu sein. Falls der Host gleichzeitig mitspielt, sollen die Rundenergebnisse automatisch direkt nach jeder Runde für alle sichtbar freigegeben werden, statt auf eine bewusste Freigabe-Aktion des Hosts zu warten (da diese Person ja gerade selbst mitspielt und nicht separat moderiert).
 
 **User Story:** Als Gruppe ohne separate moderierende Person, möchten wir das Spiel auch mit einem mitspielenden Gastgeber durchführen können, sodass wir keine zusätzliche, nicht mitspielende Person brauchen.
 
 **Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. Betrifft das bestehende Freigabe-Muster `ergebnisseFreigegeben` (Host-only, FEATURE-003) sowie die Rollenzuweisung aus FEATURE-001 — vor einer Analyse zu klären, wie sich „Host spielt mit" mit der bestehenden Host-Erkennung (`istHost()`) und der Stationszuweisung verträgt.
+
+---
+
+#### Analyse-Spec (2026-08-04)
+
+**Vorab geprüfte Quellen (Pflicht-Code-Verifikation, Schritt 2b):** Der echte, aktuelle Code wurde gelesen (Geräte-Brücke zu `/Users/stephan/Claude/Projects/Flow Game`, echtes Git-Repo), nicht aus dem Gedächtnis behauptet — konkret `firestore.rules` (`istHost()` Z. 59–67, `freigabeFelderBetroffen()`/`nurFreigabeFelderGeaendert()` Z. 74–91, `letzteGespielteRundeBeendet()` Z. 120–128, `bewegungErlaubt()` Z. 205–228, `spiele/{spielId}`-Update-Regel Fall A/B Z. 440–484, `teilnehmende/{uid}`-Lese-/Erstell-/Update-Regeln Z. 501–560), `src/game/createGame.js` + `public/js/game/createGame.js`, `src/game/joinGame.js` + `public/js/game/joinGame.js`, `src/game/hostSession.js` + `public/js/game/hostSession.js`, `public/js/game/ergebnisseFreigeben.js`, `public/js/game/rundenEnde.js`, `public/spiel.html` (Teilnehmenden-Liste/Collection-Query Z. 953–1046, `eigeneStationsNummer`-Ableitung Z. 733/984–1017, Bewegungs-Zuständigkeit Z. 1460–1467, Host-Steuerungspanele Z. 2498–2560, `form-erstellen` Z. 227–233/2684–2720), sowie `Product.md` (Abschnitt 2/3/7/8) und `Flow-Game-Entscheidungen.md` vollständig.
+
+**Zentrale Befunde der Code-Verifikation (bestimmen den gesamten Rest dieser Analyse):**
+
+1. **`rolle` ist heute ein exklusiver Wert pro Person** (`teilnehmende/{uid}.rolle` ∈ `host` | `spielende` | `beobachtende` | `stationenVoll`) — es gibt aktuell KEIN Konzept "Person hat gleichzeitig zwei Rollen". `createGame()` legt das Host-Dokument ohne `station`-Feld an (`src/game/createGame.js` Z. 98–105); `station` wird ausschliesslich über `joinGame()` für `rolle==='spielende'` vergeben.
+2. **`bewegungErlaubt()` in `firestore.rules` (Z. 215–228) prüft ausschliesslich das `station`-Feld der bewegenden Person, NICHT `rolle`.** Das ist ein glücklicher Umstand: Ein Host-Dokument, das zusätzlich ein `station`-Feld trägt, würde ohne jede Regeländerung sofort Kartenbewegung an dieser Station erlauben. Der zentrale Sicherheits-Mechanismus für Spielzüge ist also bereits rollenunabhängig.
+3. **Der zentrale Blocker ist NICHT die Kartenbewegung, sondern die Sichtbarkeit des Host-Dokuments für andere.** Die Leseregel für `teilnehmende/{uid}` (Z. 501–511) verbirgt JEDES Dokument mit `rolle=='host'` vor allen anderen Teilnehmenden — nicht aus Rollen-Gründen, sondern weil genau dasselbe Dokument zusätzlich das Geheimnis `hostKennung` trägt (`createGame.js` Z. 101–105, `hostSession.js` Z. 62–69 schreiben `hostKennung` redundant NOCH EINMAL auf `teilnehmende/{uid}`, obwohl es bereits exklusiv und sicher in `spiele/{code}/geheim/kennung` liegt). Aus demselben Grund filtert die Teilnehmenden-Listen-Query in `spiel.html` (Kommentar Z. 953–969) explizit `.where('rolle', '!=', 'host')` — das ist keine Rollenlogik, sondern eine Notlösung, weil Firestore-Regeln kein Feld-Filtering können (Kommentar `firestore.rules` Z. 577 bestätigt das ausdrücklich für einen anderen Fall). **Konsequenz: Ein mitspielender Host wäre mit dem heutigen Datenmodell für alle anderen unsichtbar (kein Name über der Station, fehlt in der Teilnehmenden-Liste), obwohl er technisch bereits Karten bewegen dürfte.**
+4. **`hostKennung` auf `teilnehmende/{uid}` wird nirgends im Client zurückgelesen** (Grep über den gesamten Code: nur Schreibstellen, keine einzige `.hostKennung`-Lesestelle ausserhalb der Regel-Vergleiche gegen `geheim/kennung`). Sie ist eine reine, ungenutzte Redundanz aus der Entstehungszeit von FEATURE-001 — ihre Entfernung aus diesem Dokument ist technisch risikoarm für die Funktion selbst, berührt aber eine seit BUGFIX-005 intensiv getestete Sicherheitsregel-Fläche (siehe Regressionsrisiko).
+5. **Bereits gefundene, ticketfremde Node/Browser-Divergenz bei `createGame()` (Pflicht-Sync-Check 4b, siehe unten):** Genau die Funktion, die dieses Ticket erweitern muss, ist zwischen Node-Referenz und Browser-Produktivcode bereits heute NICHT synchron.
+
+**Annahmen-Protokoll (Pflicht, Schritt 2a) — vier 🔴 funktional kritische Fragen, vor Freigabe der Spec zu klären:**
+
+1. 🔴 **Belegt die mitspielende gastgebende Person eine der fünf bestehenden Stationen, oder ist das eine zusätzliche, sechste Person zusätzlich zu den fünf Stationen?** Das Ticket sagt "keine zusätzliche, nicht mitspielende Person" — das spricht dafür, dass der Host eine der fünf Stationen selbst übernimmt (dann reichen vier weitere beitretende Personen für ein volles Spiel, statt bisher fünf). Das ist aber eine echte Kapazitäts-/Produktentscheidung (ändert die "mindestens fünf Spielende"-Aussage aus `Product.md` Abschnitt 2) und keine Implementierungsdetail-Frage. **Empfehlung dieser Analyse (fachliche Einschätzung, keine Vorentscheidung):** Host belegt eine der fünf Stationen — das deckt sich direkt mit der User Story ("keine zusätzliche Person nötig").
+2. 🔴 **Bedeutet "automatisch direkt nach jeder Runde freigegeben" wörtlich, dass bereits nach Runde 1 alle Rundenergebnisse sichtbar werden, während Runde 2–4 noch gar nicht gespielt sind — oder ist gemeint, dass keine manuelle Host-Aktion mehr nötig ist, das Ergebnis inhaltlich aber weiterhin wie gewohnt am Ende der letzten gespielten Runde erscheint?** Code-Befund: `ergebnisseFreigegeben` ist ein einziges, dauerhaftes Flag auf `spiele/{spielId}` (nicht pro Runde) — einmal gesetzt, macht es ALLE bereits gespielten UND alle künftig endenden Runden automatisch sichtbar (Leseregel `runden/{runde}`, Z. 580–585). `letzteGespielteRundeBeendet()` (Z. 120–128) prüft dabei ausschliesslich, ob die AKTUELL gespielte Runde beendet ist — nicht, ob es die letzte der vier Runden ist. Technisch wäre eine Freigabe also schon nach Runde 1 zulässig. Das widerspricht aber dem bisherigen, bewusst gestalteten Spielprinzip aus `Product.md` Abschnitt 7 / FEATURE-003 (Ergebnisse werden gebündelt am Ende präsentiert, damit der Rundenvergleich als Ganzes wirkt). **Empfehlung dieser Analyse:** die zweite, mildere Lesart — derselbe bestehende Einmal-Freigabe-Mechanismus feuert automatisch statt per Klick, ausgelöst durch denselben Zeitpunkt, an dem der Host heute manuell klicken würde (praktisch: nach der letzten gespielten Runde). Eine wörtliche Pro-Runde-Vorab-Enthüllung würde FEATURE-003s Design grundlegend infrage stellen und sollte nicht stillschweigend mitgebaut werden.
+3. 🔴 **Kann "ich spiele mit" nur beim Erstellen des Spiels gewählt werden (danach fix für das ganze Spiel), oder muss das auch nachträglich in der Lobby vor Rundenstart noch umschaltbar sein** (z. B. weil der Host erst beim Beitreten der anderen merkt, dass eine Station frei bleibt)? **Empfehlung dieser Analyse:** nur beim Erstellen, als kleinster tragfähiger erster Schritt — ein nachträgliches Umschalten bräuchte eine neue, eigene atomare Transaktion (siehe Pre-Mortem Risiko 1) und ist als eigenständige Erweiterung sauberer nachrüstbar, falls sich in der Praxis Bedarf zeigt.
+4. 🔴 **Ist Stephan mit der dafür nötigen Lockerung einer FEATURE-001-Sicherheitsregel einverstanden?** Um den mitspielenden Host für andere sichtbar zu machen (Befund 3 oben), muss die redundante `hostKennung`-Kopie aus `teilnehmende/{uid}` entfernt werden (bleibt exklusiv in `spiele/{code}/geheim/kennung`) und die Leseregel/Collection-Query, die pauschal jedes `rolle=='host'`-Dokument verbirgt, entsprechend gelockert werden. Das ist eine gezielte, nicht sicherheitsschwächende Änderung (das Geheimnis selbst bleibt weiterhin nirgends client-lesbar) — berührt aber eine seit BUGFIX-005 intensiv abgesicherte Regelfläche (`tests/game-host-claim-overwrite.security.rules.test.js`, `tests/game-rooms.security.rules.test.js`). **Empfehlung dieser Analyse:** zustimmen, aber als eigener, isoliert testbarer Teilschritt mit eigenen neuen Sicherheitsregeltests, nicht huckepack mit anderen Änderungen.
+
+**Ohne Antworten auf diese vier Fragen bleiben Akzeptanzkriterien, Optionen und Testplan unten teilweise bedingt formuliert — Status bleibt ToDo, nicht In Progress.**
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten, alltagssprachlich; einige hängen erkennbar von den offenen Fragen oben ab):**
+
+1. Beim Erstellen eines neuen Spiels kann die gastgebende Person zusätzlich zum eigenen Namen wählen, ob sie selbst auch an einer Spielstation mitspielen möchte, statt ausschliesslich zu moderieren.
+2. Entscheidet sie sich fürs Mitspielen, bekommt sie automatisch eine der Spielstationen zugewiesen — genau wie eine beitretende Person, nur ohne einen zusätzlichen Beitritts-Schritt (hängt von Frage 1 ab, ob das eine der bestehenden fünf Stationen ist oder eine zusätzliche sechste).
+3. Andere Personen, die dem Spiel beitreten, sehen die mitspielende gastgebende Person in der Teilnehmenden-Übersicht und über ihrer Station mit ihrem Namen — genau wie jede andere mitspielende Person, nicht länger unsichtbar (hängt von Frage 4 ab).
+4. Die mitspielende gastgebende Person kann an ihrer eigenen Station genauso Karten bewegen wie jede andere mitspielende Person.
+5. Die gastgebende Person behält dabei weiterhin alle bisherigen Moderationsrechte unverändert (Runde starten/wechseln, Sprache umstellen, Definition of Ready auslösen, Ergebnisse grundsätzlich einsehen können).
+6. Entscheidet sich die gastgebende Person GEGEN das Mitspielen, verhält sich das Spiel exakt wie heute: eigenständige, nicht-spielende, für andere unsichtbare Host-Rolle — keine Verhaltensänderung für diesen bereits bestehenden Fall.
+7. Spielt die gastgebende Person mit, werden die Rundenergebnisse automatisch für alle sichtbar freigegeben, ohne dass sie selbst eine eigene Freigabe-Aktion (Knopf, Bestätigungsdialog) auslösen muss (genauer Zeitpunkt hängt von Frage 2 ab).
+8. Spielt die gastgebende Person NICHT mit, bleibt die bisherige manuelle Freigabe (Knopf + Bestätigungsdialog, einmalig, nicht rücknehmbar) unverändert die einzige Möglichkeit — kein automatisches Verhalten für den klassischen, getrennten Host-Fall.
+9. Die für alle sichtbare Teilnehmenden-Liste unterscheidet weiterhin erkennbar zwischen den Rollen (Host/Spielende/Beobachtende) — eine mitspielende gastgebende Person trägt weiterhin erkennbar auch die Host-Kennzeichnung, nicht nur eine Spielenden-Kennzeichnung.
+
+---
+
+**Fundstellen-Sweep (Pflicht):** Gesucht wurde nach jeder Stelle, die `rolle`/`station` zur Unterscheidung "kann Karten bewegen" bzw. "ist für andere sichtbar" heranzieht. Ergebnis: (a) `bewegungErlaubt()` in `firestore.rules` — rollenunabhängig, keine Änderung nötig (Befund 2 oben). (b) Die Kombination aus Leseregel `teilnehmende/{uid}` (Z. 501–511) und der `.where('rolle', '!=', 'host')`-Query in `spiel.html` (Z. 953–969) — beide müssen angepasst werden (Frage 4). (c) Drei Stellen in `spiel.html`, die `eigeneStationsNummer === null` explizit als "Host/Beobachtende" kommentieren und behandeln (Z. 733, 1460, 1763) — diese bleiben für den NICHT-mitspielenden Host weiterhin korrekt, müssen aber für den mitspielenden Host (der jetzt eine echte Stationsnummer hat) nicht separat geändert werden, da sie bereits rein aus dem Vorhandensein einer Stationsnummer ableiten, nicht aus `rolle` (siehe Pre-Mortem-Risiko 5 für das trotzdem verbleibende Test-Risiko). (d) `letzteGespielteRundeBeendet()`/Freigabe-Fall-B — bereits rollenrichtig (`istHost()`), keine Änderung nötig, nur der AUSLÖSER (automatisch statt Klick) ist neu. Keine weiteren Fundstellen in `src/game/rundeVier/*` (Runde 4 leitet ihre Zuständigkeits-Nummer bereits generisch von derselben Stationsnummer ab, siehe FEATURE-004).
+
+**Zustands-Check (Pflicht):**
+- **Wartezustand:** Kein neuer eigener Wartezustand nötig — die Stationszuweisung an den Host läuft in derselben, bereits bestehenden `createGame()`-Transaktion und nutzt denselben bestehenden Busy-Zustand des Erstellen-Formulars (`btnErstellenAbsenden`-Deaktivierung/Wartetext, `spiel.html` Z. 2691–2693). Die automatische Freigabe braucht ebenfalls keinen sichtbaren Wartezustand — sie läuft im Hintergrund, analog zum bestehenden opportunistischen Rundenende-Schreibvorgang.
+- **Leerzustand:** Nicht anwendbar — ein neu erstelltes Spiel hat immer alle Stationen frei, ein "keine Station mehr frei"-Fall kann beim Erstellen selbst nicht auftreten.
+- **Fehlerfall:** Schlägt die Stationszuweisung an den Host innerhalb der `createGame()`-Transaktion fehl (z. B. Verbindungsabbruch), greift die bestehende Fehlerbehandlung von `createGame()` unverändert (die gesamte Transaktion committet atomar oder gar nicht, kein Teilzustand möglich). Schlägt der automatische Freigabe-Versuch fehl (z. B. Host-Client kurz offline), soll er sich wie das bestehende Rundenende-Muster verhalten: stiller Fehlschlag, erneuter Versuch beim nächsten relevanten Snapshot/Reconnect (kein Fehlertext für die Spielenden nötig, da für sie ohnehin nichts sichtbar fehlschlägt).
+
+---
+
+**Pre-Mortem — was könnte schiefgehen:**
+
+1. **Race Condition bei der Stationszuweisung, falls sie NICHT innerhalb derselben atomaren Transaktion wie `belegteStationen` passiert.** Ein reines `teilnehmerRef.update({station: ...})` ausserhalb der bestehenden `createGame()`-Transaktion würde `belegteStationen` nicht mitschreiben — dann könnten zwei verschiedene Personen (Host und eine später beitretende Person über `joinGame()`) rechnerisch dieselbe Station beanspruchen, ohne dass eine der beiden das bemerkt, da `belegteStationen` die einzige Quelle ist, die `joinGame()`s Kollisionsvermeidung (Z. 156–174) und die "alle Stationen belegt"-Vorprüfung (`spiel.html` Z. 2768) konsultieren. Gegenmaßnahme: Stationszuweisung an den Host ausschliesslich innerhalb der bestehenden, bereits atomaren `createGame()`-Transaktion, die `belegteStationen` im selben Commit mitschreibt.
+2. **Der mitspielende Host bleibt trotz technisch funktionierender Kartenbewegung für andere unsichtbar, falls Frage 4 nicht vollständig umgesetzt wird** (z. B. nur die Leseregel gelockert, aber die `.where('rolle','!=','host')`-Query in `spiel.html` übersehen, oder umgekehrt). Das wäre kein Fehler, der in bestehenden Tests auffällt — nur ein leises "Feature wirkt nicht", das erst im echten Workshop bemerkt würde. Gegenmaßnahme: beide Stellen (Regel UND Query) explizit gemeinsam ändern und mit einem eigenen Test abdecken, der beide Blickwinkel prüft (Sicherheitsregel-Test UND ein Test, der die Query-Bedingung selbst nachbildet).
+3. **Bereits bestehende, ticketfremde Node/Browser-Divergenz bei `createGame()` (code-verifiziert, Pflicht-Sync-Check 4b unten):** Die Browser-Fassung ruft `mitVerbindungsRetry()` entgegen ihrem eigenen Kopfkommentar gar nicht auf (der dritte Parameter `retryOptionen`, den `spiel.html` beim Aufruf sogar mitgibt, wird von der Funktionssignatur gar nicht entgegengenommen). Wird FEATURE-018 diese Funktion jetzt in beiden Fassungen erweitern, ohne diese bereits bestehende Lücke zu beheben, wird sie unverändert fortgeschrieben — und die neue "Host spielt mit"-Logik erbt dieselbe fehlende Verbindungs-Robustheit in der Browser-Fassung. Gegenmaßnahme: entweder als eigenes, kleines Bugfix vorab beheben, oder zumindest bewusst und dokumentiert unverändert lassen (nicht stillschweigend), und als eigenes Backlog-Ticket vormerken.
+4. **Die Freigabe-Automatik feuert nicht, weil der spielende Host im entscheidenden Moment offline/im Hintergrund ist** — nur ein `istHost()`-authentifizierter Client darf die Freigabe schreiben (Sicherheitsregel unverändert), und der Host ist jetzt am Spielfeld beschäftigt statt am Moderations-Panel zu warten. Gegenmaßnahme: denselben bewährten opportunistischen Musters wie `rundenEnde.js` verwenden — jeder Zustandswechsel, den der Host-Client sieht (auch nach Reconnect), löst einen erneuten, idempotenten Versuch aus, kein einmaliger Trigger.
+5. **Doppelte Bedeutung von "keine Station" kippt für den mitspielenden Host, falls eine der drei Fundstellen `eigeneStationsNummer === null // Host/Beobachtende` (`spiel.html` Z. 733/1460/1763) im Detail doch von einer festen Rollen-Erwartung ausgeht statt rein vom Stationsfeld.** Würde auch nur eine dieser Stellen übersehen, könnte der mitspielende Host trotz zugewiesener Station fälschlich wie ein Beobachtender behandelt werden (z. B. Bewegen-Button bleibt versteckt), obwohl `bewegungErlaubt()` den Zug bereits erlauben würde — eine rein clientseitige Anzeige-Inkonsistenz, kein Sicherheitsloch, aber blockierend fürs Spielerlebnis. Gegenmaßnahme: gezielter Test genau für den mitspielenden-Host-Fall an allen drei Stellen, nicht nur Wiederverwendungs-Vermutung.
+6. **Frühzeitige Enthüllung aller Rundenergebnisse, falls Frage 2 in der wörtlichen Lesart umgesetzt wird** (siehe Annahmen-Protokoll) — würde FEATURE-003s bewusst gestaltetes "Ergebnisse erst gebündelt am Ende" unterlaufen, ohne dass das im Ticket-Text ausdrücklich so gewollt sein muss.
+7. **Regressionsrisiko UI/Doppelpflege (FEATURE-005/006):** neue UI-Elemente (Checkbox "ich spiele mit", ggf. Hinweistext zur Auto-Freigabe) brauchen von Anfang an `aria-label` und zweisprachige Übersetzungseinträge an den bereits etablierten zwei synchron zu haltenden Stellen (Node + Browser), sonst wiederholt sich dieselbe Doppelpflege-Falle wie bei früheren Tickets.
+
+**Zusammenspiel bestehender Bausteine (Pflicht):**
+
+- **Betroffene Bausteine:** `createGame()` (Node + Browser, Kernänderung), `firestore.rules` (`teilnehmende/{uid}`-Lese-/Erstellregeln, unverändert bleibende `bewegungErlaubt()`/Freigabe-Fall-B-Regel), `ergebnisseFreigeben.js` (Browser-only, unveränderte Funktion, nur neuer automatischer Aufrufer), `rundenEnde.js` (Vorbild-Muster für den automatischen Aufrufer), die Teilnehmenden-Listen-Anzeige und `form-erstellen` in `spiel.html`.
+- **Reihenfolge des Zusammenwirkens:** Host wählt beim Erstellen "ich spiele mit" → die bestehende `createGame()`-Transaktion schreibt in einem Commit `spiele/{code}` (inkl. `belegteStationen` mit der Host-Station, falls gewählt), `geheim/kennung` und `teilnehmende/{hostUid}` (`rolle:'host'`, optional `station`, OHNE `hostKennung` – Frage 4) → weitere Personen treten über die unveränderte `joinGame()`-Transaktion bei und bekommen automatisch die verbleibenden freien Stationen → während der Runde prüft `bewegungErlaubt()` für JEDE Person (Host eingeschlossen) ausschliesslich das eigene `station`-Feld, unabhängig von `rolle` → das Rundenende wird wie bisher opportunistisch von irgendeinem Client geschrieben (unverändert) → NEU: der Host-Client prüft zusätzlich nach jedem beobachteten Rundenende, ob das eigene Dokument ein `station`-Feld trägt, und ruft in diesem Fall automatisch `gibErgebnisseFrei()` auf, statt auf einen Klick zu warten → `firestore.rules` Fall B prüft weiterhin ausschliesslich `istHost()` + `letzteGespielteRundeBeendet()`, unverändert.
+- **Kombinationen, die zu Fehlern führen könnten:** (a) Die Host-Stationszuweisung und eine potenzielle künftige "nachträglich umschalten"-Erweiterung (Frage 3, aktuell nicht im Scope) dürften niemals dieselbe Station doppelt vergeben — solange Frage 3 mit "nur beim Erstellen" beantwortet wird, entfällt dieses Risiko strukturell, weil beim Erstellen noch niemand sonst beigetreten sein kann. (b) Der automatische Freigabe-Trigger und ein weiterhin sichtbarer, aber bedeutungslos gewordener manueller Freigabe-Knopf könnten beide gleichzeitig aktiv bleiben, wenn die UI nicht anhand von `station != null` auf dem eigenen Host-Dokument unterscheidet, ob der Host mitspielt — beide Pfade zielen zwar auf denselben, bereits idempotenten `gibErgebnisseFrei()`-Aufruf (keine Datenintegritätsgefahr), aber ohne UI-Unterscheidung entstünde eine verwirrende doppelte Bedienoberfläche.
+
+**Node-Referenz/Browser-Sync-Check (Pflicht, 4b):**
+
+| Funktion | Node-Referenz | Browser-Produktivcode | Befund |
+|---|---|---|---|
+| `createGame()` | `src/game/createGame.js` Z. 64–117, wrapped in `mitVerbindungsRetry()` (Z. 87), akzeptiert `retryOptionen` | `public/js/game/createGame.js` Z. 57–113, KEIN `mitVerbindungsRetry()`-Wrapper um die Transaktion (Z. 84 ruft `db.runTransaction()` direkt auf), Funktionssignatur nimmt gar kein `retryOptionen` entgegen, obwohl `spiel.html` (Z. 2702–2706) einen dritten Parameter `{ onRetry: ... }` mitgibt | **Abweichung, bereits vor diesem Ticket bestehend** (siehe Pre-Mortem-Risiko 3) — wird durch FEATURE-018 nicht verursacht, aber beim Anfassen dieser Funktion mit vererbt, falls nicht separat behoben |
+| `joinGame()` | `src/game/joinGame.js` | `public/js/game/joinGame.js` | Inhaltlich deckungsgleich (identische Bedingungen, identische BUGFIX-001/005-Kommentare) — als Vorbild für die Stationsvergabe-Logik geeignet, selbst nicht verändert |
+| `hostSession.js` (`restoreHostSession`) | `src/game/hostSession.js` | `public/js/game/hostSession.js` | Inhaltlich deckungsgleich, inkl. BUGFIX-005-Härtung; `merge:true` lässt ein neues `station`-Feld beim Reload unangetastet (kein Regressionsrisiko) |
+| `ergebnisseFreigeben.js` | Kein Node-Pendant (bewusst, laut Kopfkommentar: reiner Zwei-Felder-Update, keine eigenständige Logik) | `public/js/game/ergebnisseFreigeben.js` | Kein Divergenzrisiko, da nur eine Fassung existiert |
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- Datenmodell: `teilnehmende/{uid}`-Dokument der gastgebenden Person bekommt optional das bereits bestehende Feld `station` (kein neues Feld, keine neue Rolle, keine neue Sammlung); `belegteStationen` auf `spiele/{code}` muss die Host-Station (falls gewählt) von Anfang an enthalten.
+- Sicherheitsregeln: `firestore.rules` — primär die Sonderbehandlung von `rolle=='host'`-Dokumenten bei Lese-Zugriff/Query (Frage 4); `bewegungErlaubt()` und die Freigabe-Fall-B-Regel brauchen nach dieser Prüfung keine Änderung (bereits rollenunabhängig bzw. bereits `istHost()`-basiert).
+- Anzeigeseite `public/spiel.html`: Teilnehmenden-Liste/Collection-Query, neues Formularelement in `form-erstellen`, neuer automatischer Aufruf von `gibErgebnisseFrei()` anstelle/zusätzlich zum bestehenden Knopf (abhängig von `station != null` auf dem eigenen Host-Dokument).
+- Kein neuer serverseitiger Dienst, keine Cloud Function nötig (konsistent mit `Product.md` Abschnitt 10).
+
+---
+
+**Regressionsrisiko (Pflicht ab dem zweiten Ticket):**
+
+- **FEATURE-001 (Rollen/Host-Erkennung, Done):** `istHost()` selbst bleibt unverändert; die Leseregel/Query-Sonderbehandlung für `rolle=='host'`-Dokumente wird gezielt gelockert (Frage 4) — bestehende Tests zur Host-Unsichtbarkeit (`tests/game-rooms.security.rules.test.js`) müssen entsprechend erweitert, nicht einfach entfernt werden.
+- **FEATURE-002 (Kartenbewegung/Stapel-Tor, Done):** `bewegungErlaubt()` bleibt unverändert; ein Regressionstest muss zeigen, dass der klassische, getrennte Host (ohne `station`) weiterhin KEINE Karten bewegen kann (Sicherheitsregel greift wie bisher, weil `mitgliedStation` dann `null` bleibt).
+- **FEATURE-003 (Auswertung/Freigabe, Done):** die manuelle Freigabe für den klassischen, nicht mitspielenden Host MUSS unverändert bestehen bleiben (AK 8) — ein Regressionstest muss sicherstellen, dass `station == null` auf dem Host-Dokument weiterhin ausschliesslich den bestehenden Knopf-Pfad auslöst, nie automatisch.
+- **FEATURE-004 (Runde 4):** `eigeneRundeVierPosition` leitet sich von derselben Stationsnummer ab wie `eigeneStationsNummer` — ein Regressionstest muss zeigen, dass das auch für einen mitspielenden Host korrekt funktioniert.
+- **FEATURE-005 (Barrierefreiheit, Done) / FEATURE-006 (Mehrsprachigkeit, Done):** neue UI-Elemente brauchen `aria-label` und zweisprachige Übersetzungseinträge von Anfang an.
+- **BUGFIX-005 (Host-Claim-Overwrite):** `restoreHostSession()`s `merge:true`-Verhalten lässt ein bestehendes `station`-Feld beim Reload unangetastet (code-geprüft, kein Regressionsrisiko) — ein expliziter Test dafür ist trotzdem sinnvoll, da dieser Bereich historisch fehleranfällig war.
+
+---
+
+**Implementierungsoptionen mit Empfehlung:**
+
+*Option A — Host-Dokument um das bestehende `station`-Feld erweitern, `hostKennung` daraus entfernen (empfohlen, bedingt auf Frage 4):*
+Beim Erstellen (optionales Kontrollkästchen "ich spiele mit") weist dieselbe, bereits bestehende `createGame()`-Transaktion der gastgebenden Person zusätzlich eine Station zu (analog zur ersten-freien-Station-Logik aus `joinGame()`) und lässt `hostKennung` auf diesem Dokument weg (bleibt exklusiv in `geheim/kennung`). Die Lese-/Query-Sonderbehandlung für `rolle=='host'` wird entsprechend gelockert. Die automatische Freigabe wird durch denselben, unveränderten `gibErgebnisseFrei()`-Aufruf ausgelöst, nur automatisch statt per Klick, sobald `station != null` auf dem eigenen Host-Dokument steht. Vorteile: nutzt fast ausschliesslich bereits bestehende Bausteine und Muster (Stationsvergabe, Freigabe-Funktion, opportunistisches Auslösen), kein neues Datenmodell-Konzept, `bewegungErlaubt()` funktioniert bereits ohne Änderung. Nachteile: berührt eine sicherheitsrelevante FEATURE-001-Regelfläche (Frage 4), braucht sorgfältige, isolierte Regressionstests.
+
+*Option B — Host spielt über ein zweites Gerät/eine zweite Identität ganz normal mit (kein Code-Eingriff):*
+Die gastgebende Person tritt zusätzlich mit einem zweiten Gerät/Browser-Profil ganz normal über `joinGame()` bei. Vorteile: praktisch kein Implementierungsaufwand. Nachteile: verstößt gegen die dokumentierten Grenzen aus `chrome-multi-identity-testing-conventions` (zwei Tabs/Profile teilen sich u. U. dieselbe Auth-Identität, keine zuverlässige Trennung) und würde in der Praxis ein zweites Gerät verlangen — genau den Zusatzaufwand, den das Ticket vermeiden will. Nicht empfohlen, dient nur als Kontrastfolie.
+
+*Option C — Neue, eigene Rolle `hostSpielend` statt Erweiterung der bestehenden `host`-Rolle:*
+Vorteile: in Sicherheitsregeln auf den ersten Blick als eigener Fall erkennbar. Nachteile: praktisch jede bestehende Stelle, die `rolle === 'host'` oder `rolle === 'spielende'` prüft (istHost(), Rollen-Vergleiche/Badges/i18n-Labels in `spiel.html`, die Collection-Query), müsste zusätzlich auf den neuen Wert erweitert werden — deutlich größere Angriffsfläche für übersehene Fundstellen als Option A, ohne erkennbaren fachlichen Mehrwert.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar — Stephan entscheidet, insbesondere abhängig von den vier offenen Fragen oben):** Option A. Sie ist der kleinste tragfähige Eingriff, der maximal auf bereits bestehende, bewährte Muster aufsetzt — vorausgesetzt, Stephan stimmt der gezielten Lockerung der Host-Sichtbarkeitsregel (Frage 4) zu. Ohne diese Zustimmung bliebe ein mitspielender Host technisch spielfähig, aber für die Gruppe unsichtbar — das würde das eigentliche Ziel des Tickets (keine separate Person mehr nötig, aber trotzdem klar erkennbar, wer wo sitzt) nur zur Hälfte erfüllen.
+
+---
+
+**Hinweis zu Schritt 8 des Analyse-Skills (Prototyp bei UI/UX-Unsicherheit): Offener Punkt für ein Freigabe-Gate mit Stephan.**
+Es gibt eine echte, ungeklärte UI/UX-Frage, die über die vier funktionalen Fragen oben hinausgeht: WIE die automatische Freigabe für den mitspielenden Host konkret erlebbar wird — z. B. ein still verschwindender Knopf, eine kurze Erfolgs-Einblendung ("Ergebnisse wurden automatisch freigegeben"), oder gar kein sichtbarer Hinweis und die Vergleichsansicht erscheint einfach kommentarlos. Das lässt sich in Worten nur schwer eindeutig abwägen, betrifft aber unmittelbar, ob die Gruppe den Moment der Freigabe überhaupt bemerkt. **Dieser Punkt wird hier bewusst NICHT als Prototyp gebaut** (Weisung für diese Analysephase), sondern als offener Punkt für ein Freigabe-Gate mit Stephan benannt — zusammen mit den vier 🔴-Fragen des Annahmen-Protokolls sollte auch diese Frage vor `flow-game-bdd` geklärt werden, ggf. mit einem kleinen Klick-Prototyp der 2–3 plausibelsten Varianten.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Klärung der vier Fragen und dieser UI/UX-Frage):**
+
+- Given ein Host erstellt ein neues Spiel und aktiviert "ich spiele mit", When die Erstellung abgeschlossen ist, Then hat die gastgebende Person zusätzlich zu `rolle='host'` eine Station zugewiesen bekommen, und `belegteStationen` ist entsprechend vorbelegt (abhängig von Frage 1).
+- Given ein Host erstellt ein Spiel OHNE "ich spiele mit" zu aktivieren, When die Erstellung abgeschlossen ist, Then bleibt das Verhalten exakt wie bisher (kein `station`-Feld, Regressionstest gegen FEATURE-001).
+- Given eine mitspielende gastgebende Person hat eine Station, When eine andere Person beitritt, Then sieht diese den Namen und die Station der gastgebenden Person in der Teilnehmenden-Liste (abhängig von Frage 4; Regressionstest, dass eine NICHT mitspielende gastgebende Person weiterhin unsichtbar bleibt).
+- Given eine mitspielende gastgebende Person steht an ihrer Station, When Definition of Ready abgeschlossen ist, Then kann sie dort Karten bewegen wie jede andere mitspielende Person (Regressionstest gegen `bewegungErlaubt()`, sollte bereits GRÜN sein, da rollenunabhängig).
+- Given ein klassischer, nicht mitspielender Host, When er versucht, ohne eigene Station Karten zu bewegen, Then bleibt das weiterhin verboten (Regressionstest gegen FEATURE-002).
+- Given eine mitspielende gastgebende Person, When eine Runde endet, Then wird die Ergebnisfreigabe automatisch ausgelöst, ohne Knopf-Klick (abhängig von Frage 2 zum genauen Zeitpunkt).
+- Given eine NICHT mitspielende, klassische gastgebende Person, When eine Runde endet, Then bleibt die bisherige manuelle Freigabe unverändert die einzige Möglichkeit (Regressionstest, AK 8).
+- Given `restoreHostSession()` wird nach einem Reload der mitspielenden gastgebenden Person ausgeführt, When die Session wiederhergestellt wird, Then bleibt die zuvor zugewiesene Station unverändert erhalten (Regressionstest gegen BUGFIX-005).
+- Given zwei verschiedene, parallel laufende Spiele, Then bleibt die Station der gastgebenden Person des einen Spiels für das andere Spiel vollständig unsichtbar/unwirksam (Regressionstest gegen die bestehende Spiel-Isolation, FEATURE-001).
+
+**Noch NICHT bereit für `flow-game-bdd`.** Vier 🔴 funktional kritische Fragen (Annahmen-Protokoll oben) sowie eine offene UI/UX-Frage zur Darstellung der Auto-Freigabe sind ungeklärt. Status bleibt **ToDo**. Wartet auf Freigabe-Gate mit Stephan.
+
+
+---
+
+#### Ergänzung: Text-/Kommunikationsauswirkungen (2026-08-04)
+
+**Auftrag und Abgrenzung:** Zusatzauftrag von Stephan, ausschließlich zu den Auswirkungen von FEATURE-018 auf erklärende/begleitende Texte (Landingpage, Spielbegleittexte, Regel-/Rollen-Erklärungen, Tooltips, Formulartexte, Lobby-Texte — deutsch und englisch). Die bereits beantworteten vier 🔴-Fragen, die Akzeptanzkriterien 1–9, das Pre-Mortem 1–7 und der Testplan der Analyse-Spec vom 2026-08-04 oben werden hier NICHT verändert, nur ergänzt.
+
+**Vorgehen (Pflicht-Code-Verifikation):** Durchsucht wurde der echte, aktuelle Code über die Geräte-Brücke zu `/Users/stephan/Claude/Projects/Flow Game` (echtes Git-Repo) — konkret `public/index.html` (Landingpage, FEATURE-007), `public/spiel.html` (Formular/Lobby/Spielbrett/Kennzahlen-Ansicht), `public/js/i18n/uebersetzungen.js` + `src/i18n/uebersetzungen.js` (beide synchron zu haltenden Übersetzungstabellen, Deutsch und Englisch je Schlüssel), sowie `Product.md` und `Flow-Game-Entscheidungen.md`. Gesucht wurde nach jeder sichtbaren Textstelle (nicht nur Code-Kommentar), die eine separate, nicht mitspielende gastgebende Person voraussetzt.
+
+**Ergebnis: 10 Fundstellen-Cluster**, davon 6 mit hoher Priorität (Text wäre für einen mitspielenden Host schlicht falsch oder aktiv irreführend), 2 mit mittlerer Priorität, 2 mit niedriger Priorität/nur zur Vollständigkeit dokumentiert.
+
+**A. Hohe Priorität — Text wäre für den mitspielenden Host falsch oder irreführend:**
+
+1. **Landingpage, Panel "Wie viele Personen braucht ihr?"** (`startseite.spieleranzahlText`, Schlüssel in `public/js/i18n/uebersetzungen.js` Z. 36 und `src/i18n/uebersetzungen.js` Z. 55, ausgegeben auf `public/index.html`):
+   DE: „Ihr braucht mindestens fünf Mitspielende an den Stationen sowie einen Host, der/die das Spiel moderiert und steuert – insgesamt also mindestens sechs Personen."
+   EN: „You need at least five players at the stations, plus a host who moderates and runs the game – so at least six people in total."
+   → Zählt den Host stur als zusätzliche, sechste Person. Für einen mitspielenden Host ist die Mindestanzahl tatsächlich fünf, nicht sechs. Vorschlag: Formulierung auf „mindestens fünf Personen an den Stationen; der Host kann entweder eine dieser fünf Stationen selbst mitspielen oder als zusätzliche, rein moderierende Person dazukommen" umstellen, statt eine feste Gesamtzahl zu nennen.
+
+2. **Lobby-Starthinweis** (`lobby.startHinweis`, `public/js/i18n/uebersetzungen.js`/`src/i18n/uebersetzungen.js` Z. 107, ausgegeben auf `public/spiel.html` Element `#lobby-start-hinweis`):
+   DE: „Das Spiel beginnt erst, wenn der Host es startet. Dafür werden mindestens 5 Spielende und 1 Host benötigt …"
+   EN: „… requires at least 5 players and 1 host …"
+   → Dieselbe additive Zählweise wie Fundstelle 1, an der Stelle, wo Wartende in der Lobby live mitlesen. Vorschlag: analog zu Fundstelle 1 umformulieren, plus je nachdem, ob der Host in diesem konkreten Spiel mitspielt oder nicht, unterschiedlich anzeigen (Text kennt zur Laufzeit bereits, ob der Host eine Station hat).
+
+3. **Live-Zähler „N von 5 Spielenden beigetreten"** (`lobby.liveZaehler`, Übersetzungsschlüssel `public/js/i18n/uebersetzungen.js`/`src/i18n/uebersetzungen.js` Z. 114; Zähl-Logik `public/spiel.html` Z. 1060–1065, `MINDESTBESETZUNG_SPIELENDE` Z. 476): Die Zähl-Logik filtert absichtlich ausschließlich `rolle === 'spielende'` und zählt ein Host-Dokument nie mit — der Code-Kommentar direkt daneben (Z. 1052–1059) benennt das als bewusste Designentscheidung unter der bisherigen Annahme „Host besetzt nie eine Station". Für einen mitspielenden Host bliebe der Zähler dauerhaft bei „4 von 5", obwohl alle fünf Stationen tatsächlich besetzt sind — ein textlich UND funktional falscher Zustand, keine reine Wortlaut-Frage. Vorschlag: Zähl-Logik so erweitern, dass ein mitspielender Host (eigenes Dokument mit `station`-Feld) mitgezählt wird, sonst zeigt der Text der Gruppe dauerhaft eine falsche Zahl.
+
+4. **Host-Hinweis am Spielbrett, Runden 1–3** (`spielbrett.hostHinweis`, `public/js/i18n/uebersetzungen.js` Z. 175 / `src/i18n/uebersetzungen.js` Z. 205, ausgegeben `public/spiel.html` Z. 1764–1765):
+   DE: „Du bist Host und beobachtest das Spielfeld - eigene Kartenzüge macht das Team."
+   EN: „You are the host and observe the board - the team makes the actual card moves."
+   → Für einen mitspielenden Host schlicht **falsch**: laut AK4 der bestehenden Spec bewegt genau diese Person an ihrer eigenen Station selbst Karten. Dieser Text darf nur noch für den klassischen, nicht mitspielenden Host erscheinen; für den mitspielenden Host braucht es entweder gar keinen Sonderhinweis (er sieht dieselbe Ansicht wie jede andere spielende Person) oder einen eigenen, neuen Hinweistext.
+
+5. **Host-Hinweis Runde 4** (`rundeVier.hostHinweis`, `public/js/i18n/uebersetzungen.js` Z. 224 / `src/i18n/uebersetzungen.js` Z. 265, ausgegeben `public/spiel.html` Z. 2059–2060): identischer Text/identisches Problem wie Fundstelle 4, nur für Runde 4 („Du bist Host und beobachtest das Spielfeld - eigene Züge macht das Team." / „You are the host and observe the board - the team makes the actual moves."). Gleicher Vorschlag.
+
+6. **`Product.md`, Abschnitt 2 (Zielgruppe/Einsatz) und Abschnitt 3 (Rollen)** (Z. 20 und Z. 24): „Ein Spiel besteht aus einem Host (Moderation) und mindestens fünf Spielenden …" bzw. „Host / Moderation: … öffnet und gibt die Ergebnisse frei." Dieses grundlegende Projekt-Rollenbild beschreibt ausschließlich den klassischen, nicht mitspielenden Host. Sobald FEATURE-018 umgesetzt ist, muss `Product.md` beide Konstellationen (Host moderiert nur / Host moderiert und spielt mit) beschreiben, sonst widerspricht das Referenzdokument der neuen Realität.
+
+**B. Mittlere Priorität — Text setzt eine manuelle Freigabe-Handlung des Hosts voraus, die es beim mitspielenden Host laut AK7 nicht mehr gibt:**
+
+7. **Host-Vorschau vor Freigabe** (`kennzahlen.hostVorschauTitel`/`kennzahlen.hostVorschauHinweis`, `src/i18n/uebersetzungen.js` Z. 299/303, sowie `kennzahlen.spielFertigHinweis` Z. 313): Formulierungen wie „Vergleich aller bisher gespielten Runden, bevor du für alle freigibst" bzw. „sobald du die Ergebnisse freigibst, sehen alle den vollständigen Vergleich" beschreiben eine bewusste, vom Host ausgelöste Handlung. Für den mitspielenden Host (automatische Freigabe, kein Klick) ist das nicht mehr zutreffend. Vorschlag: Wortlaut abhängig davon anzeigen, ob der Host mitspielt — z. B. „… werden automatisch freigegeben, sobald die Runde endet" statt „bevor du freigibst".
+
+8. **Freigabe-Bestätigungsdialog** (`kennzahlen.freigabeBestaetigung`, `src/i18n/uebersetzungen.js` Z. 309): „Ergebnisse jetzt für alle freigeben? … das lässt sich nicht zurücknehmen." Dieser Dialog darf einem mitspielenden Host nie angezeigt werden (kein manueller Klick mehr), und es existiert aktuell keine Ersatz-Rückmeldung, die dem mitspielenden Host mitteilt, dass die Freigabe automatisch passiert ist. Das deckt sich mit dem in der Analyse-Spec oben bereits benannten offenen UI/UX-Punkt („Hinweis zu Schritt 8") — dort ging es nur um DASS eine Rückmeldung gebraucht wird, hier wird zusätzlich festgehalten, dass ihr Wortlaut sich klar vom bestehenden Bestätigungsdialog unterscheiden und für beide Host-Fälle (mitspielend/klassisch) unterschiedlich sein muss, sobald sie gebaut wird.
+
+**C. Niedrige Priorität — nur zur Vollständigkeit dokumentiert, keine Änderung zwingend nötig:**
+
+9. **Landingpage, Panel "Wie läuft es ab?"** (`startseite.ablaufText`, `public/js/i18n/uebersetzungen.js`/`src/i18n/uebersetzungen.js`): „Die genauen Regeln jeder Runde erklärt euch der Host direkt im Spiel." Bleibt auch für einen mitspielenden Host sachlich zutreffend (er kann während des Mitspielens weiterhin erklären) — kein zwingender Anpassungsbedarf, nur der Vollständigkeit halber geprüft.
+
+10. **`Flow-Game-Entscheidungen.md`** (Z. 20, „fünf Arbeitsstationen, also fünf Spielende hintereinander wie an einem Fließband"): erwähnt den Host gar nicht explizit, trägt aber zusammen mit `Product.md` zum bisherigen „Host+5=6"-Gesamtbild bei. Kein eigenständiger Anpassungsbedarf über Fundstelle 6 hinaus.
+
+**Zusätzlich (unterstützender Befund, kein eigener Text-Fund):** Der Code-Kommentar zu `#host-rundenstart-bereich` in `public/spiel.html` (Umfeld Z. 260–261, „Mindestbesetzung 5 Spielende + 1 Host") trägt dieselbe additive Annahme wie Fundstellen 1–3 bereits auf Kommentarebene und sollte bei der Implementierung mit angepasst werden, damit der Code-Kommentar nicht der korrigierten UI widerspricht.
+
+---
+
+**Zusätzliche Akzeptanzkriterien (alltagssprachlich, Fortsetzung der bestehenden Liste ab AK10):**
+
+10. Auf der Startseite/Landingpage steht klar und unmissverständlich, dass eine Gruppe je nach Wahl der gastgebenden Person entweder fünf oder sechs Personen insgesamt braucht — nicht länger eine einzige, feste Zahl, die nur den klassischen Fall abdeckt.
+11. In der Lobby sehen alle Wartenden jederzeit eine korrekte Anzahl bereits eingetroffener Personen im Verhältnis zur tatsächlich noch nötigen Anzahl — unabhängig davon, ob die gastgebende Person selbst mitspielt oder nicht, und ohne dass die Gruppe den Eindruck bekommt, es fehle noch jemand, obwohl das Spiel längst startbereit ist.
+12. Während des Spiels sieht eine mitspielende gastgebende Person an ihrer Station keinen Hinweistext mehr, der ihr fälschlich sagt, sie beobachte nur und das Team bewege die Karten für sie — dieser Hinweis bleibt ausschließlich für die klassische, nicht mitspielende gastgebende Person bestehen.
+13. Eine mitspielende gastgebende Person bekommt, sobald die Ergebnisse automatisch freigegeben wurden, eine kurze, klare Rückmeldung darüber (nicht den bisherigen Bestätigungsdialog, der zu einer bewussten Klick-Handlung gehört) — sie bleibt nicht im Unklaren, ob und wann die Freigabe passiert ist.
+14. Alle hier beschriebenen Textänderungen liegen von Anfang an in beiden Sprachen (Deutsch und Englisch) vor und sind inhaltlich deckungsgleich mit ihrer jeweils anderen Sprachfassung.
+15. Die grundlegende Rollenbeschreibung im Produktdokument (`Product.md`) beschreibt nach Umsetzung dieses Tickets erkennbar beide Host-Konstellationen (moderierend-only und moderierend-und-mitspielend), nicht mehr ausschließlich die bisherige, rein moderierende Rolle.
+16. Kein bestehender, unveränderter Text (z. B. für den klassischen, nicht mitspielenden Host) hat sich durch diese Textanpassungen ungewollt mitverändert — der bisherige Wortlaut für diesen weiterhin unterstützten Fall bleibt exakt erhalten.
+
+---
+
+**Zusätzliche Pre-Mortem-Risiken (Text-/Kommunikationsinkonsistenz, Fortsetzung ab Risiko 8):**
+
+8. **Der Live-Zähler in der Lobby zeigt dauerhaft eine falsche, zu niedrige Zahl an**, weil die Zähl-Logik (Fundstelle A.3) bewusst nur `rolle === 'spielende'` zählt — eine Gruppe mit mitspielendem Host sieht nie „5 von 5", obwohl alle Stationen belegt sind. Das ist kein rein kosmetisches Problem: Die Gruppe könnte verunsichert warten, obwohl längst gestartet werden könnte. Gegenmaßnahme: Zähl-Logik und Text gemeinsam anpassen, nicht nur den Text.
+9. **Ein am Spielbrett irrtümlich weiterhin angezeigter „du beobachtest nur"-Hinweis (Fundstellen A.4/A.5) untergräbt das Vertrauen in die neue Funktion**, selbst wenn die zugrunde liegende Kartenbewegung technisch bereits korrekt funktioniert (siehe bestehendes Pre-Mortem-Risiko 5) — die mitspielende gastgebende Person könnte durch den falschen Text zögern, überhaupt eine Karte zu bewegen, obwohl es technisch erlaubt wäre. Text und Funktion müssen hier also gemeinsam, nicht getrennt getestet werden.
+10. **Uneinheitlicher Sprachstand zwischen Deutsch und Englisch**, falls die neuen/angepassten Texte nur in einer Sprache nachgezogen werden (bestehendes strukturelles Risiko aus FEATURE-006, hier erneut relevant, weil gleich mehrere Textstellen gleichzeitig angefasst werden müssen) — Gegenmaßnahme: jede der zehn oben gefundenen Stellen in `src/i18n/uebersetzungen.js` UND `public/js/i18n/uebersetzungen.js`, jeweils in beiden Sprachspalten, im selben Arbeitsschritt ändern.
+11. **`Product.md` bleibt unangepasst liegen, weil es kein Laufzeit-Text ist und deshalb leicht vergessen wird** — anders als UI-Texte fällt eine veraltete Rollenbeschreibung im Produktdokument niemandem im laufenden Spiel auf, sondern erst, wenn jemand das Dokument als Referenz konsultiert (z. B. eine künftige Analyse eines anderen Tickets). Gegenmaßnahme: `Product.md`-Anpassung als eigenen, nicht optionalen Schritt im Umsetzungs-Ticket festhalten, nicht implizit der UI-Textänderung überlassen.
+12. **Die neue Rückmeldung bei automatischer Freigabe (AK13) wird wortgleich mit dem bestehenden manuellen Bestätigungsdialog formuliert**, wodurch der Eindruck entstünde, die mitspielende gastgebende Person hätte selbst aktiv geklickt, obwohl das laut Ticket-Definition ausdrücklich nicht der Fall sein soll — Gegenmaßnahme: bewusst unterschiedlicher Wortlaut für „du hast freigegeben" (klassischer Host) versus „wurde automatisch freigegeben" (mitspielender Host).
+
+---
+
+**Zusätzliche Testplan-Einträge (Given/When/Then-Grundgerüst, für `flow-game-bdd`, ergänzend zum bestehenden Testplan oben):**
+
+- Given ein Spiel mit mitspielendem Host und vier weiteren beigetretenen Personen (alle fünf Stationen belegt), When die Lobby den Live-Zähler anzeigt, Then zeigt er „5 von 5" bzw. das sprachlich passende Äquivalent, nicht „4 von 5" (Regressionstest gegen die bisherige, host-ausschließende Zähl-Logik).
+- Given ein Spiel mit klassischem, nicht mitspielendem Host und fünf beigetretenen Personen, When die Lobby den Live-Zähler anzeigt, Then zeigt er weiterhin korrekt „5 von 5" (Regressionstest, unverändertes Verhalten).
+- Given eine mitspielende gastgebende Person an ihrer eigenen Station, When das Spielbrett gerendert wird, Then erscheint NICHT der Hinweistext „du beobachtest nur, das Team bewegt die Karten" (weder Runde 1–3 noch Runde 4).
+- Given eine klassische, nicht mitspielende gastgebende Person, When das Spielbrett gerendert wird, Then erscheint weiterhin unverändert der bisherige Hinweistext „du beobachtest nur, das Team bewegt die Karten" (Regressionstest).
+- Given eine mitspielende gastgebende Person, When die automatische Freigabe nach Rundenende ausgelöst wird, Then erscheint eine eigene, von der Klick-Bestätigung sprachlich unterscheidbare Rückmeldung, NICHT der bisherige „Jetzt freigeben?"-Bestätigungsdialog.
+- Given eine klassische, nicht mitspielende gastgebende Person, When sie die Ergebnisse manuell freigibt, Then erscheint weiterhin unverändert der bisherige Bestätigungsdialog (Regressionstest).
+- Given jede der oben angepassten/neuen Textstellen, When die Sprache auf Englisch bzw. Deutsch umgeschaltet wird, Then liegt in BEIDEN Sprachen ein vollständiger, inhaltlich passender (nicht nur nicht-leerer) Text vor, sowohl in `src/i18n/uebersetzungen.js` als auch in `public/js/i18n/uebersetzungen.js` synchron.
+- Given der Startseiten-Text zur Personenanzahl, When die Sprache umgeschaltet wird, Then nennt der Text in beiden Sprachen erkennbar beide möglichen Gesamtzahlen (fünf ODER sechs), nicht mehr ausschließlich sechs.
+
+**Status dieser Ergänzung:** Wie die zugrunde liegende Analyse-Spec noch nicht bereit für `flow-game-bdd` — abhängig von denselben vier 🔴-Fragen sowie der offenen UI/UX-Frage zur Auto-Freigabe-Darstellung oben, zusätzlich abhängig von Stephans Rückmeldung zu den hier neu vorgeschlagenen Formulierungen (Fundstellen A.1–A.6, B.7–B.8) selbst, da Wortlaut-Änderungen laut Projekt-Konvention (siehe FEATURE-007 „Wortlaut ist final und verbindlich") grundsätzlich Stephans Freigabe brauchen, bevor sie in `flow-game-impl` übernommen werden.
+
+---
+
+#### Gate 1 – Freigabe durch Stephan (2026-08-04)
+
+**Textliche Vorschläge (Ergänzung „Text-/Kommunikationsauswirkungen"):** Inhaltlich freigegeben, genau wie vorgeschlagen — keine Wortlaut-Änderungen nötig. Betrifft insbesondere:
+- Startseite: „fünf oder sechs Personen, je nach Wahl" statt fest „sechs" (Fundstelle A.1).
+- Neuer, eigener Hinweistext für die mitspielende gastgebende Person anstelle des bisherigen „du beobachtest nur, das Team bewegt für dich"-Texts (Fundstellen A.4/A.5, AK12).
+- Eigene, kurze Rückmeldung bei automatischer Freigabe anstelle des bisherigen Bestätigungsdialogs (Fundstelle B.8, AK13).
+- Alle weiteren in der Ergänzung genannten Vorschläge (Fundstellen A.2, A.3, A.6, B.7).
+
+**UI/UX-Entscheidung zur automatischen Freigabe:** Variante 2 aus dem zuvor ausgelieferten Prototyp — ein kurzer, dezenter Hinweis erscheint für ein paar Sekunden (z. B. „Ergebnisse wurden automatisch freigegeben") und verschwindet danach von selbst wieder, während die Ergebnisansicht im Hintergrund bereits aufgebaut wird.
+
+**Die vier 🔴 kritischen Fragen des Annahmen-Protokolls, alle beantwortet:**
+1. Host belegt eine der fünf bestehenden Stationen (keine zusätzliche, sechste Station).
+2. Automatische Freigabe bleibt inhaltlich gebündelt am gewohnten Zeitpunkt (Ende der letzten gespielten Runde), nur ohne Klick — keine Pro-Runde-Vorab-Enthüllung.
+3. „Ich spiele mit" ist nur beim Erstellen des Spiels wählbar, nicht nachträglich in der Lobby umschaltbar.
+4. Die Sichtbarkeits-Schutzregel für `rolle=='host'`-Dokumente darf gezielt gelockert werden.
+
+**Ergebnis:** Spec vollständig freigegeben. Status wechselt von ToDo auf **In Progress**.
+
+---
+
+#### BDD-Testergebnis (flow-game-bdd, 2026-08-04)
+
+**Repo-Pfad (Geräte-Brücke):** `/Users/stephan/Claude/Projects/Flow Game` (echtes Git-Repo, direkt beschrieben – keine Sandbox-Kopie, da die Geräte-Brücke verbunden war).
+
+**Drei neue Testdateien**, abgeleitet aus dem Testplan-Grundgerüst der Analyse-Spec (Testplan-Einträge 1-9) UND den zusätzlichen Testplan-Einträgen der Ergänzung (AK10-16), inklusive Regressionspaar klassischer/mitspielender Host:
+
+1. **`tests/game-feature-018-host-mitspielen.logic.test.js`** (Jest + In-Memory-Fake-Firestore, `tests/helpers/fakeFirestore.js`, analog BUGFIX-005 – echter Emulator in dieser Sandbox weiterhin durch Egress-Policy blockiert). **Tatsächlich ausgeführt: 8 Testfälle, 5 rot / 3 grün wie erwartet.**
+   - NEU: Host aktiviert "ich spiele mit" beim Erstellen → bekommt eine Station (AK1/AK2)
+   - NEU: Host aktiviert "ich spiele mit" → belegteStationen im selben Commit vorbelegt (Pre-Mortem-Risiko 1)
+   - REGRESSION (grün): Host OHNE "ich spiele mit" → unverändertes Verhalten (AK6)
+   - REGRESSION (grün): Host ausdrücklich mit `mitspielen:false` → unverändertes Verhalten
+   - NEU: mitspielender Host zählt als eine der fünf Stationen, vier weitere Beitritte füllen die restlichen vier (AK2/Frage 1)
+   - NEU: sechste beitretende Person bekommt "stationenVoll", wenn Host mitspielt (AK2/Frage 1)
+   - REGRESSION (grün): `restoreHostSession()` behält eine bereits zugewiesene Station nach Reload (BUGFIX-005, Testplan-Eintrag 8)
+   - NEU: zwei parallele Spiele mit je mitspielendem Host bleiben unabhängig (Testplan-Eintrag 9)
+
+2. **`tests/game-feature-018-host-mitspielen.security.rules.test.js`** (Jest + `@firebase/rules-unit-testing`, echte `firestore.rules`). **Emulator-Download in dieser Sandbox erneut durch die Organisations-Egress-Policy blockiert (identischer, bereits bei BUGFIX-005/FEATURE-008 dokumentierter Befund) – Syntax mit `node --check` verifiziert, tatsächlicher Rot/Grün-Lauf braucht Stephans lokale Umgebung (`firebase emulators:exec --only firestore "jest tests/game-feature-018-host-mitspielen.security.rules.test.js"`).**
+   - NEU (erwartet rot): Sichtbarkeit der mitspielenden gastgebenden Person für andere Teilnehmende (AK3, Frage 4)
+   - REGRESSION (erwartet grün): klassische, nicht mitspielende gastgebende Person bleibt unsichtbar
+   - BEREITS ERFÜLLT (erwartet grün, laut Code-Befund 2 der Spec): `bewegungErlaubt()` ist bereits rollenunabhängig – mitspielender Host kann an eigener Station Karten bewegen (AK4)
+   - REGRESSION (erwartet grün): klassischer Host darf weiterhin keine Karten bewegen (FEATURE-002)
+
+3. **`tests/game-feature-018-text-und-zaehler.static.test.js`** (Jest + Node `fs`, kein DOM/jsdom, analog `game-startseite-erklaerung.static.test.js`). **Tatsächlich ausgeführt: 20 Testfälle, 9 rot / 11 grün wie erwartet.**
+   - NEU (rot): Startseiten-Text nennt "fünf oder sechs" statt fester Gesamtzahl, Node- UND Browser-Kopie (AK10, Fundstelle A.1)
+   - NEU (rot): Lobby-Starthinweis abhängig vom tatsächlichen Mitspielen (Fundstelle A.2)
+   - NEU (rot): Live-Zähler berücksichtigt einen mitspielenden Host (AK11, Fundstelle A.3, Pre-Mortem-Risiko 8)
+   - BEREITS ERFÜLLT (grün, Fundstellen-Sweep Punkt c): Host-Hinweistext Runde 1-3 bereits stationsbasiert, nicht rollenbasiert (AK12)
+   - BEREITS ERFÜLLT (grün): Host-Hinweistext Runde 4 ebenfalls bereits stationsbasiert (AK12)
+   - NEU (rot): neue Checkbox "ich spiele mit" im Erstellen-Formular (AK1)
+   - NEU (rot): `createGame()`-Aufruf übergibt einen "mitspielen"-Wert (AK1)
+   - NEU (rot): neuer i18n-Schlüssel für automatische Freigabe-Rückmeldung, Node-Kopie (AK13, Fundstelle B.8)
+   - NEU (rot): derselbe Schlüssel auch in der Browser-Kopie (AK14)
+   - REGRESSION (grün): bisheriger Freigabe-Bestätigungsdialog unverändert (AK8/AK16)
+   - NEU (rot): `Product.md` erwähnt beide Host-Konstellationen (AK15, Fundstelle A.6)
+   - BEREITS ERFÜLLT (grün, 8 Einzelfälle via `test.each`): Node-/Browser-Übersetzungstabelle bleiben für alle geprüften Bestandsschlüssel synchron
+
+**Gesamt:** 32 Testfälle über drei Dateien, davon 28 in der Sandbox tatsächlich ausgeführt (14 rot / 14 grün, wie für den aktuellen, noch nicht implementierten Stand erwartet) und 4 weitere (Sicherheitsregeln) syntaktisch verifiziert, aber wegen blockiertem Emulator-Download nur durch Stephans lokalen Lauf tatsächlich beobachtbar. Kein Test ist unerwartet grün gelaufen (kein Alarmsignal im Sinne von `flow-game-bdd` Schritt 4a). Bereit für `flow-game-impl`.
+
+---
+
+#### Implementierung (flow-game-impl, 2026-08-04)
+
+**Geänderte Dateien:**
+- `src/game/createGame.js` + `public/js/game/createGame.js` (synchron): neuer optionaler Parameter `mitspielen`; wenn gesetzt, bekommt das Host-Dokument zusätzlich `station: STATIONEN[0]`, `belegteStationen` wird im selben Commit vorbelegt, `hostKennung` wird nicht mehr redundant auf `teilnehmende/{uid}` geschrieben (liegt weiterhin ausschließlich in `geheim/kennung`).
+- `src/game/hostSession.js` + `public/js/game/hostSession.js` (synchron): `hostKennung` wird nur noch beim allerersten Anlegen des Host-Dokuments (Reclaim-Fall, neues Gerät/neue UID) geschrieben, nicht mehr bei jedem `restoreHostSession()`-Merge auf ein bereits bestehendes Dokument.
+- `firestore.rules`: Leseregel für `teilnehmende/{uid}` gelockert — ein Dokument mit `rolle=='host'` ist jetzt auch für andere Teilnehmende lesbar, sofern es ein `station`-Feld trägt (mitspielender Host); ohne `station`-Feld bleibt der klassische Host wie bisher unsichtbar. Erstellregel für `rolle=='host'` zweigeteilt: Pfad (a) frisches Spiel (kein `geheim/kennung` existiert vorher, `hostKennung` darf/muss dabei fehlen) vs. Pfad (b) Reclaim eines bestehenden Spiels (weiterhin `hostKennung`-Abgleich gegen `geheim/kennung` nötig, dieser Pfad erzeugt nie ein `station`-Feld und bleibt damit sicher verborgen).
+- `src/i18n/uebersetzungen.js` + `public/js/i18n/uebersetzungen.js` (synchron, DE+EN): `startseite.spieleranzahlText` und `lobby.startHinweis` nennen jetzt "fünf oder sechs Personen, je nach Wahl des Hosts"; neuer Schlüssel `lobby.hostSpieltMitLabel` (Checkbox-Beschriftung); neuer Schlüssel `kennzahlen.automatischFreigegebenHinweis` (eigene, vom manuellen Bestätigungsdialog sprachlich klar unterscheidbare Rückmeldung für den mitspielenden Host). Bestehender `kennzahlen.freigabeBestaetigung` unverändert (Regressionstest AK8/AK16 grün).
+- `public/spiel.html`: neue Checkbox `#checkbox-host-spielt-mit` im Erstellen-Formular, an `createGame()` als `mitspielen` durchgereicht; Live-Zähler-Logik (`anzahlSpielendeBeigetreten`) zählt jetzt einen mitspielenden Host mit; zusätzliche `.where('rolle','==','host').where('station','!=',null)`-Query für die Sichtbarkeit des mitspielenden Hosts in der Teilnehmenden-Liste (exakt auf die gelockerte Leseregel gemappt, siehe Skill-Regel 5c); manuelle Freigabe-Oberfläche (Button/Dialog) wird für den mitspielenden Host ausgeblendet, stattdessen neue Funktion `versucheAutomatischeFreigabe()` (idempotent, ruft `gibErgebnisseFrei()` opportunistisch am Ende der letzten Runde auf) mit neuem, dezent verschwindendem Hinweis-Element `#automatische-freigabe-hinweis` (UI/UX-Variante 2 aus Gate 1, 5 Sekunden Anzeigedauer, respektiert die bestehende `prefers-reduced-motion`-Konvention aus FEATURE-005 durch reines Ein-/Ausblenden ohne Bewegungsanimation).
+- `Product.md` (Abschnitt 2 und 3): beschreibt jetzt erkennbar beide Host-Konstellationen (moderierend-only mit sechs Personen gesamt, moderierend-mitspielend mit fünf Personen gesamt, Verweis auf FEATURE-018).
+- `tests/helpers/fakeFirestore.js` (Test-Infrastruktur, kein Anwendungscode): Bugfix in der In-Memory-Fake-Instanz — `update()`/`tx.update()` behandelten einen Schlüssel wie `belegteStationen.station1` bisher als flachen Property-Namen statt als Punkt-Pfad in ein verschachteltes Feld (anders als der echte Firestore-Client). Dadurch bekamen in Tests mit mehreren sequentiellen `joinGame()`-Aufrufen alle Beitretenden fälschlich dieselbe erste freie Station zugewiesen. Neue Hilfsfunktion `wendeAktualisierungAn()` bildet jetzt das reale Verhalten nach. Gegengeprüft: `tests/game-host-claim-overwrite.logic.test.js` (BUGFIX-005) läuft nach dem Fix unverändert komplett grün (11/11).
+
+**Testergebnis der drei neuen BDD-Dateien (vorher rot, siehe BDD-Testergebnis oben → jetzt):**
+- `tests/game-feature-018-text-und-zaehler.static.test.js`: **20/20 grün.**
+- `tests/game-feature-018-host-mitspielen.logic.test.js`: **7/8 grün, 1 rot** — siehe offener Punkt 2 unten (Escape-Hatch-Konflikt, bewusst nicht stillschweigend verändert).
+- `tests/game-feature-018-host-mitspielen.security.rules.test.js`: in dieser Sandbox weiterhin nicht ausführbar (kein Emulator-Netzwerkzugriff, wie bereits im BDD-Testergebnis dokumentiert). Regel-Design manuell gegen `tests/game-rooms.security.rules.test.js` und `tests/game-host-claim-overwrite.security.rules.test.js` durchgespielt (Given/When/Then jedes bestehenden Szenarios gedanklich durch die neue zweigeteilte Erstellregel und die gelockerte Leseregel geführt) — bleibt aber ein ungeprüfter Code-Pfad, bis Stephan den echten Lauf lokal ausführt (siehe offener Punkt 1 unten).
+
+**Pflicht-Regressionslauf (alle 27 in dieser Sandbox tatsächlich ausführbaren, nicht-Emulator-Testdateien unter `tests/`):**
+- **Vorher:** Test Suites: 2 failed, 25 passed (27) · Tests: 14 failed, 1 skipped, 325 passed (340 total).
+- **Nachher:** Test Suites: 1 failed, 26 passed (27) · Tests: 1 failed, 1 skipped, 338 passed (340 total).
+- Die einzige verbleibende rote Testdatei/der einzige rote Test ist der unten dokumentierte Escape-Hatch-Konflikt — kein bestehender, vorher grüner Test wurde rot. Insbesondere gegen FEATURE-001, FEATURE-002, FEATURE-003, FEATURE-004, FEATURE-005, FEATURE-006, BUGFIX-005 und FEATURE-012 geprüft: alle weiterhin grün.
+
+**Node/Browser-Sync-Check (Pflichtschritt 3a):** Für `createGame()` und `restoreHostSession()` jeweils beide Fundstellen (`src/game/...` und `public/js/game/...`) geprüft und synchron gehalten (identische Bedingung für `hostStation`/`belegteStationen`/`teilnehmerDaten` bzw. für die bedingte `hostKennung`-Zuweisung). Die vorbestehende, ticketfremde Divergenz im Retry-Wrapper von `createGame()` (Befund 5 der Analyse-Spec) wurde bewusst NICHT angefasst — außerhalb des Scopes dieses Tickets.
+
+**Offene Punkte:**
+1. **Security-Rules-Emulatorlauf steht noch aus.** `tests/game-feature-018-host-mitspielen.security.rules.test.js` konnte in dieser Sandbox mangels Netzwerkzugriff nicht ausgeführt werden (nur Syntax/Design manuell verifiziert). Es gibt in `package.json` noch kein eigenes npm-Skript für genau diese Datei — bevor ein konkreter Befehl genannt wird, muss das mit Stephan zusammen anhand der echten `package.json` geklärt werden (entweder ein vorhandenes `test:emulator:...`-Skript erweitern oder ein neues ergänzen), statt hier einen ungeprüften Befehl zu unterstellen.
+2. **Escape-Hatch-Konflikt (nicht eigenmächtig aufgelöst):** Der Testfall "sechste Person bekommt stationenVoll, wenn Host mitspielt" in `tests/game-feature-018-host-mitspielen.logic.test.js` erwartet, dass `joinGame()` bei voller Belegung `{rolle:'stationenVoll'}` zurückgibt. Tatsächlich wirft `joinGame()` in genau diesem sequentiellen (nicht nebenläufigen) Szenario einen `SPIEL_VOLL`-Fehler — das ist kein Bug, sondern deckungsgleich mit einem bereits bestehenden, dediziert getesteten Regressionstest (`tests/game-rooms.logic.test.js`, Zeilen 262-269), der genau dieses Wurf-Verhalten als gewollten Vertrag absichert. Der `'stationenVoll'`-Rückgabewert ist im echten Code nur in einer echten Race-Condition innerhalb der Transaktion erreichbar, nicht bei einfachen nacheinander folgenden Aufrufen. Per Escape-Hatch-Regel wurde dieser eine Test bewusst rot belassen, statt ihn oder das etablierte `joinGame()`-Verhalten stillschweigend zu ändern — **Stephans Entscheidung nötig:** vermutlich ist der Test an dieser einen Stelle zu korrigieren (Erwartung auf "wirft SPIEL_VOLL" statt auf `stationenVoll`-Rückgabewert), da das Wurf-Verhalten der etablierte, bereits woanders abgesicherte Vertrag ist.
+3. Legacy-Spiele, die vor diesem Deploy erstellt wurden, können noch ein (ungenutztes) `hostKennung`-Feld auf dem Host-`teilnehmende`-Dokument tragen (alter Code schrieb es redundant). Für neue, nach dem Deploy erstellte Spiele tritt das nicht mehr auf; Risiko gilt als gering, da Spiele nach 24h Inaktivität ablaufen.
+4. Die bereits in der Analyse-Spec dokumentierte, ticketfremde Node/Browser-Divergenz im Retry-Wrapper von `createGame()` (Befund 5) besteht unverändert fort — bewusst außerhalb dieses Scopes belassen.
+
+**Von Stephan lokal auszuführen/zu entscheiden:**
+- Security-Rules-Testdatei einmal gegen den echten Firestore-Emulator laufen lassen (Befehl noch mit Stephan anhand der echten `package.json` abzustimmen, siehe offener Punkt 1).
+- Entscheidung zum Escape-Hatch-Konflikt (offener Punkt 2).
+- Kurze Durchsicht der neuen, zweigeteilten Erstellregel für `teilnehmende/{uid}` in `firestore.rules` vor bzw. während des lokalen Testlaufs, da diese Regel sicherheitskritisch ist und in dieser Sandbox nicht live gegen den Emulator geprüft werden konnte.
+
+**Status bewusst NICHT auf "Done" gesetzt** (Gate 3 gehört Stephan nach dem Release-Schritt, der hier nicht Teil des Auftrags war).
+
+---
+
+#### Nachtrag: Escape-Hatch-Konflikt entschieden (2026-08-04)
+
+**Stephans Entscheidung (offener Punkt 2 oben):** Das bestehende, ältere, bereits an anderer Stelle dediziert getestete Verhalten (`tests/game-rooms.logic.test.js`, Zeilen ca. 262-269) bleibt unverändert bestehen — eine sechste Person, die aktiv als "spielende" beitreten möchte, obwohl alle fünf Stationen (inklusive einer etwaigen Host-Station) bereits belegt sind, bekommt weiterhin eine klare Fehlermeldung ("Alle Stationen sind bereits belegt. Bitte bewusst eine andere Rolle wählen (z. B. Beobachtende).", Fehlercode `SPIEL_VOLL`) und muss sich selbst bewusst für die Rolle "beobachtende" entscheiden (bereits heute uneingeschränkt über "Als Beobachtende beitreten" möglich). **Keine automatische, stille Rollen-Umwandlung** auf `stationenVoll` — weder im mitspielenden-Host-Fall noch allgemein. Diese Entscheidung bestätigt das bestehende, allgemeine Verhalten unverändert; sie führt keine neue Regel ein.
+
+**Testfall korrigiert, kein Code geändert:** In `tests/game-feature-018-host-mitspielen.logic.test.js` wurde ausschließlich der eine betroffene Testfall im describe-Block "NEU (AK2 abhängig von Frage 1, Pre-Mortem-Risiko 1): der mitspielende Host zählt als eine der fünf Stationen, keine Doppelvergabe" korrigiert: er prüft jetzt (analog zum bestehenden Regressionstest in `game-rooms.logic.test.js`), dass ein Beitrittsversuch als "spielende" durch eine sechste Person nach vollständiger Belegung (inkl. Host-Station) einen Fehler mit Code `SPIEL_VOLL` wirft, statt wie zuvor fälschlich eine automatische Rückgabe `{rolle:'stationenVoll'}` zu erwarten. `src/game/joinGame.js` und `public/js/game/joinGame.js` wurden dabei NICHT verändert — das Verhalten war bereits korrekt, nur der Testfall war falsch formuliert.
+
+**Neues, vollständiges Testergebnis:**
+- `tests/game-feature-018-host-mitspielen.logic.test.js`: **8/8 grün** (vorher 7/8 grün, 1 rot).
+- `tests/game-feature-018-text-und-zaehler.static.test.js`: weiterhin **20/20 grün**.
+- **Gesamt-Regressionslauf** (alle 27 in dieser Sandbox tatsächlich ausführbaren, nicht-Emulator-Testdateien unter `tests/`, gleicher Ausschluss-Zuschnitt wie beim vorherigen Lauf): **Test Suites: 27 passed, 27 total · Tests: 339 passed, 1 skipped, 340 total (0 failed).** Kein bestehender, vorher grüner Test wurde rot; die zuvor einzige rote Testdatei ist jetzt ebenfalls grün — 0 rot insgesamt.
+- Die fünf rein aus Sandbox-Umgebungsgründen (kein Firestore-Emulator/Internetzugriff) nicht lauffähigen Dateien (`tests/game-rooms.logic.test.js`, `tests/game-round.logic.test.js`, `tests/game-i18n.logic.test.js`, `tests/game-round.stapel-zaehlung.test.js`, `tests/game-rejoin.logic.test.js`) wurden separat erneut ausgeführt und scheitern weiterhin ausschließlich mit `ECONNREFUSED 127.0.0.1:8080` (kein laufender Emulator) — 5 Testsuiten/61 Tests, unverändert zum bisherigen, bereits bekannten Umgebungsbefund, keine Regression und kein Zusammenhang mit diesem Ticket.
+
+**Damit ist Offener Punkt 2 erledigt.** Offene Punkte 1, 3 und 4 sowie der "Von Stephan lokal auszuführen/zu entscheiden"-Abschnitt oben bleiben unverändert bestehen (Security-Rules-Emulatorlauf, Legacy-`hostKennung`-Feld, Retry-Wrapper-Divergenz).
 
 ---
 
