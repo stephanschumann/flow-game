@@ -2129,6 +2129,8 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 
 ---
 
+## ✅ Done
+
 ### FEATURE-018 Spiel auch ohne separaten Gastgeber spielbar (Host kann mitspielen)
 
 | Feld | Wert |
@@ -2136,8 +2138,9 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 | **Typ** | Feature |
 | **Priorität** | Mittel |
 | **Erstellt** | 2026-07-27 |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Spec freigegeben am** | 2026-08-04 |
+| **Done am** | 2026-08-05 |
 
 **Beschreibung:** Aktuell braucht jedes Spiel einen separaten Host, der nicht gleichzeitig eine Spielstation besetzt. Gewünscht: Der Host soll wahlweise auch selbst als Spielender teilnehmen können, statt zwingend eine eigenständige, nicht-spielende Rolle zu sein. Falls der Host gleichzeitig mitspielt, sollen die Rundenergebnisse automatisch direkt nach jeder Runde für alle sichtbar freigegeben werden, statt auf eine bewusste Freigabe-Aktion des Hosts zu warten (da diese Person ja gerade selbst mitspielt und nicht separat moderiert).
 
@@ -2475,7 +2478,19 @@ Es gibt eine echte, ungeklärte UI/UX-Frage, die über die vier funktionalen Fra
 
 ---
 
-## ✅ Done
+#### Release + Done (2026-08-05)
+
+**Release durchgeführt (`flow-game-release`):** Datei-Zugehörigkeits-Prüfung durchgeführt (Beifang `feature-002-testlauf.txt` verworfen/wiederhergestellt; `tools/gen_kanban.py`-Fix für FEATURE-009 auf Stephans ausdrückliche Bestätigung mitgenommen). Commit `08e4f2f` ("FEATURE-018: Host kann mitspielen (Checkbox, Sichtbarkeit, automatische Ergebnisfreigabe)") gepusht, GitHub-Actions-Lauf #45 grün (Hosting-Deploy erfolgreich, per Chrome-Browser abgelesen). Firestore-Regeln separat deployt (`npx firebase deploy --only firestore:rules --project flow-game-19f01`, Rückmeldung "✔ Deploy complete!").
+
+**Live-Verifikation (per Claude-in-Chrome, 2026-08-05):** `https://flow-game-19f01.web.app/spiel.html` zeigt im Formular "Spiel erstellen" echt abgelesen die neue Checkbox "Ich spiele selbst mit (belegt eine der fünf Stationen)" — keine aktive Fremdsitzung im Weg, kein Cache-Vorbehalt nötig (Seite hat `no-cache`-Header).
+
+**Security-Rules-Emulatorlauf (Stephan lokal, 2026-08-05):** `npm run test:emulator:feature-018` → `tests/game-feature-018-host-mitspielen.security.rules.test.js`, **4/4 grün** (Sichtbarkeit der mitspielenden gastgebenden Person; klassischer, nicht mitspielender Host bleibt unsichtbar; Kartenbewegung an eigener Station erlaubt; klassischer Host darf weiterhin keine Karten bewegen). Damit ist Offener Punkt 1 der Implementierung erledigt.
+
+**Verbleibend, bewusst außerhalb dieses Tickets belassen (siehe Implementierung oben):** Offener Punkt 3 (Legacy-`hostKennung`-Feld bei vor diesem Deploy erstellten Spielen, geringes Risiko, läuft mit 24h-Spielablauf aus) und Offener Punkt 4 (vorbestehende, ticketfremde Node/Browser-Divergenz im Retry-Wrapper von `createGame()`, außerhalb des Scopes).
+
+**Status:** Release, Live-Verifikation und Security-Rules-Emulatorlauf abgeschlossen. Von Stephan am 2026-08-05 auf Done bestätigt.
+
+---
 
 ### FEATURE-019 Qualitätsauswertung zeigt Details (welche Stadt, welches Land, warum falsch)
 
