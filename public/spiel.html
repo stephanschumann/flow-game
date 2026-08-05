@@ -2070,7 +2070,7 @@
   function renderRundeVierWarteschlange(fokusElement) {
     rvWarteschlange.innerHTML = '';
     aktuelleElementeListe
-      .filter(function (e) { return !fokusElement || e.id !== fokusElement.id; })
+      .filter(function (e) { return e.position === eigeneRundeVierPosition && (!fokusElement || e.id !== fokusElement.id); })
       .forEach(function (e) {
         const chip = document.createElement('div');
         chip.className = 'rv-chip';

@@ -2119,13 +2119,183 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 | **Typ** | Feature |
 | **Priorität** | Mittel |
 | **Erstellt** | 2026-07-27 |
-| **Status** | ToDo |
+| **Status** | In Progress |
+| **In Progress seit** | 2026-08-05 |
 
 **Beschreibung:** Im echten Test (2026-07-27) zeigte die Warteschlangen-Ansicht alle sechs Länderkarten und alle sechs Würfel mit dem Hinweis „waiting until it reaches you" an, auch für Elemente, die noch gar nicht bei dieser Person angekommen sind. Als Spielender ist dadurch nicht erkennbar, was konkret gerade bei der eigenen Station liegt und was nur theoretisch später ankommen könnte.
 
 **User Story:** Als Spielender, möchte ich in der Warteschlangen-Ansicht nur die Elemente sehen, die tatsächlich schon bei mir angekommen sind und auf Bearbeitung warten, sodass ich nicht zwischen echten und rein theoretisch zukünftigen Elementen unterscheiden muss.
 
 **Kontext/Verweise:** Quelle: FEATURE-004-Gate-3-Durchlauf, 2026-07-27. **Wichtiger Klärungsbedarf für die Analysephase:** FEATURE-004s eigene Spec hält ausdrücklich fest, dass Verwirrung/Unübersichtlichkeit beim Nachverfolgen „was habe ich, was kommt als Nächstes" gewollte spielerische Friktion ist, kein zu behebendes UX-Problem (Zitat Stephan: „Verwirrung und Irritationen sind erwünscht, da sie die Realität widerspiegeln."). Vor der Umsetzung muss geklärt werden, ob dieser Beobachtungspunkt eine Verfeinerung des ursprünglichen Wunsches ist (nur die eigene, tatsächlich wartende Warteschlange zeigen, aber weiterhin ohne Vorschau/Führung) oder ob er der ursprünglichen Design-Entscheidung inhaltlich widerspricht.
+
+---
+
+#### Analyse-Spec (2026-08-05)
+
+**Vorab geprüfte Quellen (Pflicht-Code-Verifikation, Schritt 2b):** Repo-Klon von `github.com/stephanschumann/flow-game` erfolgreich (kein Fallback auf sekundäre Quellen nötig). Echter, aktueller Code gelesen — nicht aus dem Gedächtnis behauptet: `public/spiel.html` (`renderRundeVierWarteschlange()` Zeile 2066–2089, `bestimmeRundeVierFokus()` Zeile 1888–1906, Aufbau von `aktuelleElementeListe` Zeile 1369, `renderRundeVier()` Zeile 2091–2128), `src/i18n/uebersetzungen.js` Zeile 265–280 und `public/js/i18n/uebersetzungen.js` (Schlüssel `rundeVier.leerHinweis`, `rundeVier.wartetAufAufgabe`, `rundeVier.wartetBisAnkunft`), `firestore.rules` (Leseregel `elemente/{elementId}`, Zeile 745), sowie der vollständige FEATURE-004-Abschnitt in `Backlog.md` (insbesondere „Darstellung mehrerer wartender Elemente pro Person — geklärt am 2026-07-20, Variante „Fokus + Warteschlange"" und „Gewollte spielerische Friktion — ausdrücklich KEIN zu behebendes Risiko").
+
+**Zentraler Code-Befund:** `renderRundeVierWarteschlange()` filtert `aktuelleElementeListe` ausschließlich danach, ob ein Element NICHT das aktuelle Fokus-Element ist (`e.id !== fokusElement.id`) — **nicht** danach, ob es sich überhaupt an der eigenen Position befindet. `aktuelleElementeListe` selbst wird per `onSnapshot()` auf die komplette `elemente`-Unterkollektion aufgebaut und enthält damit fortlaufend alle 12 Elemente des gesamten Spielfelds (6 Länderkarten, 6 Würfel), unabhängig von ihrer Position. Für jedes nicht-fokussierte Element zeigt der Code `t('rundeVier.wartetAufAufgabe')`, wenn es an der eigenen Position liegt, sonst `t('rundeVier.wartetBisAnkunft')` („waiting until it reaches you"). Das beobachtete Verhalten aus dem Testlauf vom 2026-07-27 (alle sechs Länderkarten und alle sechs Würfel sichtbar) entspricht damit exakt dem Code, nicht nur einer Wahrnehmung.
+
+### Design-Konflikt-Klärung: Verfeinerung oder Widerspruch? (zentraler Streitpunkt dieser Analyse)
+
+**Ergebnis: FEATURE-017 ist eine Verfeinerung — genauer sogar ein Korrekturbedarf zurück zur ursprünglich freigegebenen FEATURE-004-Spec, kein Widerspruch zur gewollten Friktion.**
+
+Beleg aus `Backlog.md`, FEATURE-004-Abschnitt, Eintrag vom 2026-07-20 „Darstellung mehrerer wartender Elemente pro Person — geklärt am 2026-07-20, Variante „Fokus + Warteschlange"":
+
+> „Bei jeder Person wird immer nur das eine Element, das laut Wechselregel gerade dran ist (Würfel oder Länderkarte), groß und prominent im Fokus angezeigt [...]. **Alle anderen bei dieser Person wartenden Elemente** werden darunter als kleine, antippbare Chips in einer Warteschlangen-Leiste dargestellt."
+
+Diese freigegebene Spec spricht ausdrücklich von Elementen, die „bei dieser Person" liegen — also bereits an der eigenen Position angekommen sind, dort aber wegen der Wechselregel gerade nicht bearbeitet werden dürfen. Sie spricht nicht von einer Übersicht über alle Elemente im gesamten Spiel. Der aktuell produktive Code weicht von dieser eigenen, bereits freigegebenen Spec ab (siehe Code-Befund oben) und zeigt zusätzlich auch Elemente, die noch nirgends in der Nähe der eigenen Station sind.
+
+Davon klar zu unterscheiden ist die separat dokumentierte „Gewollte spielerische Friktion — ausdrücklich KEIN zu behebendes Risiko" (`Backlog.md`, FEATURE-004, ebenfalls 2026-07-20). Dort zählt Stephan explizit auf, was gewollt bleiben soll:
+
+> „Warten einer Person auf den laut Wechselregel benötigten Elementtyp, während andere Elemente **bei ihr liegen**, aber gerade nicht bearbeitet werden dürfen; Unübersichtlichkeit, wenn **bei einer Person** mehrere Elemente unterschiedlichen Typs gleichzeitig warten; die Notwendigkeit, sich zu merken oder nachzuschauen, „was habe ich gerade, und was kommt als Nächstes""
+
+Auch dieses Zitat bezieht sich durchgängig auf Elemente, die **bei der Person** liegen — also bereits angekommen sind. Das wörtliche Stephan-Zitat („Verwirrung und Irritationen sind erwünscht, da sie die Realität widerspiegeln. Sie kosten Zeit.") steht im selben Absatz und im selben Kontext: Es begründet, warum die Unübersichtlichkeit zwischen tatsächlich bei einer Person wartenden Elementen nicht wegdesignt werden soll — nicht, warum eine spielweite Vorschau auf noch nicht angekommene Elemente erhalten bleiben müsste. Eine spielweite Vorschau kommt im ursprünglichen „Fokus + Warteschlange"-Konzept an keiner Stelle vor; sie ist ein Implementierungsfehler, der über die freigegebene Spec hinausgeht, keine bewusst gewollte Eigenschaft.
+
+**Konsequenz für den Scope dieses Tickets:** FEATURE-017 darf und soll die Warteschlange auf Elemente an der eigenen Position begrenzen. Die gewollte Friktion — mehrere unterschiedliche Elementtypen liegen gleichzeitig bei derselben Person, und man muss sich merken/nachschauen, was gerade dran ist und was noch aussteht — bleibt davon vollständig unberührt, denn sie entsteht ausschließlich aus Elementen, die tatsächlich an der eigenen Position liegen. Keine zusätzliche Führung, keine Vorschau auf zukünftige Elemente, keine Vereinfachung der Wechselregel selbst wird durch dieses Ticket eingeführt. Sollte Stephan bei Freigabe dieser Spec anderer Meinung sein als diese Einschätzung, ist das ausdrücklich vor `flow-game-bdd` zu klären, nicht stillschweigend zu übergehen.
+
+### Brainstorming / Example Mapping
+
+**Regeln (aus `Product.md`/`Flow-Game-Entscheidungen.md`):**
+- Runde 4: „Fokus + Warteschlange"-Konzept — genau ein Element im Fokus, alle anderen bei der Person wartenden Elemente als Chips darunter (Backlog.md, FEATURE-004, 2026-07-20).
+- Gewollte spielerische Friktion bei tatsächlich bei der Person liegenden Elementen bleibt unangetastet.
+- Zuständigkeit läuft über die Person (`uid`), nicht über eine feste Station (FEATURE-004, Pre-Mortem-Risiko 10).
+
+**Beispiele:**
+- Person 3 hat gerade 1 Würfel im Fokus und 1 Länderkarte, die ebenfalls schon bei ihr liegt, aber laut Wechselregel gerade nicht dran ist → Länderkarte muss weiterhin als Chip „wartet, bis du mit der aktuellen Aufgabe fertig bist" erscheinen (bestehendes, gewolltes Verhalten, bleibt unverändert).
+- Person 3 hat nur den einen Würfel im Fokus, alle anderen 5 Länderkarten und 5 Würfel liegen noch bei anderen Personen oder im Auftragseingang → nach dem Fix erscheint kein einziger Chip in der Warteschlange, nur der Fokus.
+- Ein Element wandert währenddessen bei Person 3 an (z. B. weil Person 2 es weitergibt) → es muss unmittelbar als neuer Chip erscheinen, sobald der bestehende Firestore-Listener die Positionsänderung meldet (kein manuelles Neuladen nötig, wie in Runde 1-3 auch).
+
+**Offene Fragen (nicht selbst beantwortet, siehe Annahmen-Protokoll unten):** keine funktional kritischen offenen Fragen — der Code-Befund und der Spec-Beleg sind eindeutig genug, um ohne Rückfrage an Stephan weiterzuarbeiten. Zwei konventionelle Annahmen sind unten markiert.
+
+### Annahmen-Protokoll (Pflicht, Schritt 2a)
+
+- ⚪ **Annahme 1 (konventionell):** Der bislang für „Elemente andernorts" genutzte Text-Baustein `rundeVier.wartetBisAnkunft` („waiting until it reaches you") wird nach dem Fix nirgends mehr aufgerufen und kann als toter i18n-Schlüssel im Code stehen bleiben oder entfernt werden — funktional macht das keinen Unterschied. ⚠️ Annahme: Schlüssel wird bei der Implementierung entfernt (sauberer als toter Code), da kein Lint-Test im Projekt auf „jeder Schlüssel muss verwendet werden" prüft (geprüft: `tests/game-i18n-quelltext-scan.static.test.js` enthält keine solche Prüfung) — bitte bestätigen.
+- ⚪ **Annahme 2 (konventionell):** Wenn nach dem Fix keine Elemente mehr in der Warteschlange stehen (weil bei der eigenen Position aktuell nur das Fokus-Element liegt), bleibt die Warteschlangen-Leiste einfach leer (kein Platzhaltertext wie „aktuell keine weiteren Elemente bei dir"), analog dazu, wie leere Zustände an anderen Stellen im Spiel bereits gehandhabt werden (z. B. leere Kartenspalten in Runde 1-3 zeigen ebenfalls keinen Extra-Hinweistext). ⚠️ Annahme: kein neuer Leertext für die Warteschlange selbst nötig — bitte bestätigen. (Der bereits bestehende `rundeVier.leerHinweis`-Text bleibt unverändert für den separaten Fall „gar kein Fokus-Element vorhanden".)
+- ✅ **Klar aus der Spec ableitbar:** Die Fokus-Ermittlung (`bestimmeRundeVierFokus()`) filtert bereits korrekt nach `e.position === eigeneRundeVierPosition` — dieses Muster wird für die Warteschlange lediglich übernommen, keine neue Logik nötig.
+
+### Pflichtfragen: Fundstellen-Sweep & Zustands-Check (Schritt 2d)
+
+**Fundstellen-Sweep:** Suche nach `rv-warteschlange`, `renderRundeVierWarteschlange`, `wartetBisAnkunft` in `public/`, `src/` und `tests/` (Grep, nicht aus dem Gedächtnis). Ergebnis: Die fehlerhafte Filterung existiert an **genau einer** Stelle im Code — `renderRundeVierWarteschlange()` in `public/spiel.html`, Zeile 2070–2089. Es gibt keine zweite, unabhängig gepflegte Kopie dieser Rendering-Funktion (anders als bei Spiellogik-Funktionen gibt es für reine UI-Render-Funktionen ohnehin keine Node-Referenz, siehe Node-Referenz-Check unten). Die betroffenen Übersetzungsschlüssel (`rundeVier.wartetAufAufgabe`, `rundeVier.wartetBisAnkunft`) existieren wie bei allen i18n-Schlüsseln zweifach (Node-Referenz `src/i18n/uebersetzungen.js` und Browser-Kopie `public/js/i18n/uebersetzungen.js`) — das ist reine Übersetzungsdatenhaltung, keine Verhaltens-Logik, und von diesem Fix nicht inhaltlich betroffen (höchstens: ein Schlüssel wird ungenutzt, siehe Annahme 1). Keine weiteren Fundstellen.
+
+**Zustands-Check:**
+- **Wartezustand:** Kein neuer Wartezustand — die Warteschlange aktualisiert sich wie bisher über den bestehenden Echtzeit-Listener auf die `elemente`-Unterkollektion, ohne sichtbare Ladeanzeige (bestehendes Muster, unverändert).
+- **Leerzustand:** Zwei zu unterscheidende Leerzustände. (1) Gar kein Fokus-Element vorhanden (alle eigenen Elemente bereits abgegeben oder noch nicht angekommen) → bestehender `rvLeerHinweis`-Text bleibt unverändert sichtbar, davon nicht betroffen. (2) Fokus-Element vorhanden, aber keine weiteren Elemente an der eigenen Position → Warteschlangen-Leiste zeigt schlicht keine Chips (siehe Annahme 2) → eigenes Akzeptanzkriterium.
+- **Fehlerfall:** Kein neues Fehlerverhalten nötig — bei Verbindungsabbruch/Netzfehler greift die bestehende Fehlerbehandlung des Firestore-Listeners (`zeigeFehler(...)`) unverändert; diese Änderung berührt nur, WELCHE bereits geladenen Daten gefiltert angezeigt werden, nicht WIE sie geladen werden.
+
+### Akzeptanzkriterien (beobachtbares Verhalten, Alltagssprache)
+
+1. In Runde 4 zeigt die Warteschlangen-Leiste einer spielenden Person nur noch Elemente, die tatsächlich schon bei dieser Person angekommen sind und dort auf ihre Bearbeitung warten (weil gerade ein anderes Element im Fokus ist).
+2. Elemente, die noch bei einer anderen Person unterwegs sind und die eigene Station noch gar nicht erreicht haben, erscheinen nicht mehr in der eigenen Warteschlangen-Leiste — weder als Karte noch als Würfel, und auch nicht mit einem Hinweistext wie „wartet, bis es bei dir ankommt".
+3. Liegt bei einer Person aktuell nur das eine Element, das gerade im Fokus ist, und sonst nichts weiter, zeigt die Warteschlangen-Leiste keine Chips (bleibt leer), statt fälschlich Elemente von anderen Stationen anzuzeigen.
+4. Liegen bei einer Person mehrere Elemente gleichzeitig (weil sie wegen der Wechselregel gerade nicht bearbeitet werden dürfen), erscheinen diese weiterhin unverändert als Chips mit dem bestehenden Hinweis, dass zuerst die aktuelle Aufgabe abgeschlossen werden muss — dieses Verhalten bleibt bewusst wie bisher (gewollte Friktion, kein Bestandteil dieses Fixes).
+5. Sobald ein Element neu bei einer Person ankommt (weil eine andere Person es weitergegeben hat), erscheint es automatisch und ohne manuelles Neuladen in der Warteschlangen-Leiste dieser Person, wenn es nicht gerade selbst zum neuen Fokus-Element wird.
+6. Host und Beobachtende sind von dieser Änderung nicht betroffen — ihre Ansicht in Runde 4 bleibt wie bisher (kein Fokus/keine Warteschlange für diese Rollen).
+
+### Pre-Mortem
+
+1. **Risiko — Filterung greift zu eng und blendet auch Elemente aus, die laut Wechselregel eigentlich noch als wartend gelten sollen.** Gegenmaßnahme: Die neue Filterbedingung übernimmt exakt dieselbe Positionsprüfung (`e.position === eigeneRundeVierPosition`), die `bestimmeRundeVierFokus()` bereits erfolgreich für die Fokus-Ermittlung nutzt — kein neues Kriterium, sondern Wiederverwendung eines bereits bewährten Filters. Regressionstest: bestehendes Verhalten von `bestimmeRundeVierFokus()` bleibt komplett unverändert (diese Funktion wird nicht angefasst).
+2. **Risiko — Race Condition beim Positionswechsel:** Ein Element wechselt genau in dem Moment die Position (z. B. wird gerade von Person 2 an Person 3 weitergegeben), in dem Person 3 die Seite neu rendert. Gegenmaßnahme: Die Filterung liest bei jedem Render-Aufruf den aktuellen `aktuelleElementeListe`-Stand frisch aus (kein zwischengespeicherter alter Stand), und `renderRundeVier()` wird bereits heute bei jedem `onSnapshot()`-Ereignis komplett neu aufgerufen — das bestehende Echtzeit-Muster deckt diesen Fall bereits ab, unverändert durch diesen Fix.
+3. **Risiko — Verwechslung mit der gewollten Friktion:** Die Umsetzung könnte versehentlich zu weit gehen und zusätzlich versuchen, auch die Unübersichtlichkeit bei mehreren tatsächlich wartenden Elementen an derselben Station zu entschärfen (z. B. durch Sortierung, Beschriftung „als Nächstes dran" o. Ä.) und damit über den in FEATURE-004 bewusst gewollten Zustand hinausschießen. Gegenmaßnahme: Akzeptanzkriterium 4 oben hält explizit fest, dass dieses Verhalten unverändert bleiben muss; bei der Implementierung ausschließlich die Positions-Filterung ändern, sonst nichts an `renderRundeVierWarteschlange()` anfassen.
+4. **Risiko — Regression bei der Rundenende-Erkennung:** `versucheRundenEndeRundeVier()` prüft `aktuelleElementeListe.length !== 12` — falls versehentlich die zugrunde liegende Liste selbst (statt nur die Anzeige-Funktion) gefiltert würde, bräche die Rundenende-Erkennung. Gegenmaßnahme: Ausdrücklich nur `renderRundeVierWarteschlange()` ändern, `aktuelleElementeListe` selbst unverändert lassen (siehe Implementierungsoption A unten) — genau deshalb scheidet eine Query-seitige Filterung (Option B) aus.
+5. **Risiko — i18n-Vollständigkeit:** Wird der Schlüssel `rundeVier.wartetBisAnkunft` entfernt, aber nur in einer der beiden Sprachversionen oder nur in einer der beiden Dateien (`src/i18n/...` vs. `public/js/i18n/...`), bleibt eine der beiden Kopien inkonsistent. Gegenmaßnahme: Beide Dateien im selben Arbeitsschritt anfassen (siehe Node-Referenz-Check unten), bestehender i18n-Vollständigkeitstest (`game-i18n.logic.test.js`/`game-i18n.security.rules.test.js`) als Regressionsschutz laufen lassen.
+
+### Zusammenspiel bestehender Bausteine (Schritt 4a)
+
+**Berührte Bausteine:** (1) Der Firestore-Echtzeit-Listener auf `runden/{n}/elemente` (liest alle 12 Elemente, unverändert), (2) `aktuelleElementeListe` als clientseitiger Zwischenspeicher (unverändert), (3) `bestimmeRundeVierFokus()` (unverändert, dient als Vorbild für die neue Filterlogik), (4) `renderRundeVierWarteschlange()` (einzige zu ändernde Stelle), (5) `versucheRundenEndeRundeVier()` (liest ebenfalls `aktuelleElementeListe`, muss unverändert bleiben).
+
+**Reihenfolge des Zusammenwirkens:** Firestore-Listener meldet Änderung → `aktuelleElementeListe` wird komplett neu aus dem Snapshot aufgebaut (alle 12 Elemente, alle Positionen) → `renderRundeVier()` wird aufgerufen → `bestimmeRundeVierFokus()` ermittelt das Fokus-Element (bereits positionsgefiltert) → `renderRundeVierFokusCard()` zeigt es an → `renderRundeVierWarteschlange(fokusElement)` wird mit demselben, noch ungefilterten `aktuelleElementeListe` aufgerufen und muss ab jetzt zusätzlich selbst nach Position filtern → parallel dazu prüft `versucheRundenEndeRundeVier()` unabhängig davon, ob alle 12 Elemente das Ziel erreicht haben (braucht weiterhin die volle, ungefilterte Liste).
+
+**Zustandskombination mit Fehlerpotenzial:** Zwei Spielende an unterschiedlichen Positionen rendern gleichzeitig ihre jeweils eigene Warteschlange aus demselben, geteilten `aktuelleElementeListe`-Snapshot (clientseitig getrennt gehalten, jede Person hat ihre eigene `eigeneRundeVierPosition`) — die Filterung ist rein lesend und pro Client unabhängig, es gibt keinen gemeinsam geschriebenen Zustand, der hier kollidieren könnte. Kein Mehrspieler-spezifisches Risiko über die in Pre-Mortem-Risiko 2 genannte Race Condition hinaus.
+
+### Node-Referenz/Browser-Sync-Check (Schritt 4b)
+
+Die betroffene Rendering-Funktion `renderRundeVierWarteschlange()` existiert **ausschließlich** in `public/spiel.html` (reine UI-Darstellung) — es gibt dafür keine Node-Referenzimplementierung unter `src/game/...`, da UI-Rendering-Funktionen grundsätzlich nicht in der Node-Referenz gespiegelt werden (nur Spiellogik-Funktionen wie Bewegungs-/Zeitregeln haben dort ein Pendant). Grep nach `Warteschlange`/`wartetBisAnkunft`/`wartetAufAufgabe` in `src/` und `public/js/` bestätigt: Treffer ausschließlich in den beiden i18n-Tabellen (`src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js`), nicht in Logik-Dateien. Diese beiden i18n-Dateien sind reine Übersetzungsdaten (kein Verhalten) und liegen bereits an beiden erwarteten Stellen synchron vor (gleicher Schlüssel, gleicher Text, per Grep verglichen). Kein BUGFIX-011-artiges Risiko für diesen Fix — es gibt keine zweite, unabhängig gepflegte Verhaltens-Kopie, die auseinanderlaufen könnte.
+
+### Betroffene Architektur (Schritt 5)
+
+- **Frontend/UI:** `public/spiel.html`, Funktion `renderRundeVierWarteschlange()` (einzige inhaltlich zu ändernde Stelle).
+- **i18n-Daten (nur Aufräumen, kein Verhalten):** `src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js`, Schlüssel `rundeVier.wartetBisAnkunft` (siehe Annahme 1).
+- **Nicht betroffen:** `firestore.rules` (keine Sicherheits-/Berechtigungsänderung — die zugrunde liegende Leseberechtigung auf `elemente/{elementId}` bleibt unverändert, da andere Funktionen wie `versucheRundenEndeRundeVier()` weiterhin die volle Liste brauchen). Nicht betroffen: `src/game/rundeVier/...` und `public/js/game/rundeVier.js` (Spiellogik/Bewegungsregeln, unverändert). Nicht betroffen: Datenmodell in Firestore (keine neuen Felder, keine Schemaänderung).
+
+### 5a: Reichweite der Implementierungsdetail-Festlegungen
+
+Die einzige als „Implementierungsdetail" behandelte Festlegung ist Annahme 1 (toter i18n-Schlüssel entfernen oder stehenlassen) — rein kosmetisch, betrifft **0 % der Spielrunden** in ihrem sichtbaren Verhalten, nur die Code-Sauberkeit. Keine weitere Einschätzung nötig.
+
+### Regressionsrisiko (Schritt 6)
+
+Direkt betroffen ist ausschließlich FEATURE-004 (Runde 4, Status Done seit 2026-07-27) — insbesondere dessen Akzeptanzkriterien zur Warteschlangen-Darstellung selbst. Bestehende Tests `tests/game-round4.logic.test.js` und `tests/game-round4.security.rules.test.js` prüfen Spiellogik/Sicherheitsregeln, nicht die hier geänderte reine Anzeige-Funktion — dort ist kein Konflikt zu erwarten, sollte aber als Regressionslauf mitlaufen (Standard-Vorgehen). Keine weiteren Done-Tickets mit Berührungspunkt zur Warteschlangen-Anzeige gefunden (Fundstellen-Sweep oben deckt das ab). BUGFIX-010 (Würfelanzeige/Animation, ToDo, noch nicht analysiert) betrifft dieselbe Runde-4-Ansicht, aber eine andere Komponente (Würfel-Fokus-Karte, nicht die Warteschlangen-Chips) — keine Überschneidung im Code, unabhängig umsetzbar.
+
+### Implementierungsoptionen mit Empfehlung (Schritt 7)
+
+**Option A — Nur die Anzeige-Funktion filtert zusätzlich nach Position (empfohlen):** In `renderRundeVierWarteschlange()` wird die bestehende Filterbedingung um `e.position === eigeneRundeVierPosition` ergänzt (dieselbe Bedingung, die `bestimmeRundeVierFokus()` bereits nutzt). `aktuelleElementeListe` selbst, der zugrunde liegende Firestore-Listener und `versucheRundenEndeRundeVier()` bleiben komplett unverändert. Vorteile: kleinstmögliche, präzise lokalisierte Änderung in genau einer Funktion; kein Risiko für die Rundenende-Erkennung (Pre-Mortem-Risiko 4); folgt einem bereits im selben Code vorhandenen, bewährten Muster. Nachteile: keine.
+
+**Option B — Der Firestore-Query/Listener selbst wird auf die eigene Position eingeschränkt:** Statt clientseitig zu filtern, würde bereits die Abfrage nur Elemente an der eigenen Position laden. Vorteile: theoretisch weniger übertragene Daten. Nachteile: **nicht umsetzbar ohne Zusatzaufwand**, da `versucheRundenEndeRundeVier()` und potenziell künftige Funktionen (z. B. Host-Übersicht) weiterhin die volle 12-Elemente-Liste brauchen — es müsste ein zweiter, paralleler Listener für die Rundenende-Prüfung eingeführt werden. Unnötig aufwändig für ein rein darstellungsbezogenes Ticket.
+
+**Empfehlung: Option A.** Sie ist die mit Abstand kleinste, risikoärmste Änderung, korrigiert exakt den in der Design-Konflikt-Klärung oben belegten Abweichungspunkt zur freigegebenen FEATURE-004-Spec, und rührt an keiner sicherheits- oder zeitmessungsrelevanten Logik. (Fachliche Einschätzung des Skills, nicht direkt aus den Dokumenten ableitbar — Stephan entscheidet.)
+
+### Kein Prototyp nötig (Schritt 8)
+
+Diese Änderung ist eine reine Filter-Korrektur ohne neues Bedienkonzept, kein Layout-/Interaktionswechsel, keine neue Variante mit unklarer Bedienbarkeit — die Chips sehen optisch identisch aus wie bisher, es werden nur weniger davon angezeigt. Die im `flow-game-analyze`-Skill genannte Schwelle für einen klickbaren Prototyp (Schritt 8) ist damit nicht erreicht.
+
+### Testplan-Grundgerüst (Übergabe an `flow-game-bdd`)
+
+- Neuer Testfall: Bei einer Person mit Fokus-Element und mind. einem weiteren, tatsächlich an ihrer Position liegenden Element erscheint dieses weitere Element als Chip (Regressionsschutz für AK4/gewollte Friktion).
+- Neuer Testfall: Bei einer Person mit Fokus-Element, aber keinem weiteren Element an ihrer Position, ist die Warteschlangen-Liste leer, auch wenn andernorts im Spiel weitere Elemente existieren (AK1-AK3, Kernfix).
+- Neuer Testfall: Ein Element an einer fremden Position erscheint nicht als Chip bei einer Person, bei der es nicht liegt (AK2, direkter Test gegen den ursprünglichen Bug).
+- Regressionstest: `versucheRundenEndeRundeVier()`/Rundenende-Erkennung bleibt unverändert funktionsfähig (Pre-Mortem-Risiko 4).
+- Regressionstest: bestehende `tests/game-round4.logic.test.js` und `tests/game-round4.security.rules.test.js` laufen unverändert grün.
+
+Damit ist die Spec vollständig. **Status bleibt ToDo** (Start der Umsetzung ist eine separate, noch ausstehende Freigabe-Entscheidung Stephans). Nächster Schritt nach Freigabe: `flow-game-bdd`.
+
+---
+
+### Testplan (flow-game-bdd, 2026-08-05)
+
+Neue Testdatei im echten Repo: `tests/game-round4-warteschlange.static.test.js` (kein DOM/jsdom im Projekt — gleiches Textmuster-/Node-"fs"-Vorgehen wie `tests/game-round4-bearbeitungszeit.static.test.js`, zusätzlich mit einer echten Extraktion + Ausführung des Filter-Prädikats aus `renderRundeVierWarteschlange()` per `new Function(...)`, um Given/When/Then gegen konkrete Beispiel-Elemente statt nur strukturelle Textmuster zu prüfen).
+
+**Kernfix-Szenarien (jetzt erwartungsgemäß ROT, echte Assertion-Fehlschläge, kein Infrastrukturfehler):**
+- Szenario: Element an fremder Position (1) liefert am Filter-Prädikat `false` statt `true` (AK2, direkter Bug-Test) — ROT: `Expected: false, Received: true`.
+- Szenario: Fokus-Element + drei Elemente an fremden Positionen → gefilterte Liste bleibt leer (AK1–AK3, Kernfix) — ROT: liefert alle drei fremden Elemente statt `[]`.
+- Szenario: Fokus-Element + ein Element an fremder Position + ein Element an eigener Position → Ergebnis enthält NUR das eigene (AK2+AK4 kombiniert) — ROT: enthält zusätzlich die fremden Elemente.
+- Szenario (Grenzfall): kein Fokus-Element gesetzt, Element an fremder Position → Prädikat liefert weiterhin `false` — ROT.
+
+**Bereits jetzt GRÜN (Regressionsschutz, dürfen durch die Implementierung nicht rot werden):**
+- Szenario: Element an eigener Position (nicht Fokus) → Prädikat liefert `true` (Regressionsschutz AK4/gewollte Friktion).
+- Regressionstest AK6: früher Host/Beobachtende-Return in `renderRundeVier()` liegt weiterhin vor dem Aufruf von `renderRundeVierWarteschlange()`.
+- Regressionstest: `versucheRundenEndeRundeVier()` prüft weiterhin `aktuelleElementeListe.length !== 12` und übergibt weiterhin die volle, ungefilterte Liste; ruft `renderRundeVierWarteschlange()` nicht auf.
+- Regressionstest AK5: der `elemente`-Collection-Listener ruft im selben Snapshot-Handler weiterhin `renderRundeVier(db, code)` auf (Live-Update ohne manuelles Neuladen bleibt über den bestehenden Mechanismus sichergestellt).
+- Regressionsziel: `aktuelleElementeListe.filter(...).forEach(...)`-Struktur bleibt bestehen (kein Strukturumbau nötig).
+
+**Bestätigter Ist-Zustand der bestehenden Testsuiten (unverändert, real ausgeführt):**
+- `tests/game-round4-bearbeitungszeit.static.test.js`: 7/7 grün.
+- `tests/game-round4.logic.test.js`: 82/82 grün (reine Node-Referenzlogik, kein Emulator nötig).
+- `tests/game-round4.security.rules.test.js`: NICHT live verifizierbar in dieser Session — die Geräte-Brücke (`device_bash`) hat keinen Netzwerkzugriff, wodurch der Firestore-Emulator-JAR nicht heruntergeladen werden konnte (`download failed, status 403: Connection blocked by network allowlist`, kein lokaler Cache vorhanden). Datei selbst wurde in dieser Session nicht verändert — Stephan sollte `npm run test:emulator:feature-004` einmal selbst laufen lassen, um dies zu bestätigen.
+
+---
+
+#### Implementierung (flow-game-impl, 2026-08-05)
+
+**Geänderte Datei/Funktion:** `public/spiel.html`, `renderRundeVierWarteschlange()` (Zeile ~2070–2073). Die bestehende Filterbedingung wurde exakt wie in der Spec (Option A) um die Positionsprüfung ergänzt:
+
+```js
+// vorher:
+.filter(function (e) { return !fokusElement || e.id !== fokusElement.id; })
+// nachher:
+.filter(function (e) { return e.position === eigeneRundeVierPosition && (!fokusElement || e.id !== fokusElement.id); })
+```
+
+`aktuelleElementeListe`, der Firestore-Listener, `versucheRundenEndeRundeVier()` und `bestimmeRundeVierFokus()` wurden nicht angefasst (per Diff bestätigt).
+
+**Neue BDD-Tests (`tests/game-round4-warteschlange.static.test.js`):** 10/10 grün. Die 4 vormals rot dokumentierten Kernfix-Szenarien (AK1–AK3 direkt sowie der Grenzfall "kein Fokus-Element") wurden gegen den ungeänderten Quelltext testweise erneut zum Roten gebracht (Filterbedingung per `git stash`-Vergleich temporär zurückgesetzt) und liefen nach der Änderung wieder grün; die 6 bereits zuvor grünen Regressionsschutz-Szenarien blieben grün.
+
+**Entscheidung zum toten i18n-Schlüssel `rundeVier.wartetBisAnkunft` (Annahme 1 aus der Spec):** NICHT entfernt, abweichend vom in der Spec vorgeschlagenen Standardweg. Grund: `renderRundeVierWarteschlange()` enthält weiterhin den Ternary `e.position === eigeneRundeVierPosition ? t('rundeVier.wartetAufAufgabe') : t('rundeVier.wartetBisAnkunft')` (Zeile ~2082–2084) — durch die neue Filterbedingung ist der `else`-Zweig zwar zur Laufzeit unerreichbar (das Prädikat garantiert vor dem `forEach` bereits `e.position === eigeneRundeVierPosition`), der Schlüssel wird aber weiterhin per `t(...)`-Aufruf im Quelltext referenziert. Ein Grep nach `wartetBisAnkunft` in `public/`, `src/`, `tests/` bestätigte diese verbleibende Fundstelle (`public/spiel.html:2084`) — die in der Spec selbst genannte Bedingung für die Entfernung ("zweifelsfrei per Grep bestätigen, dass er nirgends mehr referenziert wird") ist damit nicht erfüllt. Der Schlüssel bleibt deshalb unverändert in `src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js` stehen (beide Dateien nach kurzzeitiger Entfernung wieder auf ihren committeten Ausgangsstand zurückgeführt). Das Entfernen des toten `else`-Zweigs selbst wäre eine zusätzliche Änderung über die freigegebene, bewusst minimale Filterbedingungs-Anpassung hinausgegangen und wurde deshalb nicht vorgenommen — falls gewünscht, wäre das ein eigener, kleiner Folge-Schritt.
+
+**Regressionslauf (Schritt 4, gegen alle Done-Tickets mit Berührungspunkt):** Direkt betroffen laut Analyse ist ausschließlich FEATURE-004 (Runde 4). `tests/game-round4.logic.test.js` (82/82 grün, kein Emulator nötig) und `tests/game-round4-bearbeitungszeit.static.test.js` (7/7 grün) liefen unverändert grün. Zusätzlich zur Analyse-Vorgabe wurde die GESAMTE nicht-Emulator-Testsuite laufen gelassen (35 Suiten, 414 Einzeltests): 28 Suiten/350 Tests grün, 1 übersprungen. 7 Suiten scheiterten — ausschließlich an Infrastruktur, nicht an dieser Änderung: 5 Suiten (`game-rejoin.logic.test.js`, `game-rooms.logic.test.js`, `game-i18n.logic.test.js`, `game-round.logic.test.js`, `game-round.stapel-zaehlung.test.js`) brauchen den Firestore-Emulator (`ECONNREFUSED 127.0.0.1:8080`, ähnlich `*.security.rules.test.js`, obwohl sie nicht so heißen), 2 Suiten (`deploy-regression.test.js`, `feature-002-deploy-regression.test.js`) brauchen einen echten Netzwerk-Fetch auf die Live-URL, den die Geräte-Brücken-VM nicht hat (`fetch failed`). Der Versuch, `tests/game-round4.security.rules.test.js` über `firebase emulators:exec` laufen zu lassen, scheiterte wie in der letzten Session dokumentiert am fehlenden Netzzugriff der Geräte-Brücke (`download failed, status 403: Connection blocked by network allowlist`) — Stephan sollte `npm run test:emulator:feature-004` einmal selbst lokal laufen lassen, um dies zusätzlich zu bestätigen.
+
+**Sonstiges:** Beim ersten `git status --porcelain`-Check (Schritt 0) lagen `Backlog.md`, `public/spiel.html`, `src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js` bereits unversioniert im erwarteten, mit dieser Spec deckungsgleichen Zustand vor (Spec + BDD-Testplan bereits in `Backlog.md`, Filteränderung bereits in `spiel.html`, i18n-Schlüssel bereits entfernt) — offenbar Ergebnis eines vorangegangenen `flow-game-analyze`/`flow-game-bdd`-Durchlaufs vom selben Tag. Übernommen und verifiziert statt neu geschrieben; die i18n-Entfernung wurde wie oben begründet rückgängig gemacht. Ein verwaistes `.git/index.lock` (Zeitstempel vor dieser Session) sowie ein `refs/stash.lock`, das durch einen `git stash`-Vergleichslauf in dieser Session entstand, ließen sich über `device_bash` nicht löschen (`Operation not permitted`, FUSE-Mount-Eigenheit) — `git stash list` ist inzwischen leer, die Locks sind nach aktuellem Stand vermutlich nur noch Datei-Leichen ohne aktive Sperrwirkung auf Lesezugriffe, sollten aber vor dem nächsten `git commit` geprüft werden (`ps aux | grep -i git` zeigt keinen laufenden Prozess).
+
+Nicht committet, nicht gepusht — das bleibt `flow-game-release` nach Stephans Freigabe vorbehalten.
 
 ---
 
