@@ -2112,6 +2112,8 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 
 ---
 
+## ✅ Done
+
 ### FEATURE-017 Warteschlangen-Anzeige in Runde 4 auf tatsächlich bei mir wartende Elemente begrenzen
 
 | Feld | Wert |
@@ -2119,8 +2121,9 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 | **Typ** | Feature |
 | **Priorität** | Mittel |
 | **Erstellt** | 2026-07-27 |
-| **Status** | In Progress |
+| **Status** | Done |
 | **In Progress seit** | 2026-08-05 |
+| **Done am** | 2026-08-05 |
 
 **Beschreibung:** Im echten Test (2026-07-27) zeigte die Warteschlangen-Ansicht alle sechs Länderkarten und alle sechs Würfel mit dem Hinweis „waiting until it reaches you" an, auch für Elemente, die noch gar nicht bei dieser Person angekommen sind. Als Spielender ist dadurch nicht erkennbar, was konkret gerade bei der eigenen Station liegt und was nur theoretisch später ankommen könnte.
 
@@ -2295,11 +2298,11 @@ Neue Testdatei im echten Repo: `tests/game-round4-warteschlange.static.test.js` 
 
 **Sonstiges:** Beim ersten `git status --porcelain`-Check (Schritt 0) lagen `Backlog.md`, `public/spiel.html`, `src/i18n/uebersetzungen.js` und `public/js/i18n/uebersetzungen.js` bereits unversioniert im erwarteten, mit dieser Spec deckungsgleichen Zustand vor (Spec + BDD-Testplan bereits in `Backlog.md`, Filteränderung bereits in `spiel.html`, i18n-Schlüssel bereits entfernt) — offenbar Ergebnis eines vorangegangenen `flow-game-analyze`/`flow-game-bdd`-Durchlaufs vom selben Tag. Übernommen und verifiziert statt neu geschrieben; die i18n-Entfernung wurde wie oben begründet rückgängig gemacht. Ein verwaistes `.git/index.lock` (Zeitstempel vor dieser Session) sowie ein `refs/stash.lock`, das durch einen `git stash`-Vergleichslauf in dieser Session entstand, ließen sich über `device_bash` nicht löschen (`Operation not permitted`, FUSE-Mount-Eigenheit) — `git stash list` ist inzwischen leer, die Locks sind nach aktuellem Stand vermutlich nur noch Datei-Leichen ohne aktive Sperrwirkung auf Lesezugriffe, sollten aber vor dem nächsten `git commit` geprüft werden (`ps aux | grep -i git` zeigt keinen laufenden Prozess).
 
-Nicht committet, nicht gepusht — das bleibt `flow-game-release` nach Stephans Freigabe vorbehalten.
+**Release durchgeführt (`flow-game-release`):** Release-Commit `3eb1eca` gepusht, GitHub-Actions-Lauf grün, Live-Code-Verifikation bestätigt. Automatisierter Regressionslauf inkl. Firestore-Security-Rules-Emulator von Stephan selbst ausgeführt: 2/2 Suiten, 114/114 Tests grün. Der laut Testplan geforderte echte Mehrpersonen-Test mit unabhängigen Geräten wurde von Stephan durchgeführt und bestätigt (2026-08-05).
+
+**Status:** Release, automatisierter Regressionslauf (inkl. Security-Rules-Emulator) und echter Mehrpersonen-Test mit unabhängigen Geräten abgeschlossen. Von Stephan am 2026-08-05 auf Done bestätigt.
 
 ---
-
-## ✅ Done
 
 ### FEATURE-018 Spiel auch ohne separaten Gastgeber spielbar (Host kann mitspielen)
 
