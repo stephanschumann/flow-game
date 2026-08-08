@@ -21,6 +21,7 @@
     "test:emulator:feature-008": "firebase emulators:exec --only firestore \"jest tests/game-drag-drop.security.rules.test.js\"",
     "test:static:feature-008": "jest tests/game-drag-drop.static.test.js tests/game-drag-drop.logic.test.js",
     "test:static:bugfix-013": "jest tests/game-bugfix-013-textmarkierung.static.test.js tests/game-bugfix-013-manual-checks.test.js",
+    "test:static:bugfix-014": "jest tests/game-bugfix-014-createGame-browser.integration.test.js tests/game-connection-retry.static.test.js tests/game-connection-retry.logic.test.js tests/game-connection-retry.integration.test.js",
     "test:static:feature-010": "jest tests/game-waittime.logic.test.js",
     "test:emulator:feature-010": "firebase emulators:exec --only firestore \"jest tests/game-waittime.security.rules.test.js\"",
     "test:emulator:feature-018": "firebase emulators:exec --only firestore \"jest tests/game-feature-018-host-mitspielen.security.rules.test.js\"",

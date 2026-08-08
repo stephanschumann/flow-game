@@ -19,6 +19,19 @@
  * mitVerbindungsRetry() (aus verbindungsRetry.js) abgesichert. Die
  * CODE_KOLLISION-Retry-Schleife bleibt davon unberührt.
  *
+ * BUGFIX-014 (2026-08-08): Der obige BUGFIX-001-Absatz beschrieb den Fix nur
+ * im Kommentar – die Transaktion unten war bis zu diesem Ticket tatsächlich
+ * NICHT mit mitVerbindungsRetry() umschlossen (0 echte Aufrufe im
+ * Funktionskörper). Jetzt 1:1 nach dem Muster von src/game/createGame.js
+ * (Node-Referenz, dort bereits korrekt) sowie public/js/game/joinGame.js/
+ * teilnehmerSession.js nachgezogen: die gesamte db.runTransaction(...) ist
+ * jetzt in mitVerbindungsRetry() eingebettet, inklusive optionalem
+ * `retryOptionen`-Parameter (Default {}). Die CODE_KOLLISION-Fehlerbehandlung
+ * (äußere Schleife über Zufallscodes) bleibt dabei unverändert – siehe
+ * src/game/createGame.js für die Begründung, warum das unbedenklich ist
+ * (istTransienterVerbindungsFehler() erkennt CODE_KOLLISION nicht als
+ * transienten Verbindungsfehler und wirft ihn sofort unverändert weiter).
+ *
  * FEATURE-018 (2026-08-04): optionaler `mitspielen`-Parameter – siehe
  * Kopfkommentar in src/game/createGame.js für die vollständige Begründung
  * (Node-Referenz, muss synchron gehalten werden).
@@ -60,7 +73,7 @@
 
   async function createGame({
     hostAnzeigename, uid, sprache, mitspielen,
-  }, db) {
+  }, db, retryOptionen = {}) {
     if (!hostAnzeigename || !hostAnzeigename.trim()) {
       const fehler = new Error('Anzeigename ist erforderlich.');
       fehler.code = 'ANZEIGENAME_ERFORDERLICH';
@@ -87,7 +100,7 @@
       const spielRef = db.collection('spiele').doc(code);
 
       try {
-        await db.runTransaction(async (tx) => {
+        await mitVerbindungsRetry(() => db.runTransaction(async (tx) => {
           const bestehend = await tx.get(spielRef);
           if (bestehend.exists) {
             throw new Error('CODE_KOLLISION');
@@ -115,7 +128,7 @@
           // FEATURE-018 (Befund 3/4, Option A): hostKennung bewusst NICHT
           // mehr auf dieses Dokument geschrieben.
           tx.set(spielRef.collection('teilnehmende').doc(uid), teilnehmerDaten);
-        });
+        }), retryOptionen);
         return { code, hostSessionKennung: hostKennung };
       } catch (err) {
         if (err.message === 'CODE_KOLLISION') {

@@ -4,6 +4,192 @@
 
 ## 📋 ToDo
 
+### BUGFIX-014 Browser-Produktivcode wendet den BUGFIX-001-Verbindungs-Retry bei Spielerstellung nie an
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Bug |
+| **Priorität** | Hoch |
+| **Erstellt** | 2026-08-08 |
+| **Status** | In Progress |
+| **Analyse am** | 2026-08-08 |
+| **Spec freigegeben am** | 2026-08-08 |
+| **In Progress seit** | 2026-08-08 |
+
+**Beschreibung:** Code-Prüfung (eigenständig verifiziert per frischem Klon von `github.com/stephanschumann/flow-game`, nicht übernommen) bestätigt eine reale Divergenz zwischen der Node-Referenzimplementierung und dem tatsächlich produktiv im Browser laufenden Code beim Erstellen eines Spiels:
+
+- `src/game/createGame.js`, Zeile 110–139: Die Transaktion ist korrekt in den BUGFIX-001-Retry gewrappt: `await mitVerbindungsRetry(() => db.runTransaction(async (tx) => { ... }), retryOptionen);`
+- `public/js/game/createGame.js`, Zeile 90–118: Dieselbe Transaktion läuft dort **ungeschützt**: `await db.runTransaction(async (tx) => { ... });` — kein `mitVerbindungsRetry()`-Aufruf. Die Funktion importiert `mitVerbindungsRetry` zwar (Zeile 29: `const { mitVerbindungsRetry } = global.FlowGame;`), verwendet sie im Funktionskörper aber nirgends.
+- Der Kopfkommentar in `public/js/game/createGame.js` (Zeile 16–20) behauptet dennoch ausdrücklich, die Absicherung sei vorhanden: „... trägt auf einem frischen Gerät dasselbe 'client is offline'-Risiko wie in joinGame.js beschrieben – deshalb ebenfalls mit mitVerbindungsRetry() ... abgesichert." Diese Aussage ist für den tatsächlichen Kontrollfluss falsch.
+
+**Eigene Verifikation durch ausführbare Reproduktion (kein reiner Code-Vergleich):** Ein minimales Skript lädt beide Kopien mit einer Fake-Firestore, deren erster `runTransaction()`-Aufruf mit dem exakten „client is offline"-Fehler fehlschlägt (identisch zum ursprünglichen BUGFIX-001-Szenario). Ergebnis: Die Node-Kopie (`src/game/createGame.js`) erholt sich über `mitVerbindungsRetry()` und liefert beim zweiten Versuch ein Ergebnis. Die Browser-Kopie (`public/js/game/createGame.js`) wirft den Fehler sofort unverändert weiter — kein Retry. Damit ist der ursprünglich gemeldete BUGFIX-001-Bug ("client is offline" beim Beitritt/Erstellen auf frischem Gerät) für den Spielerstellungs-Pfad im produktiven Browser-Code weiterhin real reproduzierbar, obwohl BUGFIX-001 seit 2026-07-21 als Done gilt.
+
+**User Story:** Als Person, die auf einem frischen Gerät (leerer Firestore-Cache, z. B. privates Browserfenster) ein neues Spiel erstellt statt beizutreten, möchte ich, dass ein kurzer transienter Verbindungsfehler automatisch abgefangen wird, sodass die Spielerstellung nicht mit „client is offline" scheitert — genau die Zusicherung, die BUGFIX-001 für den Beitritts-Pfad bereits gibt.
+
+**Warum die Test-Suite das nicht gefangen hat:**
+Die BUGFIX-001-Testsuite besteht aus drei Dateien. Zwei davon (`tests/game-connection-retry.logic.test.js`, `tests/game-connection-retry.integration.test.js`) rufen ausschließlich die Node-Referenzmodule auf (`require('../src/game/createGame')` usw., integration.test.js Zeile 41–43) — die Browser-Kopie wird von diesen Tests nie geladen oder ausgeführt, ihr tatsächlicher Kontrollfluss wird also nie geprüft.
+Die dritte Datei (`tests/game-connection-retry.static.test.js`) ist die einzige, die beide Dateikopien überhaupt anfasst — aber nur als reiner Text-/Kommentar-Zähler: `zaehleTreffer()` (Zeile 38–41) zählt Vorkommen des Musters `/client is offline/gi` im rohen Dateiinhalt und die Assertion (Zeile 69–79, Szenario „createGame.js") verlangt lediglich, dass beide Kopien gleich oft treffen. Da der (faktisch falsche) Kopfkommentar in `public/js/game/createGame.js` die Phrase „client is offline" genau einmal enthält — exakt wie der Kommentar in der Node-Datei — ist die Trefferzahl identisch (1 = 1), und der Test ist grün, ohne dass irgendwo geprüft wird, ob `mitVerbindungsRetry()` im Funktionskörper tatsächlich aufgerufen wird. Ein Kommentar, der den Fix nur behauptet, reicht für dieses Test-Design bereits aus.
+
+Real durchgeführter Beleg (nicht nur behauptet): `npx jest tests/game-connection-retry.logic.test.js tests/game-connection-retry.integration.test.js tests/game-connection-retry.static.test.js` in einem frischen Klon des aktuellen `main`-Branchs ausgeführt → **3 Test-Suiten, 24/24 Tests GRÜN** — trotz des oben nachgewiesenen, weiterhin bestehenden Browser-Bugs.
+
+**Kernursache (kompakt):** Tests decken die Verbindungs-Retry-Logik nur an der Node-Referenz mit echten Funktionsaufrufen ab; der einzige Abgleich mit der Browser-Kopie ist ein reiner Text-/Kommentar-Zähler ohne Aussage über den tatsächlichen Kontrollfluss. Ein Duplikat-Verhaltens-Check zwischen Node- und Browser-Fassung (z. B. Aufruf-Reihenfolge/-Struktur statt Kommentartext) existiert nicht.
+
+**Kontext/Verweise:** BUGFIX-001 (Status Done, 2026-07-21) deklariert in seinem Abschnitt „Geänderte Dateien" ausdrücklich, `src/game/createGame.js` **und** `public/js/game/createGame.js` seien beide mit `mitVerbindungsRetry()` um die Transaktion umschlossen worden, und meldet „4/4 Testfälle grün, Treffer-Gleichstand zwischen beiden Dateikopien" als Beleg. Dieser Beleg ist für den Browser-Code faktisch nicht zutreffend — der BUGFIX-001-Fix ist damit für den Spielerstellungs-Pfad im produktiven Browser nur teilweise wirksam, auch wenn sein eigener Status unverändert Done bleiben kann (Einordnung dazu liegt bei Stephan). Gefunden im Rahmen einer Code-Prüfung, die durch die Analyse von FEATURE-011 „Gastgeber-Rolle zurückerlangen können" ausgelöst wurde (dort wurde `createGame.js`/`joinGame.js` im Detail zwischen Node- und Browser-Kopie verglichen).
+
+---
+
+#### Analyse (flow-game-analyze, 2026-08-08)
+
+**Kontext gelesen:** Ticket-Beschreibung, eigene Verifikation und Root-Cause-Analyse waren bereits vollständig im Ticket vorhanden (siehe oben) und wurden zusätzlich durch eine eigene, frische Code-Prüfung an den lokalen Repo-Dateien bestätigt (siehe Pflicht-Code-Verifikation unten). `Product.md`/`Flow-Game-Entscheidungen.md` wurden nicht zusätzlich benötigt, da dieses Ticket keine neue fachliche Entscheidung trifft, sondern exakt dem bereits von Stephan am 2026-07-21 (BUGFIX-001) freigegebenen Muster folgt (siehe Annahmen-Protokoll Punkt 1).
+
+**Pflicht-Code-Verifikation der Prämissen (eigenständig, per Geräte-Brücke am kanonischen lokalen Repo-Pfad `/Users/stephan/Claude/Projects/Flow Game`, nicht nur aus dem Ticket übernommen):**
+- `src/game/createGame.js` Zeile 110–139 gelesen: bestätigt `await mitVerbindungsRetry(() => db.runTransaction(async (tx) => { ... }), retryOptionen);` — korrekt gewrappt.
+- `public/js/game/createGame.js` Zeile 90–118 gelesen: bestätigt `await db.runTransaction(async (tx) => { ... });` ohne `mitVerbindungsRetry()`. `mitVerbindungsRetry` wird Zeile 29 aus `global.FlowGame` destrukturiert, aber im gesamten Funktionskörper nie aufgerufen.
+- Kopfkommentar `public/js/game/createGame.js` Zeile 16–20 gelesen: behauptet exakt die (tatsächlich nicht vorhandene) Absicherung — bestätigt die Ticket-Aussage wörtlich.
+- Zum Vergleich `src/game/joinGame.js` + `public/js/game/joinGame.js` sowie `src/game/teilnehmerSession.js` + `public/js/game/teilnehmerSession.js` gelesen: in **beiden** Dateipaaren ist in **beiden** Kopien (Node UND Browser) jede `.get()`/`runTransaction()`-Stelle tatsächlich mit `await mitVerbindungsRetry(() => ...)` umschlossen — hier ist das Muster korrekt und symmetrisch umgesetzt, im Unterschied zu `createGame.js`. Diese beiden Dateien dienen unten als Vorbild für den Fix.
+- `tests/game-connection-retry.static.test.js` Zeile 29–80 gelesen: bestätigt die im Ticket beschriebene Testlücke wörtlich — `zaehleTreffer()` zählt Rohtext-Vorkommen von `/client is offline/gi` im gesamten Dateiinhalt (inkl. Kopfkommentar), die Assertion vergleicht nur Trefferzahlen zwischen beiden Kopien, ohne jeden Bezug zu einem tatsächlichen Funktionsaufruf.
+- `tests/game-connection-retry.logic.test.js` und `tests/game-connection-retry.integration.test.js` gelesen: beide `require()`n ausschließlich `../src/game/...` (Node-Referenz) — die Browser-Kopie `public/js/game/createGame.js` wird in keiner der drei Testdateien jemals tatsächlich ausgeführt.
+
+**Annahmen-Protokoll (Pflicht):**
+1. ✅ Klar ableitbar: Dieses Ticket führt keine neue fachliche Entscheidung ein, sondern schließt eine Lücke bei der bereits am 2026-07-21 (BUGFIX-001) getroffenen und freigegebenen Entscheidung, den Host-Erstellungspfad ebenfalls mit `mitVerbindungsRetry()` abzusichern. Keine Rückfrage nötig.
+2. ⚠️ Annahme: Der Status von BUGFIX-001 selbst bleibt unverändert „Done" (im Ticket unter „Kontext/Verweise" bereits als Stephans Entscheidung offengelassen) — dieses Ticket korrigiert die Lücke, ohne den Beleg-Status von BUGFIX-001 rückwirkend zu ändern. Bitte bestätigen.
+3. ⚠️ Annahme: Die Retry-Parameter (Obergrenze 4 Versuche, Basis-Wartezeit 400ms) bleiben unverändert wie bei BUGFIX-001 — keine neue Kalibrierung nötig, da dieselbe Fehlerklasse auf demselben technischen Pfad (Firestore-Transaktion direkt nach `signInAnonymously()`) behoben wird. Bitte bestätigen.
+
+**Brainstorming / Example Mapping:**
+- Regel: Jede Firestore-Transaktion, die auf einem frischen Gerät unmittelbar nach der anonymen Anmeldung läuft, muss gegen den bekannten, transienten „client is offline"-Fehler abgesichert sein (BUGFIX-001-Grundsatz, gilt projektweit, nicht nur für den Beitritt).
+- Beispiel 1: Eine Person öffnet die Startseite in einem frischen Privatfenster und klickt sofort auf „Spiel erstellen", bevor die Firestore-Verbindung steht → heute: Absturz mit „client is offline", obwohl genau dieser Fall für den Beitritts-Pfad seit BUGFIX-001 bereits abgefangen wird.
+- Beispiel 2: Dieselbe Person versucht es ein zweites Mal (Browser hat inzwischen eine Verbindung aufgebaut) → Erstellung gelingt sofort, ohne dass sie versteht, warum es beim ersten Mal nicht ging.
+- Beispiel 3 (Testlücken-Beispiel): Ein künftiger Eingriff in `public/js/game/joinGame.js` entfernt versehentlich einen der beiden bestehenden `mitVerbindungsRetry()`-Aufrufe (Copy-Paste-Fehler), der Kopfkommentar bleibt aber unverändert → der bestehende Text-Zähler-Test bleibt trotzdem grün, weil die Kommentar-Erwähnung weiterhin zählt. Genau dieses Muster hat den hier vorliegenden Bug bereits einmal produziert.
+
+**Pflichtfragen: Fundstellen-Sweep & Zustands-Check**
+
+Fundstellen-Sweep: Suchbegriff `mitVerbindungsRetry(` (echter Aufruf, nicht nur Erwähnung) gegen alle Dateien unter `src/game/` und `public/js/game/`, die diesen Namen importieren, geprüft:
+- `src/game/joinGame.js`: 2 echte Aufrufe (Vorab-Check, Transaktion) — korrekt.
+- `public/js/game/joinGame.js`: 2 echte Aufrufe — korrekt, synchron zur Node-Kopie.
+- `src/game/teilnehmerSession.js`: 1 echter Aufruf (Vorab-Read) — korrekt.
+- `public/js/game/teilnehmerSession.js`: 1 echter Aufruf — korrekt, synchron.
+- `src/game/createGame.js`: 1 echter Aufruf (Transaktion) — korrekt.
+- `public/js/game/createGame.js`: **0 echte Aufrufe** — Lücke, Scope dieses Tickets.
+- `public/spiel.html`, Funktion `pruefeStationsVerfuegbarkeit()`: 1 echter Aufruf über `window.FlowGame.mitVerbindungsRetry(...)` — korrekt (bereits durch BUGFIX-001 abgedeckt).
+Keine weiteren Fundstellen mit derselben strukturellen Lücke — nur `createGame.js` (Browser-Kopie) betroffen.
+
+Zustands-Check:
+- Wartezustand: Kein neuer Wartezustand nötig — die bestehende Ladeanzeige beim Spiel-Erstellen (BUGFIX-002) deckt die Zeit während der (ggf. wiederholten) Transaktion bereits ab; eine sichtbare Verzögerung bei einem Retry (bis ca. 2,4s bei voller Ausschöpfung: 400+800+1200ms) bleibt innerhalb dieser bestehenden Ladeanzeige.
+- Leerzustand: Nicht relevant (kein „keine Daten"-Fall bei der Spielerstellung).
+- Fehlerfall: Schlägt der Verbindungsaufbau auch nach der vollen Anzahl an Versuchen fehl (echtes Offline-Gerät), erscheint exakt dieselbe, bereits bestehende Fehlermeldung wie heute beim einmaligen Fehlschlag — kein neues Fehlerbild, nur eine kurze automatische Wiederholung davor.
+
+**Akzeptanzkriterien (Alltagssprache, keine Funktions-/Dateinamen):**
+1. Erstellt eine Person auf einem ganz frischen Gerät (z. B. privates Browserfenster, noch keine bestehende Verbindung zum Spiel-Server) ein neues Spiel, und die Verbindung braucht einen kurzen Moment zum Aufbauen, gelingt die Spielerstellung trotzdem automatisch beim zweiten oder dritten stillen Versuch im Hintergrund — die Person bekommt keine Fehlermeldung zu sehen, nur eine minimal längere, bereits bekannte Ladeanzeige.
+2. Ist die Internetverbindung des Geräts tatsächlich dauerhaft gestört, bekommt die Person nach einer kurzen, begrenzten Anzahl automatischer Versuche weiterhin eine verständliche Fehlermeldung — kein endloses Warten, kein Hängenbleiben ohne jede Rückmeldung.
+3. Alle anderen Gründe, warum eine Spielerstellung fehlschlägt (z. B. ein doppelt vergebener Spielcode wird sofort neu gewürfelt, ein fehlender Name), verhalten sich exakt wie bisher — keine zusätzliche Wartezeit, keine veränderte Fehlermeldung.
+4. Das bereits bestehende, gleiche Verhalten beim Beitreten zu einem Spiel und beim automatischen Wiederbetreten einer Sitzung bleibt vollständig unverändert (keine Regression).
+5. Wird künftig geprüft, ob Spielerstellung und Beitritt dieselbe Absicherung gegen kurze Verbindungsaussetzer besitzen, zeigt diese Prüfung einen echten Unterschied im Verhalten auf, sobald einer der beiden Wege diese Absicherung tatsächlich verliert — nicht nur, ob irgendwo im Programmcode ein erklärender Text darüber steht.
+
+**Pre-Mortem – was könnte schiefgehen:**
+1. **Der Fix wird nur in der Browser-Kopie nachgezogen, aber der verschärfte Duplikat-Test läuft nicht dauerhaft mit, und beide Kopien driften beim nächsten Feature erneut auseinander.** Gegenmaßnahme: der reparierte Test (siehe Implementierungsoption Teil 2) bleibt Teil der regulären Test-Suite, nicht nur ein einmaliger Check für dieses Ticket.
+2. **Die Korrektur führt dazu, dass die CODE_KOLLISION-Retry-Schleife (äußere `for`-Schleife über `maxVersuche` Zufallscodes) mit dem neuen `mitVerbindungsRetry()`-Wrapper kollidiert** — z. B. weil ein `CODE_KOLLISION`-Fehler fälschlich als transienter Verbindungsfehler behandelt und verzögert statt sofort weitergereicht wird. Gegenmaßnahme: `istTransienterVerbindungsFehler()` erkennt `CODE_KOLLISION` schon heute nicht (kein passender `err.code`, kein passender Text) — dieses bereits in `src/game/createGame.js` bewährte Verhalten muss 1:1 in die Browser-Kopie übertragen, nicht neu erfunden werden; expliziter Regressionstest „CODE_KOLLISION wird weiterhin sofort und ohne Retry-Verzögerung behandelt" nötig.
+3. **Der reparierte Test wird zu eng und bricht bei jeder harmlosen Formatierungsänderung** (z. B. Zeilenumbruch innerhalb des Aufrufs), was Entwickler dazu verleiten könnte, den Test „mal eben" abzuschwächen. Gegenmaßnahme: Prüfung auf Vorhandensein des Funktionsaufrufs `mitVerbindungsRetry(` im kommentarbereinigten Funktionskörper, nicht auf exakten Zeichenkettenvergleich einer ganzen Codezeile — toleriert Formatierungsänderungen, erkennt aber das vollständige Fehlen des Aufrufs zuverlässig.
+4. **Zwei Spielerstellungen mit zufällig identischem Code geraten unter Retry-Bedingungen in Konflikt (Race Condition):** unwahrscheinlich (8-stelliger Zufallscode aus 33 Zeichen), aber bereits heute durch die bestehende `tx.get(spielRef)`-Prüfung + `CODE_KOLLISION`-Wurf innerhalb derselben, jetzt wiederholbaren Transaktion abgesichert — ein Retry der ganzen Transaktion ändert daran nichts, da Firestore-Transaktionen erst am Ende atomar committen (dasselbe bereits bei BUGFIX-001 für `joinGame()` geprüfte Prinzip).
+5. **Mehrere Retry-Versuche wirken für die Person wie ein Einfrieren der Seite, wenn keine sichtbare Zwischenmeldung erscheint.** Gegenmaßnahme: die bereits bestehende Ladeanzeige aus BUGFIX-002 deckt den Zeitraum ab (siehe Zustands-Check) — kein neuer UI-Baustein nötig, aber im Testplan explizit gegenprüfen, dass sie während des Retrys sichtbar bleibt.
+
+**Zusammenspiel bestehender Bausteine (Pflicht):**
+- **Berührte Bausteine:** `public/js/game/createGame.js` (`createGame()`), `public/js/game/verbindungsRetry.js` (`mitVerbindungsRetry()`, bereits vorhanden und bereits in dieselbe Datei importiert, nur ungenutzt), die äußere CODE_KOLLISION-Versuchsschleife (`for`-Schleife über `maxVersuche` Zufallscodes) in derselben Funktion, sowie `tests/game-connection-retry.static.test.js` (Testlücke).
+- **Reihenfolge:** Host löst „Spiel erstellen" aus → `createGame()` würfelt einen Zufallscode → **(heute ungeschützt, künftig per `mitVerbindungsRetry()` gewrappt)** `db.runTransaction(...)` liest `spielRef`, prüft auf Code-Kollision, schreibt bei Erfolg Spiel-Dokument + Geheimnis + Teilnehmer-Dokument → bei einem `CODE_KOLLISION`-Fehler springt die äußere Schleife sofort zum nächsten Zufallscode (unverändert) → bei einem transienten Verbindungsfehler wiederholt `mitVerbindungsRetry()` künftig zuerst mehrfach innerhalb desselben Codeversuchs, bevor überhaupt ein neuer Code gewürfelt wird.
+- **Kombinationen, die zu einem Fehler führen könnten:** (a) Ein transienter Verbindungsfehler wird fälschlich wie `CODE_KOLLISION` behandelt und löst einen unnötigen neuen Codeversuch statt eines Retries auf demselben Code aus (siehe Pre-Mortem-Risiko 2) — ausgeschlossen, da `istTransienterVerbindungsFehler()` eindeutig zwischen beiden Fehlerarten unterscheidet. (b) Zwei Personen erstellen nahezu gleichzeitig ein Spiel und würfeln zufällig denselben Code, während beide Transaktionen gleichzeitig einen Retry durchlaufen — bereits durch die bestehende, unveränderte `tx.get()`+`CODE_KOLLISION`-Logik pro Versuch sicher aufgelöst.
+
+**Node-Referenz/Browser-Sync-Check (Pflicht, BUGFIX-011-Muster):**
+- `src/game/createGame.js:110` vs. `public/js/game/createGame.js:90` — Kernabweichung dieses Tickets, oben im Detail belegt.
+- `src/game/joinGame.js:100,126` vs. `public/js/game/joinGame.js:80,103` — beide Kopien inhaltlich synchron, kein Risiko, dienen als Vorbild.
+- `src/game/teilnehmerSession.js:66` vs. `public/js/game/teilnehmerSession.js:33` — beide Kopien inhaltlich synchron, kein Risiko, dienen als Vorbild.
+- Als eigenes Risiko im Pre-Mortem aufgenommen (Risiko 1): künftiges erneutes Auseinanderlaufen — Gegenmaßnahme ist der verschärfte Test aus Implementierungsoption Teil 2.
+
+**Betroffene Architektur (grob):**
+- `public/js/game/createGame.js` — einzige zu ändernde Produktivcode-Datei (die Transaktion um `mitVerbindungsRetry()` ergänzen, analog zu `joinGame.js`/`teilnehmerSession.js`).
+- `tests/game-connection-retry.static.test.js` — Testlücke schließen (siehe Implementierungsoption Teil 2).
+- Explizit NICHT betroffen: `src/game/createGame.js` (bereits korrekt), `firestore.rules` (keine neue Berechtigung, reine Client-Zuverlässigkeit), das Firestore-Datenmodell, jede Form serverautoritativer Zeitmessung (Product.md), `joinGame.js`/`teilnehmerSession.js` (beide Kopien bereits korrekt, dienen nur als Vorbild).
+
+**Regressionsrisiko gegen bereits abgenommene Tickets:**
+- **BUGFIX-001 (Done):** Der Fix darf das dort etablierte Verhalten für `joinGame.js`/`teilnehmerSession.js` nicht verändern — reiner Zusatz in `createGame.js`. Regressionstest: bestehende 24 Testfälle aus den drei `game-connection-retry.*`-Dateien müssen nach der Testreparatur weiterhin (bzw. neu) grün sein.
+- **FEATURE-018 (Host kann mitspielen, Done):** `createGame()` enthält seit FEATURE-018 den zusätzlichen `mitspielen`-Zweig (Stationszuweisung für den Host) innerhalb derselben Transaktion — der Retry-Wrapper darf diese Logik nicht verändern, nur die gesamte Transaktion umschließen (wie in der Node-Referenz bereits geschehen). Regressionstest: bestehende `tests/game-feature-018-host-mitspielen.*`-Suiten bleiben unverändert grün.
+- **BUGFIX-005 (Done):** Betrifft nur `joinGame.js`, keine Berührung durch dieses Ticket, nur zur Vollständigkeit geprüft.
+
+**Implementierungsoptionen mit Empfehlung:**
+
+*Teil 1 – Funktionaler Fix (Produktivcode):*
+- **Option A (empfohlen):** `public/js/game/createGame.js` 1:1 an das bereits produktiv bewährte, korrekte Muster aus `src/game/createGame.js` UND aus `joinGame.js`/`teilnehmerSession.js` (beide Kopien) angleichen: `await db.runTransaction(async (tx) => { ... });` wird zu `await mitVerbindungsRetry(() => db.runTransaction(async (tx) => { ... }), retryOptionen);`, inklusive Ergänzung eines optionalen `retryOptionen`-Parameters an der Funktionssignatur (Default `{}`, analog zur Node-Referenz). Vorteil: exakte Angleichung an ein bereits zweimal (joinGame, teilnehmerSession) bewährtes, symmetrisches Muster, minimaler Diff, kein neues Konzept. Nachteil: keiner erkennbar.
+- **Option B (nicht empfohlen):** Nur den Kopfkommentar korrigieren (ehrlich machen, dass keine Absicherung besteht), ohne den Code zu ändern. Löst das eigentliche Nutzerproblem nicht und widerspricht der bereits von Stephan getroffenen BUGFIX-001-Entscheidung, den Host-Erstellungspfad ausdrücklich mit abzusichern.
+
+**Empfehlung Teil 1 (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A.
+
+*Teil 2 – Testlücken-Fix (damit ein Duplikat-Verhaltens-Check zwischen Node- und Browser-Fassung künftig echten Kontrollfluss statt Kommentartext prüft):*
+- **Option A (empfohlen):** Die drei bestehenden `describe`-Blöcke für `joinGame.js`/`teilnehmerSession.js`/`createGame.js` in `tests/game-connection-retry.static.test.js` werden von einem reinen Rohtext-Zähler (`/client is offline/gi` im ganzen Dateiinhalt) auf eine Prüfung des tatsächlichen Aufrufs umgestellt: Kommentare (Block- `/* */` und Zeilenkommentare `//`) werden aus dem Dateiinhalt zuerst entfernt, danach wird gezählt, wie oft `mitVerbindungsRetry(` als echter Aufruf im verbleibenden Code vorkommt — dieser Zähler muss zwischen Node- und Browser-Kopie übereinstimmen UND größer als 0 sein. Damit hätte der hier vorliegende Bug den Test sofort rot werden lassen (Browser-Zähler 0 vs. Node-Zähler 1). Vorteil: schließt die Lücke für alle drei bereits bestehenden Szenarien auf einen Schlag, nutzt dieselbe Grundtechnik (Funktionskörper-/Code-Extraktion statt reinem Volltext-Scan), die im Projekt bereits an anderer Stelle bewährt ist (`tests/game-round4-bearbeitungszeit.static.test.js`, dort Ausschluss reiner Kommentar-Erwähnungen durch Verlangen eines unmittelbar vorangehenden Punkts). Nachteil: etwas mehr Testcode als eine reine Zähl-Anpassung.
+- **Option B (nicht empfohlen):** Nur das eine betroffene Szenario (`createGame.js`) reparieren, `joinGame.js`/`teilnehmerSession.js` unverändert lassen. Nachteil: lässt dieselbe strukturelle Testschwäche für zwei weitere, aktuell zufällig korrekte Dateien bestehen — ein künftiger Regressionsfall dort (siehe Brainstorming-Beispiel 3) bliebe erneut unentdeckt.
+
+**Empfehlung Teil 2 (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option A — alle drei Szenarien in derselben Implementierungs-Session umstellen, da die zugrunde liegende Testschwäche identisch ist und die Zusatzarbeit gering ist im Vergleich zum wiederholten Risiko eines unentdeckten Bugs.
+
+**Kein Prototyp nötig:** Reine Backend-/Zuverlässigkeitslogik-Ergänzung und Testinfrastruktur-Korrektur — keine neue Interaktion, kein neues Layout, keine UI/UX-Variante zur Debatte.
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Freigabe dieser Spec):**
+- Given der Transaktions-Lesevorgang beim Spielerstellen schlägt beim ersten Versuch mit dem bekannten Verbindungsfehler fehl und beim zweiten Versuch erfolgreich, When ein Host auf einem frischen Gerät ein Spiel erstellt, Then gelingt die Erstellung trotzdem, ohne dass die Person eine Fehlermeldung sieht (AK1) — als echter Funktionsaufruf-Test gegen `public/js/game/createGame.js`, nicht nur gegen die Node-Referenz (schließt die Lücke aus `game-connection-retry.integration.test.js`, das bislang nur `src/game/...` aufruft).
+- Given jeder Versuch schlägt mit demselben Verbindungsfehler fehl, When die konfigurierte Obergrenze erreicht ist, Then erscheint die reguläre, verständliche Fehlermeldung, kein endloses Warten (AK2).
+- Given ein `CODE_KOLLISION`-Fehler tritt auf, When die Transaktion diesen Fehler wirft, Then wird sofort und ohne Retry-Verzögerung ein neuer Code versucht — unverändertes Regressionsverhalten (AK3, Pre-Mortem-Risiko 2).
+- Given die bestehenden `joinGame()`/`restoreTeilnehmerSession()`-Pfade, When sie nach diesem Fix erneut geprüft werden, Then verhalten sie sich unverändert (AK4, Regressionstest gegen die bestehenden 24 Testfälle in den drei `game-connection-retry.*`-Dateien).
+- Neuer statischer Test: Given der reparierte Duplikat-Verhaltens-Check aus Implementierungsoption Teil 2, When er gegen den aktuellen (gefixten) Stand von `createGame.js`/`joinGame.js`/`teilnehmerSession.js` läuft, Then zeigt er für alle drei Dateipaare eine übereinstimmende, größer-als-0-Trefferzahl echter `mitVerbindungsRetry(`-Aufrufe (AK5).
+- Regressionstest: `tests/game-feature-018-host-mitspielen.*`-Suiten (Logik- und Sicherheitsregel-Tests) bleiben unverändert grün, da der `mitspielen`-Zweig innerhalb der jetzt gewrappten Transaktion unverändert bleibt.
+
+**Offene Fragen an Stephan:** Keine funktional-kritischen (🔴) Fragen — der Fall ist durch BUGFIX-001 bereits präzedenzhaft entschieden. Zwei ⚠️-Annahmen oben (Annahmen-Protokoll Punkte 2 und 3) bitte kurz bestätigen.
+
+---
+
+#### Testplan (flow-game-bdd, 2026-08-08)
+
+Neue/geänderte Testdateien (direkt über die Geräte-Brücke im echten Repo `/Users/stephan/Claude/Projects/Flow Game` angelegt bzw. geändert, kein Sandbox-Klon):
+
+- **`tests/game-bugfix-014-createGame-browser.integration.test.js`** (neu) — lädt die ECHTE Browser-Kopie `public/js/game/createGame.js` (+ `verbindungsRetry.js`) über eine minimale `vm`-Sandbox mit `window` als globalem Objekt und ruft `FlowGame.createGame()` tatsächlich auf (kein Text-/Kommentar-Scan). Schließt damit exakt die Lücke, die BUGFIX-001s drei Testdateien offengelassen haben (siehe Ticket-Beschreibung „Warum die Test-Suite das nicht gefangen hat"). Szenarien:
+  - *Browser-Kopie createGame.js gelingt trotz einmaligem Verbindungsfehler beim ersten Versuch (AK1)* — ROT: `FlowGame.createGame()` wirft den Verbindungsfehler unverändert durch, statt automatisch erneut zu versuchen (`public/js/game/createGame.js` ruft `mitVerbindungsRetry()` im Funktionskörper aktuell nirgends auf).
+  - *Browser-Kopie createGame.js erreicht bei dauerhaftem Verbindungsfehler eine begrenzte Obergrenze (AK2)* — ROT: nur 1 tatsächlicher Lesevorgang statt mehrerer begrenzter Versuche (`versuche` bleibt bei 1, erwartet > 1).
+  - *CODE_KOLLISION bleibt in der Browser-Kopie ohne Retry-Verzögerung (AK3, Pre-Mortem-Risiko 2, Regression)* — bereits jetzt GRÜN (unabhängig vom Retry-Wrapper, bleibt es nach dem Fix).
+- **`tests/game-connection-retry.static.test.js`** (geändert, Implementierungsoption Teil 2 / Option A) — die drei `describe`-Blöcke für `joinGame.js`/`teilnehmerSession.js`/`createGame.js` prüfen jetzt echte `mitVerbindungsRetry(`-Aufrufe nach Entfernen aller Block-/Zeilenkommentare, statt eines reinen Rohtext-Zählers von „client is offline". Szenarien:
+  - *joinGame.js – beide Dateikopien rufen mitVerbindungsRetry() tatsächlich im Code auf (AK5)* — GRÜN (2/2 echte Aufrufe, bereits korrekt).
+  - *teilnehmerSession.js – beide Dateikopien rufen mitVerbindungsRetry() tatsächlich im Code auf (AK4, AK5)* — GRÜN (1/1 echte Aufrufe, bereits korrekt).
+  - *createGame.js – beide Dateikopien rufen mitVerbindungsRetry() tatsächlich im Code auf (AK5, schließt den BUGFIX-014-Bug)* — ROT: Node-Kopie 1 echter Aufruf, Browser-Kopie 0 echte Aufrufe (Kopfkommentar behauptet den Fix nur, zählt nach Kommentar-Entfernung nicht mehr).
+  - *pruefeStationsVerfuegbarkeit() behandelt den Verbindungsfehler nicht mehr still (AK3, AK6)* — unverändert GRÜN (Regressionsschutz aus BUGFIX-001, nicht Teil des BUGFIX-014-Scopes).
+- **`package.json`** — neues Skript `test:static:bugfix-014` ergänzt (führt beide neuen/geänderten Dateien plus die bestehenden `game-connection-retry.logic/integration.test.js` zusammen aus).
+
+**Real durchgeführter Testlauf (nicht nur behauptet):** `npm run test:static:bugfix-014` in der echten Geräte-Brücken-Umgebung ausgeführt → **2 Suiten rot, 2 Suiten grün, 3/27 Tests rot, 24/27 grün** — alle drei roten Fehlschläge aus inhaltlichen Gründen (fehlender Retry-Aufruf/fehlende Wiederholung), kein Modul-/Syntaxfehler. Das ist der erwartete, gewünschte Zustand vor der Implementierung (Red im Red-Green-Refactor-Sinn).
+
+**Regressionslauf (AK4, bestehende 24 BUGFIX-001-Testfälle + FEATURE-018):** `npx jest tests/game-connection-retry.logic.test.js tests/game-connection-retry.integration.test.js tests/game-feature-018-host-mitspielen.logic.test.js tests/game-feature-018-text-und-zaehler.static.test.js` → **4 Suiten, 48/48 Tests GRÜN** — `joinGame()`/`restoreTeilnehmerSession()`-Pfade sowie der FEATURE-018-`mitspielen`-Zweig bleiben unverändert.
+
+Übergabe an `flow-game-impl`: Fix in `public/js/game/createGame.js` gemäß Implementierungsoption Teil 1/Option A (Transaktion mit `mitVerbindungsRetry()` umschließen, `retryOptionen`-Parameter ergänzen) soll alle drei rot markierten Tests grün werden lassen, ohne die 48 Regressionstests zu brechen.
+
+---
+
+#### Implementierung (flow-game-impl, 2026-08-08)
+
+**Geänderte Dateien:**
+- `public/js/game/createGame.js`: Funktionssignatur um optionalen `retryOptionen = {}`-Parameter erweitert; die gesamte `db.runTransaction(...)` ist jetzt 1:1 nach dem bereits bewährten Muster aus `src/game/createGame.js` (Node-Referenz, dort schon korrekt) sowie `public/js/game/joinGame.js`/`teilnehmerSession.js` mit `mitVerbindungsRetry()` umschlossen (`await mitVerbindungsRetry(() => db.runTransaction(...), retryOptionen);`). Die äußere CODE_KOLLISION-Versuchsschleife bleibt unverändert (Pre-Mortem-Risiko 2) – `istTransienterVerbindungsFehler()` erkennt `CODE_KOLLISION` weiterhin nicht als transienten Fehler. Kopfkommentar um einen BUGFIX-014-Absatz ergänzt, der den vorherigen, faktisch falschen BUGFIX-001-Absatz richtigstellt, statt ihn zu löschen.
+- `tests/game-bugfix-014-createGame-browser.integration.test.js` (Testinfrastruktur-Fix, kein Anwendungscode, keine Assertion abgeschwächt): Die vm-Sandbox (`ladeBrowserFlowGame()`) stellte `window` bislang als reines Objekt ohne `setTimeout`/`clearTimeout` bereit – beide sind keine ECMAScript-Standard-Globals (anders als Math/Date/JSON) und deshalb in einem frischen `vm.createContext()` nicht automatisch vorhanden, ein echter Browser stellt sie aber immer bereit. `verbindungsRetry.js` ruft `setTimeout()` beim tatsächlichen Warten zwischen Retry-Versuchen als bare Identifier auf; dieser Sandbox-Mangel blieb bislang unentdeckt, weil die fehlerhafte Alt-Implementierung `mitVerbindungsRetry()` nie tatsächlich aufrief und `warte()` deshalb nie erreicht wurde. Ergänzt: `sandbox.setTimeout = setTimeout; sandbox.clearTimeout = clearTimeout;` vor `vm.createContext(sandbox)`. Reine additive Infrastruktur-Ergänzung, keine bestehende Testerwartung verändert oder abgeschwächt.
+
+**Testergebnis `npm run test:static:bugfix-014` (4 Dateien, 27 Testfälle):**
+- **Vorher (roter Ausgangsstand, bestätigt vor Implementierungsbeginn):** Test Suites: 2 failed, 2 passed (4) · Tests: 3 failed, 24 passed (27). Rot: die von `flow-game-bdd` neu geschriebene/geschärfte Testabdeckung für AK1/AK2 (`game-bugfix-014-createGame-browser.integration.test.js`, 2 Fälle) und AK5 (`game-connection-retry.static.test.js`, Szenario "createGame.js", 1 Fall).
+- **Zwischenstand (nach dem Produktivcode-Fix, vor dem Testinfrastruktur-Fix):** die statische Duplikat-Prüfung (AK5) bereits grün; die beiden Browser-Integrationstests (AK1, AK2) scheiterten neu mit `ReferenceError: setTimeout is not defined` (Sandbox-Lücke, siehe oben) statt mit der ursprünglichen Assertion.
+- **Nachher (nach dem Testinfrastruktur-Fix):** Test Suites: 4 passed, 4 total · Tests: 27 passed, 27 total, 0 failed. AK3 (CODE_KOLLISION-Regression) war bereits im Zwischenstand grün.
+
+**Node/Browser-Sync-Check (Pflichtschritt 3a):** Per Grep nach `function createGame` in `src/` und `public/` bestätigt: genau zwei Fundstellen (`src/game/createGame.js`, `public/js/game/createGame.js`), keine weiteren. Beide Fassungen jetzt identisch bezüglich Signatur (`retryOptionen = {}`) und Retry-Wrapper-Struktur um dieselbe Transaktion; einzig verbleibender, bewusster Unterschied ist die Modulform (`require`/`module.exports` vs. IIFE an `window.FlowGame`, projektbekannte, unveränderte Konvention).
+
+**Pflicht-Regressionslauf gegen alle Done-Tickets (alle 33 in dieser Sandbox tatsächlich ausführbaren, nicht-Emulator-Testdateien unter `tests/`, per Grep gegen `rules-unit-testing|localhost:8080|initializeTestEnvironment` bestimmt statt aus Dateinamen abgeleitet, siehe Skill-Regel 5l):**
+- **Ergebnis:** Test Suites: 2 failed, 31 passed (33) · Tests: 2 failed, 1 skipped, 373 passed (376 total).
+- Die 2 fehlschlagenden Suiten (`tests/deploy-regression.test.js`, `tests/feature-002-deploy-regression.test.js`) scheitern beide ausschließlich mit `TypeError: fetch failed` / `getaddrinfo EAI_AGAIN flow-game-19f01.web.app` – die Geräte-Werkstatt-VM hat keinen freien Internetzugang (bekannte Umgebungsgrenze), beide Tests rufen die echte Live-URL auf. Kein Zusammenhang mit diesem Ticket und keine durch den Code-Fix verursachte Regression.
+- Der 1 übersprungene Test (`game-a11y-static.test.js`, aria-label-Fall) ist ein bereits vor diesem Ticket bestehender `test.skip`, unverändert.
+- **Besonders geprüft (laut Spec explizit benannt):** `tests/game-feature-018-host-mitspielen.logic.test.js` (PASS) und `tests/game-feature-018-text-und-zaehler.static.test.js` (PASS) – der `mitspielen`-Zweig läuft unverändert innerhalb derselben, jetzt zusätzlich gewrappten Transaktion. Alle drei `tests/game-connection-retry.*`-Dateien (logic/integration/static) PASS – die 24 bestehenden BUGFIX-001-Fälle bleiben grün, plus 3 neue.
+- **In dieser Sandbox nicht ausführbar (Firestore-Emulator/Netzwerk, bekannte, hier nur zu benennende Umgebungsgrenze, nicht Teil dieses Tickets zu lösen):** die 14 emulatorpflichtigen Dateien – `game-rooms.logic.test.js`, `game-rooms.security.rules.test.js`, `game-round.logic.test.js`, `game-round.security.rules.test.js`, `game-round.stapel-zaehlung.test.js`, `game-i18n.logic.test.js`, `game-i18n.security.rules.test.js`, `game-rejoin.logic.test.js`, `game-evaluation.security.rules.test.js`, `game-drag-drop.security.rules.test.js`, `game-host-claim-overwrite.security.rules.test.js`, `game-feature-011-host-zurueckerlangen.security.rules.test.js`, `game-feature-018-host-mitspielen.security.rules.test.js`, `game-round4.security.rules.test.js` (per Grep bestimmt, nicht aus dem Namensmuster abgeleitet).
+
+**Transparenz zur einzigen Testcode-Änderung:** Der setTimeout/clearTimeout-Sandbox-Fix oben ist die einzige Änderung an einer Testdatei in diesem Ticket – rein additiv (fehlendes Browser-Global ergänzt), keine bestehende Assertion wurde abgeschwächt, gelöscht oder umformuliert. Kein klassischer Escape-Hatch-Fall (keine Assertion war inhaltlich falsch), aus Transparenzgründen aber hier dokumentiert, weil eine Testdatei angefasst wurde.
+
+**Status bewusst NICHT auf "Done" gesetzt** (Gate 3 gehört Stephan nach dem Release-Schritt, der hier nicht Teil des Auftrags war).
+
+---
+
 ### BUGFIX-013 Kartenverschieben zwischen Spalten löst Textmarkierung aus statt sauberem Ziehen
 
 | Feld | Wert |
