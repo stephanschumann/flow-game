@@ -188,6 +188,16 @@ Neue/geänderte Testdateien (direkt über die Geräte-Brücke im echten Repo `/U
 
 **Status bewusst NICHT auf "Done" gesetzt** (Gate 3 gehört Stephan nach dem Release-Schritt, der hier nicht Teil des Auftrags war).
 
+#### Release, Live-Verifikation und Regressionstest (2026-08-08)
+
+**Release durchgeführt (`flow-game-release`):** Commit `52f4ae9` ("BUGFIX-014: Verbindungs-Retry bei Spielerstellung im Browser-Code nachgezogen") nach `main` gepusht (Push über Stephans eigenes Terminal, da die Geräte-Brücke keinen Netzwerkzugriff für Git-Operationen hat). GitHub-Actions-Deploy automatisch ausgelöst.
+
+**Live-Verifikation (2026-08-08, per Chrome-Browser-Automation):** Die tatsächlich ausgelieferte Datei `https://flow-game-19f01.web.app/js/game/createGame.js` direkt im Browser abgerufen und mit dem lokal implementierten Fix abgeglichen — inhaltlich identisch, inklusive BUGFIX-014-Kopfkommentar und `mitVerbindungsRetry()`-Wrapper um die Transaktion. Zusätzlich den realen Spielerstellungs-Ablauf auf der Live-Seite end-to-end durchgeführt (Anzeigename eingegeben, „Spiel erstellen" geklickt): Spiel erfolgreich erstellt (Code `7QEXCK4M`, Lobby korrekt angezeigt), keine Fehlermeldung. Ein echter simulierter Verbindungsabbruch ist live nicht gezielt herbeiführbar — das deckt bereits der automatisierte Test `tests/game-bugfix-014-createGame-browser.integration.test.js` ab.
+
+**Kein separater Firestore-Regeln-Deploy nötig** (Ticket berührt `firestore.rules` nicht, siehe Spec, Abschnitt „Betroffene Architektur").
+
+**Status:** Release und Live-Verifikation abgeschlossen. Noch nicht auf „Done" gesetzt — Bestätigung (Gate 3) steht bei Stephan aus.
+
 ---
 
 ### BUGFIX-013 Kartenverschieben zwischen Spalten löst Textmarkierung aus statt sauberem Ziehen
