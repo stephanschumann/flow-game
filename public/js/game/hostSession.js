@@ -18,6 +18,10 @@
  * Anlegen dieses Dokuments mitgeschrieben – siehe Kopfkommentar in
  * src/game/hostSession.js für die vollständige Begründung (Node-Referenz,
  * muss synchron gehalten werden).
+ *
+ * FEATURE-011 (2026-08-08): "vorher mitspielend"-Erkennung – siehe
+ * Kopfkommentar in src/game/hostSession.js für die vollständige Begründung
+ * (Node-Referenz, muss synchron gehalten werden).
  */
 (function (global) {
   'use strict';
@@ -65,7 +69,34 @@
       throw fehler;
     }
 
-    return { rolle: 'host', spielCode: code };
+    // FEATURE-011: "vorher mitspielender Host"-Erkennung (Karteileiche-Fall),
+    // siehe Kopfkommentar. Rein lesend, ändert keinen bestehenden Zustand.
+    let warVorherMitspielenderHost = false;
+    let verwaisteStation = null;
+    const spielSnap = await db.collection('spiele').doc(code).get();
+    const belegteStationen = (spielSnap.exists && spielSnap.data().belegteStationen) || {};
+    const stationsEintraege = Object.entries(belegteStationen);
+    for (let i = 0; i < stationsEintraege.length; i += 1) {
+      const [station, ownerUid] = stationsEintraege[i];
+      if (ownerUid === uid) {
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const ownerSnap = await db.collection('spiele').doc(code).collection('teilnehmende').doc(ownerUid).get();
+      if (ownerSnap.exists && ownerSnap.data().rolle === 'host' && ownerSnap.data().station === station) {
+        warVorherMitspielenderHost = true;
+        verwaisteStation = station;
+        break;
+      }
+    }
+
+    return {
+      rolle: 'host',
+      spielCode: code,
+      warVorherMitspielenderHost,
+      verwaisteStation,
+    };
   }
 
   global.FlowGame.restoreHostSession = restoreHostSession;

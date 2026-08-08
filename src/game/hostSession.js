@@ -39,6 +39,20 @@
  * erneut bekommen, weil ein mitspielender Host (mit station-Feld) sonst
  * über die jetzt gelockerte Leseregel für andere Teilnehmende sichtbar
  * würde UND dabei versehentlich die Kennung mit offenlegen würde.
+ *
+ * FEATURE-011 (2026-08-08): Die manuelle Zurückeroberung der Host-Rolle
+ * (Formular Code+Kennzeichen auf einem neuen Gerät) ruft diese Funktion
+ * unverändert wieder auf – an der eigentlichen Kernlogik oben ändert sich
+ * nichts. Neu ist ausschliesslich die "vorher mitspielend"-Erkennung
+ * (Karteileiche-Fall, FEATURE-018-Bezug, Pre-Mortem-Risiko 5) am Ende dieser
+ * Funktion: das Signal wird serverseitig aus dem VORHERIGEN Spielzustand
+ * abgeleitet (spiele/{code}.belegteStationen), NICHT aus dem gerade erst neu
+ * angelegten, immer stationslosen Dokument dieser (neuen) uid – sonst gäbe es
+ * nie einen Vergleichswert. Rückgabe wird um warVorherMitspielenderHost
+ * (boolean) und verwaisteStation (Stationskennung oder null) erweitert; beim
+ * regulären FEATURE-001-Reload (gleiche uid) und BUGFIX-005 ist ownerUid in
+ * belegteStationen nie eine ANDERE uid als die eigene, daher bleibt das neue
+ * Signal dort immer false/null.
  */
 
 async function restoreHostSession({ code, hostSessionKennung, uid }, db) {
@@ -84,7 +98,34 @@ async function restoreHostSession({ code, hostSessionKennung, uid }, db) {
     throw fehler;
   }
 
-  return { rolle: 'host', spielCode: code };
+  // FEATURE-011: "vorher mitspielender Host"-Erkennung (Karteileiche-Fall),
+  // siehe Kopfkommentar. Rein lesend, ändert keinen bestehenden Zustand.
+  let warVorherMitspielenderHost = false;
+  let verwaisteStation = null;
+  const spielSnap = await db.collection('spiele').doc(code).get();
+  const belegteStationen = (spielSnap.exists && spielSnap.data().belegteStationen) || {};
+  const stationsEintraege = Object.entries(belegteStationen);
+  for (let i = 0; i < stationsEintraege.length; i += 1) {
+    const [station, ownerUid] = stationsEintraege[i];
+    if (ownerUid === uid) {
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    const ownerSnap = await db.collection('spiele').doc(code).collection('teilnehmende').doc(ownerUid).get();
+    if (ownerSnap.exists && ownerSnap.data().rolle === 'host' && ownerSnap.data().station === station) {
+      warVorherMitspielenderHost = true;
+      verwaisteStation = station;
+      break;
+    }
+  }
+
+  return {
+    rolle: 'host',
+    spielCode: code,
+    warVorherMitspielenderHost,
+    verwaisteStation,
+  };
 }
 
 module.exports = { restoreHostSession };

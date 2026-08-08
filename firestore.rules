@@ -571,7 +571,18 @@ service cloud.firestore {
                   && existsAfter(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung)
                   && !('hostKennung' in request.resource.data.keys())
                 )
-                || request.resource.data.hostKennung == getAfter(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung).data.hostKennung
+                || (
+                  // FEATURE-011 (Scope-Korrektur, Stephan, 2026-08-08): Fall
+                  // (b), die Host-Zurückeroberung für ein bereits bestehendes
+                  // Spiel, darf dabei KEIN eigenes station-Feld mitsenden –
+                  // sonst könnte sich die reklamierende Person beim
+                  // Zurückerobern selbst sofort eine Station zuweisen
+                  // (Pre-Mortem-Risiko 2). Fall (a) oben (createGame(), auch
+                  // für einen mitspielenden Host per FEATURE-018) bleibt davon
+                  // unberührt – dort ist ein station-Feld weiterhin erlaubt.
+                  request.resource.data.hostKennung == getAfter(/databases/$(database)/documents/spiele/$(spielId)/geheim/kennung).data.hostKennung
+                  && !('station' in request.resource.data.keys())
+                )
               )
             )
           );

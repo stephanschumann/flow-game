@@ -87,6 +87,27 @@
     'lobby.deineStation': { de: 'Deine Station:', en: 'Your station:' },
     'lobby.duBistBeobachtende': { de: 'Du bist als Beobachtende dabei.', en: 'You are taking part as an observer.' },
 
+    // FEATURE-011: Gastgeber-Rolle zurückerlangen können - siehe Kommentare
+    // in src/i18n/uebersetzungen.js (diese Datei muss inhaltlich synchron
+    // gehalten werden, siehe Kopfkommentar oben).
+    'lobby.hostZurueckerlangenUeberschrift': {
+      de: 'Host-Rolle auf diesem Gerät zurückerlangen',
+      en: 'Reclaim host role on this device',
+    },
+    'lobby.hostZurueckerlangenCodeLabel': { de: 'Spiel-Code', en: 'Game code' },
+    'lobby.hostZurueckerlangenKennzeichenLabel': { de: 'Host-Kennzeichen', en: 'Host token' },
+    'lobby.hostZurueckerlangenAbsendenKnopf': { de: 'Host-Rolle zurückerlangen', en: 'Reclaim host role' },
+    'lobby.hostKennzeichenAnzeigenUeberschrift': {
+      de: 'Eigenes Host-Kennzeichen',
+      en: 'Your host token',
+    },
+    'lobby.hostKennzeichenKopierenKnopf': { de: 'Kopieren', en: 'Copy' },
+    'lobby.hostKennzeichenKopiertHinweis': { de: 'Kopiert!', en: 'Copied!' },
+    'lobby.hostKarteileicheHinweis': {
+      de: 'Die Host-Rolle ist zurück. Deine vorherige Spielstation wurde NICHT automatisch übertragen – sie bleibt bis auf Weiteres wie zuvor belegt und muss ggf. anders geklärt werden.',
+      en: 'The host role is back. Your previous playing station was NOT automatically transferred – it stays assigned as before and may need to be resolved separately.',
+    },
+
     // BUGFIX-003: Lobby-Erläuterung + Live-Zähler, Rundenkontext - siehe
     // Kommentare in src/i18n/uebersetzungen.js (diese Datei muss inhaltlich
     // synchron gehalten werden, siehe Kopfkommentar oben).

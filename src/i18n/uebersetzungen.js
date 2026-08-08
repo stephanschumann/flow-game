@@ -112,6 +112,30 @@ const UEBERSETZUNGEN = {
   'lobby.deineStation': { de: 'Deine Station:', en: 'Your station:' },
   'lobby.duBistBeobachtende': { de: 'Du bist als Beobachtende dabei.', en: 'You are taking part as an observer.' },
 
+  // ---- FEATURE-011: Gastgeber-Rolle zurückerlangen können ----------------
+  // Ausklappbarer Bereich (UI/UX-Entscheidung, Stephan, 2026-08-08, Variante
+  // 2): manuelles Formular zur Zurückeroberung (Code + Kennzeichen) sowie
+  // Anzeige-/Kopierbereich des eigenen Host-Kennzeichens. Fehlermeldung nutzt
+  // bewusst den bereits bestehenden Schlüssel 'fehler.hostKennungUngueltig'
+  // (kein neuer Fehlercode, siehe Analyse-Spec).
+  'lobby.hostZurueckerlangenUeberschrift': {
+    de: 'Host-Rolle auf diesem Gerät zurückerlangen',
+    en: 'Reclaim host role on this device',
+  },
+  'lobby.hostZurueckerlangenCodeLabel': { de: 'Spiel-Code', en: 'Game code' },
+  'lobby.hostZurueckerlangenKennzeichenLabel': { de: 'Host-Kennzeichen', en: 'Host token' },
+  'lobby.hostZurueckerlangenAbsendenKnopf': { de: 'Host-Rolle zurückerlangen', en: 'Reclaim host role' },
+  'lobby.hostKennzeichenAnzeigenUeberschrift': {
+    de: 'Eigenes Host-Kennzeichen',
+    en: 'Your host token',
+  },
+  'lobby.hostKennzeichenKopierenKnopf': { de: 'Kopieren', en: 'Copy' },
+  'lobby.hostKennzeichenKopiertHinweis': { de: 'Kopiert!', en: 'Copied!' },
+  'lobby.hostKarteileicheHinweis': {
+    de: 'Die Host-Rolle ist zurück. Deine vorherige Spielstation wurde NICHT automatisch übertragen – sie bleibt bis auf Weiteres wie zuvor belegt und muss ggf. anders geklärt werden.',
+    en: 'The host role is back. Your previous playing station was NOT automatically transferred – it stays assigned as before and may need to be resolved separately.',
+  },
+
   // ---- BUGFIX-003: Lobby-Erläuterung + Live-Zähler, Rundenkontext --------
   // (a) Erläuterungstext in der Lobby: dass das Spiel erst mit
   // Host-Auslösung beginnt und mindestens 5 Spielende + 1 Host gebraucht

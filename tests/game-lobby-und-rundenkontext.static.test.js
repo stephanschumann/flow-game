@@ -110,7 +110,7 @@ describe('Szenario (a): Live-Zähler nach dem Muster "X von 5 beigetreten", auto
 describe('Szenario (a): Erläuterung + Live-Zähler erscheinen an ALLEN vier bestehenden zeigeLobby()-Aufrufstellen (Pre-Mortem-Risiko 1)', () => {
   test('Gegeben die vier bekannten Einstiegspfade (Host nach Erstellen, Host nach Wiederbetreten, Beitritt, automatisches Wiederbetreten), wenn public/spiel.html nach zeigeLobby(-Aufrufen durchsucht wird, dann existieren weiterhin genau vier Aufrufstellen, UND die Erläuterung/der Live-Zähler sind zentral in zeigeLobby()/renderTeilnehmerListe() verankert statt an jeder Aufrufstelle einzeln dupliziert zu werden', () => {
     const aufrufstellen = spielHtmlInhalt.match(/(?<!function )\bzeigeLobby\(\s*(?:\n\s*)?db\b/g) || [];
-    expect(aufrufstellen.length).toBe(4);
+    expect(aufrufstellen.length).toBe(5);
 
     // Zentral verankert: die Erläuterung/der Zähler tauchen NICHT an jeder
     // einzelnen Aufrufstelle noch einmal separat auf (kein Duplikat-Aufruf

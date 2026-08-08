@@ -264,6 +264,39 @@
         <div class="row"><button type="submit" id="btn-beitreten-absenden" class="btn primary">Beitreten</button></div>
       </form>
 
+      <!-- FEATURE-011 (2026-08-08): manuelles Formular zur Host-
+           Zurückeroberung – bewusst hier auf der Start-Auswahl-Ansicht
+           platziert statt ausschliesslich innerhalb der (erst NACH
+           erfolgreichem Erstellen/Beitreten sichtbaren) Host-Lobby-Ansicht,
+           damit AK1 ("auch auf einem komplett neuen Gerät/Browser ohne jede
+           vorherige Sitzung") tatsächlich erfüllbar bleibt (ein Gerät ohne
+           jede vorherige Sitzung sieht #lobby-panel nie, siehe zeigeLobby()).
+           OFFENER PUNKT FÜR STEPHAN (siehe Abschlussbericht): die UI/UX-
+           Entscheidung vom selben Tag beschreibt Variante 2 als "innerhalb
+           der bestehenden Host-Lobby-Ansicht, nur für den aktuellen Host
+           sichtbar" – das würde AK1 aber unerfüllbar machen (Henne-Ei-
+           Problem). Diese Platzierung löst den Widerspruch zugunsten des
+           testbaren Akzeptanzkriteriums auf; bitte bestätigen. Als
+           <details> umgesetzt (nativ ausklappbar, kein zusätzliches JS
+           nötig) – Anzeige-/Kopierbereich für das EIGENE Kennzeichen bleibt
+           wie ursprünglich in der Architektur-Analyse beschrieben unten in
+           #lobby-panel (dort ergibt "nur für den aktuellen Host sichtbar"
+           tatsächlich Sinn, siehe AK5). -->
+      <details id="host-zurueckerlangen-bereich">
+        <summary id="host-zurueckerlangen-oeffner">Host-Rolle auf diesem Gerät zurückerlangen</summary>
+        <form id="form-host-zurueckerlangen">
+          <div class="field">
+            <label for="host-zurueckerlangen-code" id="label-host-zurueckerlangen-code">Spiel-Code</label>
+            <input id="host-zurueckerlangen-code" name="host-zurueckerlangen-code" type="text" maxlength="8" required autocomplete="off" placeholder="8 Zeichen, z. B. AB3DE7GK" style="text-transform:uppercase;letter-spacing:.1em">
+          </div>
+          <div class="field">
+            <label for="host-zurueckerlangen-kennzeichen" id="label-host-zurueckerlangen-kennzeichen">Host-Kennzeichen</label>
+            <input id="host-zurueckerlangen-kennzeichen" name="host-zurueckerlangen-kennzeichen" type="text" required autocomplete="off">
+          </div>
+          <div class="row"><button type="submit" id="btn-host-zurueckerlangen-absenden" class="btn primary">Host-Rolle zurückerlangen</button></div>
+        </form>
+      </details>
+
       <div class="hinweis fehler" id="fehler" hidden></div>
     </div>
 
@@ -279,6 +312,23 @@
       <p class="muted" id="lobby-start-hinweis"></p>
       <ul class="teilnehmer-liste" id="teilnehmer-liste"></ul>
       <p class="muted" id="lobby-live-zaehler"></p>
+      <!-- FEATURE-011 (2026-08-08, UI/UX-Entscheidung Variante 2): Anzeige-/
+           Kopierbereich für das eigene Host-Kennzeichen, nur für den
+           aktuellen Host sichtbar (per JS-Sichtbarkeitsumschaltung in
+           zeigeLobby(), siehe aktualisiereHostKennzeichenBereich()) – deckt
+           AK5/AK6/AK7 ab. -->
+      <details id="host-kennzeichen-bereich" hidden>
+        <summary id="host-kennzeichen-oeffner">Eigenes Host-Kennzeichen</summary>
+        <div class="code-display" id="anzeige-host-kennzeichen" style="font-size:16px;letter-spacing:.04em;word-break:break-all;user-select:all"></div>
+        <div class="row">
+          <button type="button" class="btn" id="knopf-host-kennzeichen-kopieren">Kopieren</button>
+        </div>
+        <p class="muted" id="host-kennzeichen-kopiert-hinweis" hidden></p>
+      </details>
+      <!-- FEATURE-011 (AK8): Karteileiche-Rückmeldung nach erfolgreicher
+           manueller Zurückeroberung durch eine vorher mitspielende
+           gastgebende Person – siehe form-host-zurueckerlangen-Handler. -->
+      <p class="hinweis info" id="lobby-host-karteileiche-hinweis" hidden></p>
       <div class="row" id="host-rundenstart-bereich" hidden>
         <button type="button" class="btn primary" id="btn-runde-starten">Aufgabe vorstellen (Runde 1 starten)</button>
       </div>
@@ -491,6 +541,23 @@
   const hostRundenstartBereich = document.getElementById('host-rundenstart-bereich');
   const btnRundeStarten = document.getElementById('btn-runde-starten');
 
+  // FEATURE-011 (2026-08-08): manuelles Formular zur Host-Zurückeroberung
+  // (Start-Auswahl-Ansicht, siehe Platzierungs-Kommentar im Markup oben) und
+  // Anzeige-/Kopierbereich des eigenen Host-Kennzeichens (Host-Lobby-Ansicht,
+  // nur für den aktuellen Host sichtbar).
+  const formHostZurueckerlangen = document.getElementById('form-host-zurueckerlangen');
+  const btnHostZurueckerlangenAbsenden = document.getElementById('btn-host-zurueckerlangen-absenden');
+  const hostKennzeichenBereich = document.getElementById('host-kennzeichen-bereich');
+  const anzeigeHostKennzeichen = document.getElementById('anzeige-host-kennzeichen');
+  const knopfHostKennzeichenKopieren = document.getElementById('knopf-host-kennzeichen-kopieren');
+  const hostKennzeichenKopiertHinweis = document.getElementById('host-kennzeichen-kopiert-hinweis');
+  const lobbyHostKarteileicheHinweis = document.getElementById('lobby-host-karteileiche-hinweis');
+  // Das eigene, aktuell aktive Host-Kennzeichen dieser Sitzung (nur im
+  // Speicher, wird NIE an einen Server geschickt - dient ausschliesslich der
+  // AK5-Anzeige). Wird sowohl beim Erstellen (createGame()) als auch bei
+  // jeder Zurückeroberung (automatisch ODER manuell) gesetzt.
+  let eigenesHostKennzeichenFuerAnzeige = null;
+
   // FEATURE-005: Verbindungsstatus-Anzeige (AK4/AK5) + Zwei-Tabs-Erkennung (AK16).
   const verbindungsHinweis = document.getElementById('verbindungs-hinweis');
   const tabInaktivHinweis = document.getElementById('tab-inaktiv-hinweis');
@@ -636,6 +703,18 @@
     // teilnehmendeCache ab) - der Live-Zähler direkt darunter wird dagegen in
     // renderTeilnehmerListe() gesetzt (dort ist der Beitritts-Stand bekannt).
     setText('lobby-start-hinweis', t('lobby.startHinweis'));
+
+    // FEATURE-011: neuer ausklappbarer Bereich (Formular) auf der
+    // Start-Auswahl-Ansicht sowie Anzeige-/Kopierbereich in der Host-Lobby.
+    setText('host-zurueckerlangen-oeffner', t('lobby.hostZurueckerlangenUeberschrift'));
+    setText('label-host-zurueckerlangen-code', t('lobby.hostZurueckerlangenCodeLabel'));
+    setText('label-host-zurueckerlangen-kennzeichen', t('lobby.hostZurueckerlangenKennzeichenLabel'));
+    document.getElementById('host-zurueckerlangen-code').placeholder = t('lobby.beitrittCodePlatzhalter');
+    if (!btnHostZurueckerlangenAbsenden.hasAttribute('aria-busy')) {
+      btnHostZurueckerlangenAbsenden.textContent = t('lobby.hostZurueckerlangenAbsendenKnopf');
+    }
+    setText('host-kennzeichen-oeffner', t('lobby.hostKennzeichenAnzeigenUeberschrift'));
+    setText('knopf-host-kennzeichen-kopieren', t('lobby.hostKennzeichenKopierenKnopf'));
 
     // Absenden-Buttons: nur neu setzen, solange kein Wartezustand
     // (BUGFIX-002, aria-busy) aktiv ist - sonst würde ein Sprachwechsel
@@ -929,6 +1008,22 @@
     return '';
   }
 
+  // FEATURE-011 (AK5/AK6/AK7/AK9): zeigt/verbirgt den Anzeige-/Kopierbereich
+  // des eigenen Host-Kennzeichens - nur sichtbar, solange eigeneRolle==='host'
+  // UND ein Kennzeichen für DIESE Sitzung bekannt ist (Anzeige erfolgt rein
+  // lokal, kein Serveraufruf; Rückfalloption AK7: der Text bleibt via
+  // user-select:all von Hand markierbar, falls navigator.clipboard einmal
+  // nicht verfügbar ist). Wird bei jedem zeigeLobby()-Aufruf neu ausgewertet
+  // (also z. B. auch, sobald eine vorher teilnehmende Person die Rolle
+  // wechselt - kommt heute nicht vor, schadet aber nicht).
+  function aktualisiereHostKennzeichenBereich() {
+    const sichtbar = eigeneRolle === 'host' && Boolean(eigenesHostKennzeichenFuerAnzeige);
+    hostKennzeichenBereich.hidden = !sichtbar;
+    if (sichtbar) {
+      anzeigeHostKennzeichen.textContent = eigenesHostKennzeichenFuerAnzeige;
+    }
+  }
+
   // BUGFIX (2026-07-21, siehe lobbyRolleHinweisArt): dritter Parameter ist
   // jetzt die ART des Hinweises ('hostSchlicht' | 'hostMitTeilen' |
   // 'teilnehmendeRolle') statt eines bereits fertig übersetzten Strings -
@@ -944,6 +1039,9 @@
     eigeneRolle = rolle;
     lobbyRolleHinweisArt = rolleHinweisArt;
     lobbyRolleHinweis.textContent = berechneLobbyRolleHinweisText();
+    // FEATURE-011 (AK5/AK9): Anzeige-/Kopierbereich nur für den aktuellen
+    // Host sichtbar - für eine teilnehmende Person bleibt er verborgen.
+    aktualisiereHostKennzeichenBereich();
 
     // BUGFIX-003 (b): #untertitel zeigt ab jetzt den Lobby-Zwischenzustand
     // statt weiterhin des Landingpage-Satzes ('lobby.untertitel') - zentral
@@ -2739,6 +2837,10 @@
             .doc(user.uid)
             .get();
           if (aktuellerTeilnehmerStand.exists && aktuellerTeilnehmerStand.data().rolle === 'host') {
+            // FEATURE-011 (AK5): dieselbe, bereits lokal bekannte Kennung
+            // (aus localStorage geladen) auch für die neue Anzeige/Kopieren-
+            // Funktion übernehmen.
+            eigenesHostKennzeichenFuerAnzeige = hostSessionKennung;
             zeigeLobby(db, ergebnis.spielCode, 'hostSchlicht', 'host');
             return;
           }
@@ -2829,6 +2931,9 @@
         btnErstellenAbsenden.removeAttribute('aria-busy');
         btnErstellenAbsenden.textContent = t('lobby.erstellen');
         speichereHostSession(ergebnis.code, ergebnis.hostSessionKennung);
+        // FEATURE-011 (AK5): frisch erzeugtes Kennzeichen sofort auch für die
+        // neue Anzeige-/Kopierfunktion vormerken.
+        eigenesHostKennzeichenFuerAnzeige = ergebnis.hostSessionKennung;
         zeigeLobby(db, ergebnis.code, 'hostMitTeilen', 'host');
       } catch (err) {
         versteckeVerbindungsRetryHinweis();
@@ -2974,6 +3079,78 @@
         // uebersetzt aber intern ueber err.code, falls vorhanden.
         zeigeFehler(err.code ? window.FlowGame.uebersetzeFehlercode(err.code, aktuelleSprache, err.message) : err.message);
       }
+    });
+
+    // FEATURE-011 (AK1-AK4, AK8-AK10): manuelle Zurückeroberung der
+    // Host-Rolle über Code + Kennzeichen - ruft dieselbe, unveränderte
+    // restoreHostSession() auf wie der automatische Reload-Pfad oben.
+    formHostZurueckerlangen.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      versteckeFehler();
+      // AK4: erkennbare Wartedarstellung, analog BUGFIX-002.
+      btnHostZurueckerlangenAbsenden.disabled = true;
+      btnHostZurueckerlangenAbsenden.setAttribute('aria-busy', 'true');
+      btnHostZurueckerlangenAbsenden.textContent = t('lobby.wirdBearbeitet');
+      const code = document.getElementById('host-zurueckerlangen-code').value.trim().toUpperCase();
+      const hostSessionKennungEingabe = document.getElementById('host-zurueckerlangen-kennzeichen').value.trim();
+      try {
+        const ergebnis = await window.FlowGame.restoreHostSession(
+          { code, hostSessionKennung: hostSessionKennungEingabe, uid: user.uid },
+          db
+        );
+        btnHostZurueckerlangenAbsenden.disabled = false;
+        btnHostZurueckerlangenAbsenden.removeAttribute('aria-busy');
+        btnHostZurueckerlangenAbsenden.textContent = t('lobby.hostZurueckerlangenAbsendenKnopf');
+        // AK2/AK10: derselbe Endzustand wie beim automatischen Pfad - inkl.
+        // localStorage, damit ein künftiger Reload auf DIESEM (neuen) Gerät
+        // automatisch funktioniert.
+        speichereHostSession(ergebnis.spielCode, hostSessionKennungEingabe);
+        eigenesHostKennzeichenFuerAnzeige = hostSessionKennungEingabe;
+        // AK8/AK9: Karteileiche-Rückmeldung nur, wenn diese Person vorher
+        // tatsächlich mitspielender Host war (sonst bleibt der Hinweis
+        // verborgen, wie bisher).
+        lobbyHostKarteileicheHinweis.hidden = !ergebnis.warVorherMitspielenderHost;
+        if (ergebnis.warVorherMitspielenderHost) {
+          lobbyHostKarteileicheHinweis.textContent = t('lobby.hostKarteileicheHinweis');
+        }
+        zeigeLobby(db, ergebnis.spielCode, 'hostSchlicht', 'host');
+      } catch (err) {
+        btnHostZurueckerlangenAbsenden.disabled = false;
+        btnHostZurueckerlangenAbsenden.removeAttribute('aria-busy');
+        btnHostZurueckerlangenAbsenden.textContent = t('lobby.hostZurueckerlangenAbsendenKnopf');
+        // AK3: EINE gemeinsame, nicht unterscheidende Fehlermeldung für
+        // "Code unbekannt" und "Kennzeichen falsch" - restoreHostSession()
+        // übersetzt beide Fälle bereits serverseitig zu HOST_KENNUNG_UNGUELTIG
+        // (siehe src/game/hostSession.js), hier nur die bestehende, dafür
+        // bereits vorhandene i18n-Übersetzung angewendet - kein neuer
+        // Fehlercode nötig.
+        zeigeFehler(err.code ? window.FlowGame.uebersetzeFehlercode(err.code, aktuelleSprache, err.message) : err.message);
+      }
+    });
+
+    // FEATURE-011 (AK6/AK7): Kopier-Knopf für das eigene Host-Kennzeichen.
+    // Rückfalloption bei fehlendem/fehlschlagendem navigator.clipboard: der
+    // Text bleibt dank user-select:all auf #anzeige-host-kennzeichen von Hand
+    // markierbar - kein stiller Fehlschlag ohne jede Möglichkeit, an den Wert
+    // zu kommen.
+    knopfHostKennzeichenKopieren.addEventListener('click', async function () {
+      const wert = anzeigeHostKennzeichen.textContent;
+      let erfolgreich = false;
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(wert);
+          erfolgreich = true;
+        }
+      } catch (err) {
+        erfolgreich = false;
+      }
+      if (erfolgreich) {
+        hostKennzeichenKopiertHinweis.textContent = t('lobby.hostKennzeichenKopiertHinweis');
+        hostKennzeichenKopiertHinweis.hidden = false;
+      }
+      // Kein "else"-Fehlertext hier (AK7): der Wert bleibt in jedem Fall
+      // sichtbar/markierbar in #anzeige-host-kennzeichen - kein stiller
+      // Fehlschlag ohne jede Möglichkeit, an den Wert zu kommen.
     });
   }
 
