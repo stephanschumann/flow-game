@@ -1597,9 +1597,11 @@ Nächster Schritt: Implementierung (`flow-game-impl`).
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Hoch |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-23 |
 | **In Progress seit** | 2026-08-08 |
+| **Done seit** | 2026-08-08 |
+| **Release-Commit** | cbc662b (Push nach `main`, GitHub-Actions-Lauf #49 grün) |
 
 **Beschreibung:** Für den Host existiert bereits ein automatischer, geheimnisbasierter Wiederherstellungs-Mechanismus (`hostSession.js`, `restoreHostSession()`, siehe FEATURE-001) — er greift beim Neuladen im selben Browser und funktioniert dort zuverlässig, ohne UID-Bindung. Die eigentliche Lücke liegt in einem anderen, engeren Fall: Geht der lokal im Browser gespeicherte Zustand verloren (`flowGameHost:*`/`flowGameLetztesSpiel` in `localStorage`) — etwa durch Gerätewechsel, Browser-Neustart oder versehentlich gelöschte Daten —, greift der automatische Mechanismus nicht mehr, weil er genau auf diesen lokalen Schlüssel angewiesen ist. Für diesen Fall gibt es aktuell keinen manuellen/expliziten Weg (z. B. Eingabe eines Host-Geheimnisses/Codes auf einem neuen Gerät), die Host-Rolle zurückzubekommen — nur ein komplett neues Spiel mit neuem Code, was die ganze Gruppe zum erneuten Beitreten zwingt. In einem echten Workshop mit Beamer-/Laptop-Wechsel ein realistisches, workshop-lahmlegendes Szenario. Laut FEATURE-001-Analyse ist dabei ein technisches Detail mitzudenken, aber kein Show-Stopper: Karteileichen (alte `teilnehmende/{uid}`-Dokumente mit `rolle: 'host'`), die entstehen können, sollten bei einer Lösung berücksichtigt werden.
 
@@ -1781,6 +1783,16 @@ Wie Option A, aber `restoreHostSession()` würde nach erfolgreicher Zurückerobe
 **Regressionslauf (Schritt 4):** Geprüfte Tickets laut FEATURE-011s eigenem Regressionsrisiko-Abschnitt (Schritt 6 der Spec — NICHT blind die im Auftrag vorgeschlagene, breitere Liste übernommen, siehe Verifikation): **FEATURE-001** (`game-join-precedence.static.test.js`, `game-rooms.logic.test.js`), **BUGFIX-005** (`game-host-claim-overwrite.logic.test.js`), **FEATURE-018** (`game-feature-018-host-mitspielen.logic.test.js`, `game-feature-018-text-und-zaehler.static.test.js`). Zusätzlich zur Sicherheit die gesamte übrige, nicht-Emulator-abhängige Suite laufen lassen (37 Suiten/434 Tests) und gegen einen frischen Baseline-Klon (`27761e7`, vor dieser Implementierung) verglichen: identische 7 Suiten scheitern in BEIDEN Ständen ausschließlich an bekannten Sandbox-Grenzen (Emulator/Live-URL-Netzwerk) — **eine zusätzliche, echte Regression** in `game-lobby-und-rundenkontext.static.test.js` (siehe Escape-Hatch 2 oben), sonst alles unverändert grün, inkl. `game-feature-005-manual-checks.test.js` (FEATURE-005) und `game-drag-drop.*`/`game-evaluation.logic.test.js` (FEATURE-002/003, ebenfalls mitgeprüft).
 
 **Release-Hinweis:** Ändert deploybaren Code (`src/`, `public/`, `firestore.rules`) — vor "Done" ist ein Release (`flow-game-release`) nötig, inkl. separatem `firestore.rules`-Deploy.
+
+#### Release, Live-Verifikation und Regressionstest (2026-08-08)
+
+**Release durchgeführt (`flow-game-release`):** Release-Commit `cbc662b` nach `main` gepusht. GitHub-Actions-Lauf „Deploy to Firebase Hosting on merge" #49 grün. `firestore.rules`-Änderung zusätzlich separat per `firebase deploy --only firestore:rules --project flow-game-19f01` ausgerollt (nötig, weil die GitHub Action das nicht abdeckt).
+
+**Live-Verifikation (2026-08-08, im Browser):** Kompletter Host-Reclaim-Ablauf live auf `https://flow-game-19f01.web.app` bestätigt: Spiel erstellen → Host-Kennzeichen auslesen → localStorage/sessionStorage geleert zur Simulation eines neuen Geräts → mit Spiel-Code + Kennzeichen die Host-Rolle erfolgreich zurückerlangt.
+
+**Regressionstest (Stephan lokal, 2026-08-08):** `npx firebase emulators:exec --only firestore "npx jest"` ausgeführt — **46/46 Test-Suiten grün, 542 Tests bestanden, 1 übersprungen, 0 Fehler**.
+
+**Status:** Release, Live-Verifikation und Regressionstest abgeschlossen. Auf Done gesetzt (2026-08-08).
 
 ---
 
