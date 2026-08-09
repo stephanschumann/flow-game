@@ -136,6 +136,7 @@
 
     'spielbrett.runde': { de: 'Runde', en: 'Round' },
     'spielbrett.durchlaufzeit': { de: 'Durchlaufzeit', en: 'Lead time' },
+    'spielbrett.durchlaufzeitNeutralerHinweis': { de: 'läuft …', en: 'running …' },
     'spielbrett.bearbeitungszeit': { de: 'Bearbeitungszeit', en: 'Processing time' },
     // FEATURE-012 (AK5, freigegebener Wortlaut Stephan 2026-08-01, zweite
     // Korrekturrunde): erklärt sowohl die Bedeutung der DoR-Bestätigung selbst

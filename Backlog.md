@@ -2238,14 +2238,244 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Mittel |
-| **Status** | ToDo |
+| **Status** | In Progress |
 | **Erstellt** | 2026-07-23 |
+
+**Stephans Entscheidung (2026-08-09 13:47):** Option B — nur die sichtbare Anzeige während der Klärungsphase wird entschärft, die Server-Messung bleibt unverändert. Die sieben Akzeptanzkriterien für Option B im Analyse-Spec unten gelten damit als bestätigt und gehen so an `flow-game-bdd`.
 
 **Beschreibung:** Nach dem Rundenstart läuft sofort eine Zeit-Anzeige ("Lead Time"), obwohl noch niemand etwas tun kann — es erscheint erst der Text "Before cards can be moved, the group needs to understand the task." und der Knopf "Complete Definition of Ready". Die Uhr tickt aber schon während dieser Erklärungsphase. Kann unnötigen, unfairen Zeitdruck erzeugen, bevor überhaupt gespielt werden kann. Die Zeitmessung soll erst starten, wenn tatsächlich Karten bewegt werden dürfen.
 
 **User Story:** Als Spielgruppe, möchte ich, dass die Zeitmessung erst beginnt, sobald wir wirklich spielen können, sodass keine unfaire Zeit verloren geht.
 
 **Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+
+---
+
+#### Analyse-Spec (2026-08-09, flow-game-analyze)
+
+**Kontext gelesen:** `Backlog.md` (Cloud-Kopie, dieses Ticket), `Product.md` (Abschnitte 4, 6, 9), `Flow-Game-Entscheidungen.md` (Abschnitt „Zeitmessung (festgelegt)", 2026-07-17), sowie die Cross-Referenzen auf `BUGFIX-007` in den bereits abgenommenen Tickets `FEATURE-004` (Scope-Abgrenzung) und `FEATURE-012` (AK9, Zeit-Erklärungstext).
+
+**Pflicht-Code-Verifikation der Prämissen (Schritt 2b):** Direkt im echten Repo unter `/Users/stephan/Claude/Projects/Flow Game` geprüft (Geräte-Brücke, direkter Zugriff vorhanden, kein Sandbox-Klon nötig):
+
+- `src/game/rundenStart.js` (Node-Referenz) und `public/js/game/rundenStart.js` (Browser-Produktivcode): Beide setzen `durchlaufzeitStart` beim Rundenstart (`starteRunde()`), bevor irgendeine Klärung stattgefunden hat — Browser-Kopie servergesetzt via `firebase.firestore.FieldValue.serverTimestamp()`.
+- `firestore.rules` (Zeile 644-646): Die Sicherheitsregel für das Anlegen eines Rundendokuments verlangt zwingend `request.resource.data.durchlaufzeitStart == request.time` — der Startzeitpunkt der „Durchlaufzeit" ist damit **serverseitig in der Sicherheitsregel fest verdrahtet auf den Moment der Rundenerstellung**, nicht nur eine Client-Anzeigeentscheidung.
+- `public/spiel.html` (Zeilen ~340-360, ~1566-1585): Die Uhr-Box `zeit-durchlauf` ist im `runde-panel` immer sichtbar, wird per `setInterval(..., 1000)` sekündlich aktualisiert und läuft unabhängig davon, ob `dorAbgeschlossen` `true` oder `false` ist. Die zweite Box `zeit-bearbeitung` bleibt dagegen per `zeitBearbeitungBox.hidden = !bearbeitungGesetzt` versteckt, bis die erste Karte bewegt wurde.
+- `public/js/game/rundenStart.js` (Funktion `starteBearbeitungszeitFallsNoetig()`, Zeilen 76-92): setzt `bearbeitungszeitStart` servergesetzt, sobald die erste Karte bewegt wird — bestätigt, dass „Bearbeitungszeit" bereits heute erst mit dem ersten Zug beginnt. Das im Ticket beschriebene Verhalten betrifft ausschließlich die separat angezeigte „Durchlaufzeit" (i18n-Schlüssel `spielbrett.durchlaufzeit`, EN „Lead time" — exakt der im Ticket zitierte Begriff „Lead Time").
+- **Zentraler Befund — dokumentierte, bereits bestätigte Produktentscheidung widerspricht der im Ticket beschriebenen Lösung:** `Flow-Game-Entscheidungen.md`, Abschnitt „Zeitmessung (festgelegt)" (2026-07-17, als „festgelegt"/„bestätigt" markiert) definiert die Durchlaufzeit ausdrücklich als „automatisch, sobald dem Team eine neue Aufgabe zur Erledigung vorgestellt wird" startend — **das ist exakt der Zeitpunkt, den das Ticket als „zu früh" bemängelt.** Dieselbe Stelle hält fest: „Pausenzeit zählt in alle Zeiten mit (nichts wird herausgerechnet) — Warten ist Verschwendung (Lean Waste) und soll sichtbar bleiben." Diese Entscheidung ist kein Zufall, sondern der pädagogische Kern des Spiels (`Product.md` §1: „gute vs. schlechte Parallelität … sicht- und messbar" machen).
+- **Bereits eine spätere, gezielte Reaktion auf exakt dieses Nutzerfeedback:** `FEATURE-012` (Done seit 2026-08-01) hat als AK9 einen permanent sichtbaren Erklärungstext ergänzt (`spielbrett.zeitErklaerung`, freigegebener Wortlaut Stephans vom 2026-08-01): „Wir messen in diesem Spiel verschiedene Zeiten, um sie im Nachgang gemeinsam zu analysieren. Deshalb läuft die angezeigte Uhr schon jetzt." — laut Kopfkommentar in `uebersetzungen.js` ausdrücklich „ohne die Zeitmessung selbst zu verändern". `Product.md` §4 (Ergänzung 2026-08-01) und `FEATURE-004`s Scope-Abschnitt bestätigen dieselbe bewusste Trennung: die **Erklärung** wurde bereits geliefert, die **Zeitmessung selbst** wurde bewusst unverändert gelassen und explizit an `BUGFIX-007` verwiesen.
+
+---
+
+**Design-Konflikt-Klärung (zentraler Streitpunkt dieser Analyse):**
+
+Das Ticket verlangt wörtlich: „Die Zeitmessung soll erst starten, wenn tatsächlich Karten bewegt werden dürfen." Das ist **keine reine Implementierungsfrage**, sondern widerspricht direkt der oben zitierten, am 2026-07-17 getroffenen und am 2026-08-01 durch FEATURE-012 erneut bestätigten Produktentscheidung. Eine wörtliche Umsetzung würde:
+
+1. Die Durchlaufzeit inhaltlich mit der Bearbeitungszeit verschmelzen (beide würden beim ersten Kartenzug beginnen) — die in `Flow-Game-Entscheidungen.md` als Kernkennzahl benannte Differenz „Durchlaufzeit − Bearbeitungszeit = Klärungs-/Vorbereitungsphase" würde strukturell auf null fallen und wäre nicht mehr auswertbar.
+2. Zwei weitere, davon abgeleitete Kennzahlen mit verändern: „Zeit bis zur ersten Lieferung" und „Zeit bis zur letzten Lieferung" sind laut Definitionstabelle ausdrücklich „wie Durchlaufzeit" verankert (gleicher Startpunkt) — eine Änderung des Durchlaufzeit-Starts zieht diese beiden Kennzahlen automatisch mit.
+3. Eine Änderung an `firestore.rules` erfordern (Zeile 644-646 erzwingt `durchlaufzeitStart == request.time` exakt beim Rundenstart) — das ist laut Ampel-Prüfung (Schritt 8a, Frage 2) ein automatisches Stopp-Kriterium für autonome Umsetzung.
+4. Der pädagogischen Kernaussage „Warten ist Verschwendung (Lean Waste) und soll sichtbar bleiben" direkt entgegenlaufen — nicht mehr sichtbar zu machen, wie viel Zeit die Klärungsphase kostet, widerspricht dem in `Product.md` §1 beschriebenen Lernziel.
+
+**Das ist deshalb die zentrale 🔴 funktional-kritische Frage dieser Analyse (Annahmen-Protokoll Punkt 1, siehe unten) — nicht durch diese Analyse selbst entscheidbar.** Diese Spec legt dennoch, wie vom Skill vorgeschrieben, vollständige Akzeptanzkriterien, ein Pre-Mortem und mehrere Implementierungsoptionen vor, macht aber an jeder betroffenen Stelle sichtbar, dass die eigentliche Umsetzung erst nach Stephans expliziter Entscheidung zwischen den unten stehenden Optionen beginnen darf.
+
+---
+
+**Brainstorming / Example Mapping (Schritt 2):**
+
+- **Regel (Flow-Game-Entscheidungen.md):** Durchlaufzeit beginnt bei Aufgabenvorstellung, Bearbeitungszeit beim ersten Zug — Differenz ist die gewollte, sichtbare Klärungsphase.
+- **Regel (Product.md §9):** „Verlässliche Messung: die Zeiten bestimmt der Server, nicht die Uhr im Browser" — jede Änderung an einem Startzeitpunkt muss weiterhin servergesetzt bleiben, kein Client-Zeitstempel.
+- **Beispiel:** Ein Team liest sich 90 Sekunden lang die Regeln durch, bevor es „Definition of Ready" bestätigt. Mit heutigem Verhalten zeigt die Durchlaufzeit-Uhr bereits „01:30", die Bearbeitungszeit-Box ist noch unsichtbar. Aus Nutzersicht (Erstnutzer-Test) wirkt das wie „die Uhr tickt schon, obwohl wir noch nichts tun können" — fachlich korrekt (Klärungsphase ist Teil der Kundensicht-Zeit), aber emotional wie Zeitdruck wahrgenommen.
+- **Beispiel:** Bestätigt ein Team „Definition of Ready" sofort (0 Sekunden Klärungsphase), fallen Durchlaufzeit- und Bearbeitungszeit-Start praktisch zusammen — kein Sonderfall nötig, das Verhalten ist bereits heute für diesen Grenzfall korrekt.
+- **Frage (nicht selbst entschieden, siehe Annahmen-Protokoll):** Soll die *Messung* (das, was am Rundenende in den Kennzahlen erscheint) unverändert bleiben und nur die *Live-Anzeige* während der Klärungsphase entschärft werden? Oder soll tatsächlich die zugrunde liegende Zeitmessung selbst geändert werden, wie im Ticket-Wortlaut gefordert?
+- **Frage (nicht selbst entschieden):** Falls nur die Live-Anzeige geändert wird — verträgt sich das mit der Formulierung „soll sichtbar bleiben" aus `Flow-Game-Entscheidungen.md`, oder bezieht sich „sichtbar" dort nur auf die Kennzahlen am Rundenende (nicht herausgerechnet), nicht zwingend auf eine sekündlich tickende Live-Anzeige während des Spiels?
+
+---
+
+**Annahmen-Protokoll (Pflicht, Schritt 2a):**
+
+1. 🔴 **Funktional kritisch — Kern-Konflikt mit bestehender Produktentscheidung:** Wie oben unter „Design-Konflikt-Klärung" ausgeführt, widerspricht die im Ticket geforderte Änderung direkt einer bereits bestätigten (2026-07-17) und am 2026-08-01 durch FEATURE-012 erneut bekräftigten Design-Entscheidung. **Frage an Stephan:** Welche der drei unten stehenden Implementierungsoptionen (A: tatsächliche Zeitmessung ändern, B: nur die Live-Anzeige während der Klärungsphase entschärfen bei unveränderter Server-Messung, C: Ticket als „durch FEATURE-012 bereits ausreichend adressiert" schließen, keine weitere Umsetzung) soll verfolgt werden? Diese Analyse kann diese Entscheidung nicht selbst treffen, da sie eine bewusste pädagogische Design-Entscheidung überschreiben würde.
+2. 🔴 **Funktional kritisch — falls Option A gewählt wird:** Sollen dann auch die abgeleiteten Kennzahlen „Zeit bis zur ersten Lieferung" und „Zeit bis zur letzten Lieferung" (aktuell definiert als „wie Durchlaufzeit") ihren Startpunkt mit verschieben, oder behalten sie den bisherigen Startpunkt (Aufgabenvorstellung), während nur die separat angezeigte „Durchlaufzeit" selbst sich ändert? Beides ist in `Flow-Game-Entscheidungen.md` nicht für diesen Fall vorgesehen, da der Fall dort nicht existiert.
+3. ⚪ **Konventionell — Begriff „Durchlaufzeit"/„Lead Time" bleibt als Bezeichnung bestehen**, auch wenn sich der Startzeitpunkt ändern sollte (Option A). ⚠️ Annahme: bitte bestätigen, falls Option A gewählt wird.
+4. ✅ **Bearbeitungszeit (Cycle Time) ist von diesem Ticket unabhängig vom gewählten Ausgang unberührt** — sie startet bereits heute korrekt erst mit dem ersten gültigen Kartenzug (`starteBearbeitungszeitFallsNoetig()`, code-verifiziert), das entspricht bereits dem im Ticket gewünschten Verhalten „Zeitmessung beginnt, sobald wirklich gespielt werden kann" für diese spezifische Kennzahl.
+
+**Fragen, die beim Durchspielen aufkamen und NICHT selbst entschieden wurden** (siehe Annahmen-Protokoll oben): ob überhaupt eine Verhaltensänderung erfolgen soll (Punkt 1), und falls ja, welche der drei Optionen; ob abgeleitete Kennzahlen mitziehen (Punkt 2).
+
+---
+
+**Pflichtfragen: Fundstellen-Sweep & Zustands-Check (Schritt 2d):**
+
+**Fundstellen-Sweep:** Suche nach `zeit-durchlauf`/`spielbrett.durchlaufzeit`/„Lead time" über den gesamten Client-Code (`public/spiel.html`, `public/js/i18n/uebersetzungen.js`, `src/i18n/uebersetzungen.js`): **eine einzige Live-Anzeige-Fundstelle** — die `zeit-durchlauf`-Box im gemeinsamen `runde-panel` (`public/spiel.html`, Zeilen ~344-348, gerendert/aktualisiert in `renderRundenStatus()`/`aktualisiereZeitanzeigen()`, Zeilen ~1566-1585). Dieses Element ist für **alle vier Runden gemeinsam** (Runde 1-3 und Runde 4 teilen sich dasselbe `runde-panel`), es gibt keine zweite, separate Uhr-Anzeige, die zusätzlich geändert werden müsste. Zwei weitere, aber nicht live-tickende Fundstellen zeigen `durchlaufzeit` nur als statischen Wert in der Kennzahlen-Tabelle nach Rundenende (`public/spiel.html` Zeilen 2391, 2528) — diese sind vom Ticket nicht betroffen, da sie das fertige, bereits vergangene Ergebnis zeigen, kein tickender Live-Zähler während der Klärungsphase.
+
+**Zustands-Check:**
+- **Wartezustand:** Die tickende Anzeige selbst IST der beanstandete Wartezustand — kein zusätzlicher Wartezustand nötig, unabhängig von der gewählten Option.
+- **Leerzustand:** Nicht einschlägig — es gibt vor Rundenstart keine Zeit-Anzeige, das `runde-panel` bleibt bis zum ersten Rundenstart vollständig `hidden`.
+- **Fehlerfall:** Bricht die Verbindung während der Klärungsphase ab, zeigt die bestehende `verbindungsStatus.js`-Logik (unverändert von diesem Ticket) den bekannten Verbindungshinweis; die Zeit-Anzeige selbst zeigt bei fehlendem `durchlaufzeitStart`-Wert unverändert `00:00` (bestehendes Verhalten, `aktualisiereZeitanzeigen()` prüft `startMs != null`) — kein neues Fehlerverhalten durch dieses Ticket, unabhängig von der gewählten Option.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten):**
+
+Da die endgültige Umsetzung von Stephans Entscheidung zwischen den Optionen A/B/C abhängt (siehe Annahmen-Protokoll Punkt 1), werden hier die Akzeptanzkriterien für die **empfohlene Option (B)** formuliert — bei Wahl von Option A oder C sind sie vor der Übergabe an `flow-game-bdd` entsprechend anzupassen (siehe Hinweis am Ende dieses Abschnitts).
+
+*Für Option B — Live-Anzeige während der Klärungsphase entschärfen, Server-Messung unverändert:*
+
+1. Solange die Gruppe die Aufgabe noch nicht verstanden hat (vor „Definition of Ready abgeschlossen"), zeigt die Uhr in der Durchlaufzeit-Box keine sekündlich hochzählende Zahl, sondern einen neutralen, nicht bedrohlich wirkenden Hinweis (z. B. „läuft" oder ein Wartesymbol statt „00:47", „00:48", „00:49" …). *(Herkunft: direkte Reaktion auf den im Ticket beschriebenen Eindruck „unfairer Zeitdruck".)*
+2. Sobald „Definition of Ready abgeschlossen" ist, zeigt die Durchlaufzeit-Box ab diesem Moment sichtbar eine sekündlich hochzählende Zeit — beginnend bei der tatsächlich bereits vergangenen Zeit seit Rundenstart, nicht bei 00:00 (die Klärungsphase wird also nicht aus der angezeigten Zahl herausgerechnet, nur vorher nicht Sekunde für Sekunde sichtbar hochgezählt). *(Herkunft: erhält die bestehende Kennzahlen-Definition aus `Flow-Game-Entscheidungen.md` unverändert.)*
+3. Die am Rundenende gezeigte, endgültige „Durchlaufzeit" in den Kennzahlen entspricht weiterhin exakt der vollen Zeit von Aufgabenvorstellung bis letzter Lieferung — identisch mit dem heutigen, unveränderten Verhalten (reine Regressionsabsicherung, keine neue Berechnung). *(Herkunft: Schutz der bestehenden FEATURE-002/FEATURE-003-Kennzahlen-Logik.)*
+4. Der bereits bestehende Erklärungstext (FEATURE-012, AK9, „Wir messen in diesem Spiel verschiedene Zeiten …") bleibt unverändert sichtbar und erklärt weiterhin, warum die Zeitmessung im Hintergrund bereits läuft, auch wenn die Anzeige selbst während der Klärungsphase nicht mehr hochzählt. *(Herkunft: verhindert einen Widerspruch zwischen Text und Anzeige.)*
+5. Die Bearbeitungszeit-Box (Cycle Time) verhält sich unverändert wie heute — bleibt bis zum ersten Kartenzug verborgen, erscheint danach tickend. *(Herkunft: Regressionsschutz, dieses Ticket betrifft ausschließlich die Durchlaufzeit-Anzeige.)*
+6. Wird „Definition of Ready" sofort (praktisch ohne Klärungsphase) abgeschlossen, wechselt die Anzeige unmittelbar von „neutralem Hinweis" zu „tickender Zahl", ohne einen falschen Zwischenwert oder Sprung anzuzeigen. *(Herkunft: Grenzfall aus dem Pre-Mortem, Schritt 4.)*
+7. Das Verhalten ist für alle vier Runden identisch (Runde 1-3 und Runde 4 teilen dieselbe Anzeige-Logik, siehe Fundstellen-Sweep). *(Herkunft: Fundstellen-Sweep bestätigt eine einzige, geteilte Anzeige.)*
+
+**Hinweis für `flow-game-bdd`:** Diese sieben Akzeptanzkriterien gelten nur, sofern Stephan Option B bestätigt. Bei Wahl von Option A sind zusätzlich Akzeptanzkriterien zur geänderten `firestore.rules`-Bedingung und zu den zwei abgeleiteten Kennzahlen nötig (siehe Annahmen-Protokoll Punkt 2); bei Wahl von Option C entfallen alle sieben Kriterien, stattdessen wird nur der Ticket-Status mit Verweis auf FEATURE-012 aktualisiert.
+
+---
+
+**Pre-Mortem – was könnte schiefgehen:**
+
+1. **Der eigentliche Konflikt wird übersehen und stillschweigend Option A umgesetzt**, weil sie dem Ticket-Wortlaut am nächsten kommt — das würde eine bereits bestätigte Produktentscheidung überschreiben, ohne dass Stephan das bewusst so entschieden hat. Gegenmaßnahme: Diese Spec bleibt auf „ToDo" stehen und wird nicht automatisch freigegeben, bis Stephan Annahmen-Protokoll Punkt 1 explizit beantwortet hat.
+2. **`firestore.rules`-Änderung (nur bei Option A) bricht bestehende, bereits produktiv genutzte Schreibpfade** — die Regel `durchlaufzeitStart == request.time` bei `create` ist eng mit dem Host-Rundenstart-Fluss verzahnt (siehe Architektur-Analyse). Eine unvorsichtige Lockerung könnte versehentlich einen client-gesetzten Zeitwert zulassen und damit Product.md §9 („die Zeiten bestimmt der Server") verletzen. Gegenmaßnahme: falls Option A gewählt wird, neue Regelbedingung genauso eng fassen wie die bestehende, mit eigenem `*.security.rules.test.js`-Testfall.
+3. **Verlust der Klärungsphasen-Sichtbarkeit als pädagogisches Lernelement** (nur bei Option A) — die Gruppe sieht am Ende nicht mehr, wie viel Zeit die Klärung gekostet hat, was laut `Product.md` §1 Teil des Lernziels ist. Gegenmaßnahme: Stephan explizit auf diesen Zielkonflikt hinweisen, bevor er sich für Option A entscheidet (bereits in dieser Spec geschehen).
+4. **Node/Browser-Sync-Risiko bei jeder Änderung an `rundenStart.js`** (nur bei Option A, falls der Startzeitpunkt selbst verschoben wird) — beide Kopien (`src/game/rundenStart.js`, `public/js/game/rundenStart.js`) sowie die abhängige `starteBearbeitungszeitFallsNoetig()` (existiert nur in der Browser-Kopie, siehe Node-Referenz/Browser-Sync-Check unten) müssten konsistent geändert werden. Gegenmaßnahme: beide Dateien im selben Arbeitsschritt ändern, bestehende `game-round.*`-Tests als Regressionsnetz nutzen.
+5. **Grenzwert Sofort-DoR (0 Sekunden Klärungsphase):** Bei Option B muss der Übergang von „neutraler Hinweis" zu „tickende Zahl" auch dann korrekt und ohne falschen Zwischenwert funktionieren, wenn dieser Übergang praktisch augenblicklich erfolgt. Gegenmaßnahme: als eigener Testfall (AK6) vorgesehen.
+6. **Verhalten unter Lastgrenzen:** Bis zu ~20 parallele Spiele (`Product.md` §2) — die reine Anzeige-Änderung (Option B) hat keinen zusätzlichen Firestore-Schreibzugriff zur Folge (nur Client-seitige Darstellungslogik), daher kein zusätzliches Lastrisiko gegenüber dem Status quo.
+7. **Rollback-/Wiederanlauffähigkeit:** Lädt eine Person die Seite während der Klärungsphase neu, muss die Anzeige (Option B) korrekt wieder im „neutralen" Zustand starten, nicht fälschlich schon hochzählen oder umgekehrt fälschlich weiter neutral bleiben, nachdem DoR zwischenzeitlich (durch eine andere Person) bereits abgeschlossen wurde — die Anzeige-Logik muss ausschließlich aus dem bereits vorhandenen, servergesetzten Feld `dorAbgeschlossen` abgeleitet werden (kein neuer lokaler Client-Zustand), analog zum bestehenden `zeitBearbeitungBox.hidden`-Muster.
+8. **Beobachtbarkeit im Fehlerfall:** Ein stiller Darstellungsfehler (z. B. Anzeige bleibt dauerhaft neutral, obwohl DoR längst abgeschlossen ist) wäre für Spielende nicht als Bug erkennbar, nur als „die Uhr läuft ja gar nicht" — kein bestehendes Logging/Monitoring für diesen konkreten Fall. Gegenmaßnahme: Testfall AK2/AK6 deckt genau diesen Übergang ab, zusätzlich manueller Chrome-Live-Check vor Done (wie bei vergleichbaren UI-Tickets im Projekt üblich).
+9. **Gruppierungs-/Stichproben-/Cache-Prüfung (Pre-Mortem-Unterpunkt 4c): nicht einschlägig.** Dieses Ticket betrifft ausschließlich die Anzeige-/Startlogik einer einzelnen Zeit-Uhr innerhalb einer laufenden Runde — es findet keine Prüfung, Zuweisung oder Auswahl über eine Menge von Kandidaten (z. B. Spielende, Stationen, Karten-Zuordnungen) statt, entsprechend gibt es hier keine Gruppierungs-, Stichproben- oder Cache-Fragestellung zu prüfen.
+
+---
+
+**Zusammenspiel bestehender Bausteine (Schritt 4a):**
+
+- **Betroffene Bausteine:** `public/js/game/rundenStart.js` (`starteRunde()`, `loeseDefinitionOfReadyAus()`, `starteBearbeitungszeitFallsNoetig()`), `src/game/rundenStart.js` (Node-Referenz derselben Logik, ohne `starteBearbeitungszeitFallsNoetig()`-Äquivalent), `firestore.rules` (Abschnitt `runden/{runde}`, `allow create`/`allow update`), `public/spiel.html` (`renderRundenStatus()`, `aktualisiereZeitanzeigen()`, `zeit-durchlauf`/`zeit-bearbeitung`-Boxen, `dor-bereich`), `public/js/i18n/uebersetzungen.js` + `src/i18n/uebersetzungen.js` (`spielbrett.durchlaufzeit`, `spielbrett.zeitErklaerung`).
+- **Reihenfolge:** Host klickt „Aufgabe vorstellen" → Client ruft `starteRunde()` → Firestore-Transaktion legt Rundendokument mit servergesetztem `durchlaufzeitStart` an (von `firestore.rules` erzwungen) → alle Clients (Host, Spielende, Beobachtende) abonnieren das Rundendokument und rendern `runde-panel` inkl. `zeit-durchlauf`-Box (tickt sofort) und sichtbarem `dor-bereich` → Team/Host löst „Definition of Ready abgeschlossen" aus → `dorAbgeschlossen:true` wird geschrieben → `dor-bereich` verschwindet, Spielbrett erscheint → erste Kartenbewegung löst `starteBearbeitungszeitFallsNoetig()` aus (setzt `bearbeitungszeitStart` huckepack) → `zeit-bearbeitung`-Box erscheint und tickt zusätzlich.
+- **Riskante Zustandskombination (bei Option B):** Wird die Sichtbarkeits-/Anzeige-Logik der Durchlaufzeit-Box NICHT ausschließlich deklarativ aus dem bereits servergesetzten `dorAbgeschlossen`-Feld abgeleitet, sondern z. B. aus einem separaten, nur lokal im Client gehaltenen Zwischenzustand, könnte ein Client, der während der Klärungsphase neu lädt oder kurzzeitig die Verbindung verliert, nach dem Wiederverbinden einen falschen Anzeige-Zustand zeigen (z. B. weiterhin „neutral", obwohl `dorAbgeschlossen` bei allen anderen Clients längst `true` ist) — das entspricht demselben Fehlermuster, das in `firestore.rules`/`rundenStart.js` bereits für `bearbeitungszeitStart` bewusst vermieden wurde (dortiger Kommentar: „ohne diese Funktion würde bearbeitungszeitStart in der echten Anwendung NIE gesetzt"). Gegenmaßnahme: Anzeige-Zustand ausschließlich aus `runde.dorAbgeschlossen` (bereits vorhandenes, servergesetztes Feld) ableiten, kein neuer Client-State.
+
+---
+
+**Node-Referenz/Browser-Sync-Check (Schritt 4b):**
+
+- **`starteRunde()`:** `src/game/rundenStart.js` Zeilen 26-40 (Node-Referenz, `Date.now()`) vs. `public/js/game/rundenStart.js` Zeilen 26-53 (Browser, `firebase.firestore.FieldValue.serverTimestamp()`). Inhaltlich verglichen: Die Diskrepanz (`Date.now()` vs. `serverTimestamp()`) ist eine bereits bestehende, bewusste und dokumentierte Eigenschaft der Node-Referenz (simuliert nur die fachliche Logik ohne echten Firestore-Server) — keine neue, durch dieses Ticket verursachte Abweichung, aber relevant, falls Option A gewählt wird: eine Änderung müsste in beiden Dateien konsistent erfolgen.
+- **`starteBearbeitungszeitFallsNoetig()`:** Existiert **ausschließlich** in `public/js/game/rundenStart.js` (Zeilen 86-101) — **kein Äquivalent in `src/game/rundenStart.js`** gefunden (Grep über `src/game/` ergab null Treffer). Das ist eine bereits bestehende, laut Kopfkommentar in der Browser-Datei bewusste Asymmetrie (die Funktion existiert nur, weil `firestore.rules` keinen eigenen dritten Update-Fall für „setze bearbeitungszeitStart" kennt und die Browser-Kopie das Feld deshalb huckepack über den bestehenden DoR-Update-Fall mitschreibt) — nicht Gegenstand dieses Tickets, aber zu beachten, falls Option A den Zusammenhang zwischen Durchlaufzeit- und Bearbeitungszeit-Start verändert.
+- **Anzeige-Logik (`aktualisiereZeitanzeigen()`):** Existiert nur einmal, ausschließlich in `public/spiel.html` (kein Node-Pendant, da reine Darstellungslogik ohne Firestore-Zugriff) — kein Sync-Risiko für Option B.
+
+---
+
+**Betroffene Architektur (Schritt 5):**
+
+- `public/spiel.html`: Anzeige-/Darstellungslogik der Zeit-Boxen (`renderRundenStatus()`, `aktualisiereZeitanzeigen()`) — bei Option B einzige tatsächlich zu ändernde Datei.
+- `public/js/game/rundenStart.js` + `src/game/rundenStart.js`: Nur bei Option A betroffen (Startzeitpunkt der Durchlaufzeit selbst).
+- `firestore.rules`: Nur bei Option A betroffen (`durchlaufzeitStart == request.time`-Bedingung bei Rundenerstellung).
+- `src/game/kennzahlen.js` + `public/js/game/kennzahlen.js`: Nur bei Option A betroffen, falls die abgeleiteten Kennzahlen „Zeit bis zur ersten/letzten Lieferung" mitgezogen werden (Annahmen-Protokoll Punkt 2).
+- `public/js/i18n/uebersetzungen.js` + `src/i18n/uebersetzungen.js`: Bei Option B ggf. neuer Übersetzungsschlüssel für den „neutralen" Anzeigetext (z. B. „läuft …"/„running …") in beiden Sprachen.
+- Explizit NICHT betroffen bei Option B: `firestore.rules`, das Firestore-Datenmodell, `kennzahlen.js`, jede Form der server-seitigen Zeitmessung selbst.
+
+**5a. Reichweite von „Implementierungsdetail"-Festlegungen:** Der genaue Wortlaut/die genaue visuelle Form des „neutralen Hinweises" in Option B (Text vs. Icon vs. Pulsieren) wird als Implementierungsdetail offengelassen. Einschätzung der Reichweite: Dieser Fall trifft **praktisch bei jeder Spielrunde** zu (jede Runde durchläuft zwangsläufig eine Klärungsphase vor DoR) — es handelt sich also nicht um einen seltenen Randfall, sondern um sichtbares Verhalten in praktisch jedem Spiel. Der genaue Wortlaut sollte deshalb vor der Implementierung kurz mit Stephan abgestimmt werden (siehe Testplan-Grundgerüst), auch wenn die Grundmechanik als Implementierungsdetail gilt.
+
+---
+
+**Regressionsrisiko (Schritt 6):**
+
+Gegen bereits abgenommene Tickets: **FEATURE-002** (Grundmechanik Runden 1-3, `durchlaufzeitStart`/`bearbeitungszeitStart`-Grundlogik — `tests/game-round.*` als Regressionsnetz), **FEATURE-003** (Kennzahlen-Auswertung am Rundenende, `kennzahlen.js` — nur falls Option A gewählt wird), **FEATURE-004** (Runde 4 nutzt dieselbe geteilte Zeit-Anzeige, siehe Fundstellen-Sweep — Regressionstest muss auch Runde 4 abdecken), **FEATURE-012** (AK9-Erklärungstext muss unverändert sichtbar bleiben und weiterhin zum tatsächlichen Anzeigeverhalten passen — bei Option B ggf. Wortlaut-Anpassung nötig, damit Text und Anzeige nicht widersprüchlich wirken), **BUGFIX-011** (Bearbeitungszeit-Berechnung Runde 4 — unverändert, da dieses Ticket nur die Durchlaufzeit-Anzeige betrifft).
+
+---
+
+**Implementierungsoptionen mit Empfehlung (Schritt 7):**
+
+**Option A — Tatsächlichen Startzeitpunkt der Zeitmessung ändern (wörtliche Ticket-Umsetzung):** Die Durchlaufzeit (serverseitig, in `firestore.rules` verankert) startet erst mit dem ersten gültigen Kartenzug statt bei Rundenstart. Vorteil: entspricht dem Ticket-Wortlaut exakt. Nachteile: widerspricht direkt der bestätigten Produktentscheidung vom 2026-07-17 und der Bekräftigung vom 2026-08-01 (FEATURE-012); verschmilzt Durchlaufzeit und Bearbeitungszeit faktisch zu einer einzigen Kennzahl und macht die Klärungsphase als Lean-Waste-Lernelement unsichtbar; erfordert eine `firestore.rules`-Änderung (automatisches Stopp-Kriterium für autonome Umsetzung, siehe Ampel-Prüfung); zieht die abgeleiteten Kennzahlen „Zeit bis erster/letzter Lieferung" in eine ungeklärte Richtung (Annahmen-Protokoll Punkt 2).
+
+**Option B — Nur die Live-Anzeige während der Klärungsphase entschärfen, Server-Messung unverändert lassen (empfohlen):** Die Server-seitige Zeitmessung (`durchlaufzeitStart`, alle Kennzahlen-Berechnungen) bleibt exakt wie heute. Nur die Client-Anzeige zeigt während der Klärungsphase keine sekündlich hochzählende Zahl mehr, sondern einen neutralen Hinweis; ab „Definition of Ready abgeschlossen" beginnt die sichtbare Hochzählung (bei der bereits vergangenen Zeit, nicht bei 00:00). Vorteile: adressiert die im Ticket beschriebene emotionale Wirkung („fühlt sich wie unfairer Zeitdruck an, bevor man etwas tun kann") ohne die Server-Messung, die Kennzahlen-Definitionen oder `firestore.rules` anzufassen; kein Regressionsrisiko gegen FEATURE-002/003/004/012s Zahlenwerte, da am Rundenende weiterhin exakt dieselben Werte erscheinen; reine Client-seitige Änderung, kein Datenmodell-Eingriff. Nachteil: verändert nicht das, was das Ticket wörtlich fordert (die *Messung* selbst) — nur die *Wahrnehmung* während des Spiels; könnte in Widerspruch zur Formulierung „soll sichtbar bleiben" aus `Flow-Game-Entscheidungen.md` gelesen werden, falls diese sich auch auf die Live-Anzeige und nicht nur auf die Rundenend-Kennzahlen bezieht (siehe offene Frage im Brainstorming).
+
+**Option C — Ticket als „durch FEATURE-012 bereits ausreichend adressiert" schließen, keine weitere Umsetzung:** Da FEATURE-012 (2026-08-01) bereits eine Erklärung ergänzt hat und Product.md/Flow-Game-Entscheidungen.md die frühe Zeitmessung als bewusstes Design festhalten, könnte dieses Ticket formal mit Verweis auf FEATURE-012 geschlossen werden, ohne weiteren Code zu ändern. Vorteil: null Implementierungsaufwand, null Regressionsrisiko, konsistent mit der bereits getroffenen Entscheidung. Nachteil: löst die im Erstnutzer-Test beschriebene emotionale Wirkung nicht, falls Stephan sie trotz der bereits vorhandenen Erklärung weiterhin als echtes Problem einschätzt.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar – Stephan entscheidet):** Option B. Sie löst das im Ticket beschriebene, im Erstnutzer-Test real beobachtete Störgefühl („fühlt sich wie unfairer Zeitdruck an"), ohne die am 2026-07-17 bewusst getroffene und am 2026-08-01 bekräftigte pädagogische Design-Entscheidung (Klärungsphase soll als Kundensicht-Zeit sichtbar/messbar bleiben) rückgängig zu machen — sie trennt sauber zwischen „was gemessen wird" (unverändert) und „wie es sich während des Spiels anfühlt, während man noch nichts tun kann" (entschärft). Option A wird nicht empfohlen, da sie eine bestätigte Entscheidung ohne erkennbaren neuen fachlichen Grund überschreiben würde und zusätzlich `firestore.rules` anfasst. Option C ist vertretbar, falls Stephan die bereits vorhandene Erklärung (FEATURE-012) für ausreichend hält — das kann nur Stephan selbst einschätzen.
+
+---
+
+**Bei UI/UX-Unsicherheit (Schritt 8):** Die konkrete visuelle Form des „neutralen Hinweises" in Option B (Text „läuft …" vs. Icon vs. dezentes Pulsieren) ist eine einfache, in ein bis zwei Sätzen beschreibbare Variation ohne grundlegend unterschiedliches Bedienkonzept (kein Wischen vs. Tippen, keine unterschiedliche Interaktionslogik) — kein klickbarer Prototyp nötig, ein kurzer Textvorschlag im Testplan genügt.
+
+---
+
+**Ampel-Prüfung (Schritt 8a):**
+
+1. **Klarer Abstand?** Nein — die drei Optionen liegen fachlich nicht gleichauf (Option B ist klar empfohlen), aber die Wahl zwischen ihnen hängt von einer produktphilosophischen Frage ab, die nicht aus den Dokumenten allein entscheidbar ist (siehe Annahmen-Protokoll Punkt 1).
+2. **Eingriff bleibt im Ticket, ohne `firestore.rules`-Berührung?** Nur bei Option B/C: Ja. Bei Option A: Nein, `firestore.rules` wäre betroffen — automatisches Stopp-Kriterium.
+3. **Ohne Datenverlust rückgängig?** Ja für alle drei Optionen (reine Anzeige- bzw. Ticket-Status-Änderung, kein Datenmodell-Eingriff bei B/C).
+4. **Pre-Mortem ohne hohes Risiko?** Nein — Pre-Mortem-Risiko 1 und 3 (stillschweigendes Überschreiben einer bestätigten Produktentscheidung, Verlust des Lean-Waste-Lernelements) sind hohe Risiken, die eine bewusste Entscheidung erfordern.
+5. **Keine reine Geschmacks-/Optikfrage?** Es ist keine reine Optikfrage, sondern eine inhaltliche Produktentscheidung mit pädagogischer Tragweite.
+
+**Ergebnis: 🔴 Rot — braucht Stephans Entscheidung: Die naheliegendste, wörtliche Ticket-Umsetzung (Option A) widerspricht einer bereits bestätigten Produktentscheidung (`Flow-Game-Entscheidungen.md`, 2026-07-17, bekräftigt durch FEATURE-012 am 2026-08-01) und würde zusätzlich `firestore.rules` berühren — Stephan muss zwischen den Optionen A/B/C entscheiden, bevor `flow-game-bdd` Tests schreibt.**
+
+---
+
+**Testplan-Grundgerüst (Übergabe an `flow-game-bdd`, nach Stephans Entscheidung):**
+
+Bei Bestätigung von Option B (empfohlen): neue Testdatei `tests/game-bugfix-007-durchlaufzeit-anzeige.static.test.js` gegen den echten Quelltext von `public/spiel.html` — prüft AK1 (kein sekündlich wechselnder Zahlenwert vor DoR), AK2 (Hochzählung ab DoR, korrekter Startwert = bereits vergangene Zeit), AK3 (Regressionsschutz: Rundenend-Kennzahl unverändert), AK4 (Erklärungstext weiterhin vorhanden), AK5 (Bearbeitungszeit-Box-Verhalten unverändert, Regression gegen FEATURE-002), AK6 (Grenzfall Sofort-DoR), AK7 (Runde 4 identisches Verhalten). Regressionslauf gegen `tests/game-round.*`, `tests/game-round4.*`, `tests/game-i18n.*` (falls neuer Übersetzungsschlüssel) vor Abschluss zwingend.
+
+Bei Bestätigung von Option A: zusätzlich `tests/game-round.security.rules.test.js`-Erweiterung für die geänderte `firestore.rules`-Bedingung sowie Klärung der Annahmen-Protokoll-Punkte 2/3 vor Testerstellung.
+
+Bei Bestätigung von Option C: kein Testplan nötig, nur Status-/Verweis-Update im Ticket.
+
+---
+
+### Testplan (flow-game-bdd, 2026-08-09)
+
+**Stephans Entscheidung (2026-08-09 13:47): Option B** — Server-seitige Zeitmessung unverändert, nur die Client-Live-Anzeige der Durchlaufzeit-Box wird entschärft. Neue Testdatei im echten Repo: `tests/game-bugfix-007-durchlaufzeit-anzeige.static.test.js` (kein DOM/jsdom im Projekt — Textmuster-Prüfung gegen den echten Quelltext von `public/spiel.html`, zusätzlich mit einer echten Extraktion + Ausführung von `renderRundenStatus()`/`aktualisiereZeitanzeigen()`/`alsMillisLokal()`/`formatiereZeit()` per `new Function(...)`, analog zu `tests/game-round4-warteschlange.static.test.js`, um Given/When/Then gegen konkrete Beispiel-Zeitdaten statt nur strukturelle Textmuster zu prüfen). `setInterval`/`clearInterval` werden dabei lokal abgefangen, damit ein Sekunden-Tick gezielt simuliert werden kann, statt einen echten Timer abzuwarten.
+
+**Testszenarien (22 Testfälle in 8 Szenario-Gruppen):**
+- AK1 (kein sekündlich hochzählender Zahlenwert vor DoR): Erst-Render zeigt nicht den naiven verstrichenen Wert; Anzeige bleibt zwischen zwei simulierten Ticks unverändert, solange DoR nicht abgeschlossen ist.
+- AK2 (Hochzählung ab DoR, korrekter Startwert = bereits vergangene Zeit): Anzeige zeigt direkt nach DoR-Abschluss sofort die tatsächlich vergangene Zeit (z. B. "00:47", nicht "00:00"); zählt danach korrekt weiter (Regressionsschutz Arithmetik).
+- AK3 (Regressionsschutz: Rundenend-Kennzahl unverändert): `zeigeKennzahlen()` liest weiterhin unverändert `runde.durchlaufzeit`; Rundenvergleichs-Tabelle liest weiterhin `r.durchlaufzeit`.
+- AK4 (Erklärungstext FEATURE-012/AK9 bleibt sichtbar): `#zeit-erklaerung`-Element und `spielbrett.zeitErklaerung`-Wortlaut unverändert in beiden i18n-Kopien.
+- AK5 (Bearbeitungszeit-Box-Verhalten unverändert, Regression gegen FEATURE-002): Sichtbarkeits-Statement hängt weiterhin nur an `bearbeitungGesetzt`, nicht an `dorAbgeschlossen`; beide Kombinationen (DoR ja/nein × Bearbeitung gesetzt/nicht gesetzt) verhalten sich unabhängig von der neuen Durchlaufzeit-Logik.
+- AK6 (Grenzfall Sofort-DoR): `durchlaufzeitStart === dorAbgeschlossenAm === jetzt` zeigt sofort korrekt "00:00", kein NaN/undefined/hängender neutraler Hinweis; zählt danach sauber auf "00:01" weiter.
+- Pre-Mortem-Risiko 7 (Rollback-/Wiederanlauffähigkeit): Ein frischer, isolierter Erst-Render mit bereits `dorAbgeschlossen: true` (simuliert Seiten-Reload während der Klärungsphase, nachdem eine andere Person DoR inzwischen abgeschlossen hat) zeigt sofort korrekt die tickende Zeit, ohne vorherigen "false"-Zustand nötig zu haben; zwei unabhängige, frische Aufrufe mit sonst identischen Zeit-Daten unterscheiden sich nur im übergebenen `dorAbgeschlossen`-Feld.
+- AK7 (identisches Verhalten für alle vier Runden): Runde 1 und Runde 4 liefern bei identischen Zeit-Daten exakt denselben angezeigten Text (vor und nach DoR); struktureller Regressionsschutz, dass `aktualisiereZeitanzeigen()` nicht `aktuelleRundenNummer` referenziert und der Aufruf nicht in die Runde-4-Verzweigung verschoben wird.
+- Neuer i18n-Schlüssel (Namensvorschlag `spielbrett.durchlaufzeitNeutralerHinweis`, DE/EN, Wortlaut noch mit Stephan abzustimmen laut Spec 5a): Existenz/Nicht-Leerheit in beiden i18n-Kopien, Inhalt sieht nicht wie ein mm:ss-Zeitformat aus.
+
+**Realer Testlauf (2026-08-09, device_bash im echten Repo, `npx jest`):** 16/22 grün, 6 rot — wie erwartet (RED-Phase, siehe Kopfkommentar der Testdatei). Rot sind ausschließlich die Szenarien, die tatsächlich fehlende Funktionalität voraussetzen: beide AK1-Szenarien (Anzeige tickt heute unbedingt), ein Pre-Mortem-Risiko-7-Szenario (dorAbgeschlossen:false/true liefern heute identischen Text), sowie alle drei neuen i18n-Schlüssel-Szenarien (Schlüssel existiert noch nicht). Grün sind AK2 (Arithmetik war schon immer korrekt, nur das Gating vor DoR fehlt), AK3, AK4, AK5, AK6, Pre-Mortem-Risiko-7 Erst-Render-Fall und AK7 — reine Regressionsschutz-Szenarien, die unverändertes Bestandsverhalten korrekt als bereits erfüllt erkennen. Zwei mechanische Testfehler (fehlende `timerIntervalId`-Deklaration im Ausführungs-Harness; ein zu weites Textfenster, das eine unbeteiligte `dorAbgeschlossen`-Fundstelle in einem anderen Codezweig fälschlich als Verletzung wertete) wurden während der BDD-Phase selbst gefunden und behoben, ohne die eigentlichen Erwartungen zu ändern (siehe `test-driven-development`/Skill-Abschnitt 4a).
+
+**Neuer Übersetzungsschlüssel nötig:** Ja — `spielbrett.durchlaufzeitNeutralerHinweis` (Vorschlag DE „läuft …“ / EN „running …“, angelehnt an das Beispiel aus AK1). Exakter Wortlaut/visuelle Form (Text vs. Icon vs. Pulsieren) ist laut Spec-Schritt 5a ein Implementierungsdetail, das kurz mit Stephan abgestimmt werden sollte, bevor `flow-game-impl` es festschreibt — die Tests prüfen bewusst nicht den exakten Wortlaut.
+
+**Regressionslauf (Pflicht laut Testplan-Grundgerüst):** `tests/game-round.*`, `tests/game-round4.*`, `tests/game-i18n.*` real ausgeführt. Nicht-Emulator-Teile: 118/118 grün (`game-round.station-berechtigung.static.test.js`, `game-round4.logic.test.js`, `game-round4-bearbeitungszeit.static.test.js`, `game-round4-warteschlange.static.test.js`, `game-i18n.manual-checks.test.js`, `game-i18n-quelltext-scan.static.test.js`). Emulator-abhängige Teile (`game-round.logic.test.js`, `game-round.stapel-zaehlung.test.js`, `game-i18n.logic.test.js`) scheiterten an `ECONNREFUSED 127.0.0.1:8080` bzw. dem Versuch, den Firestore-Emulator-JAR über `firebase emulators:exec` herunterzuladen (`download failed, status 403: Connection blocked by network allowlist`) — dieselbe, bereits aus vorangegangenen Sessions bekannte Netzwerk-Einschränkung der Geräte-Brücke (siehe FEATURE-017-Testplan oben), keine durch diese Änderung verursachte Regression. Stephan sollte `npm run test:emulator:feature-002` einmal selbst laufen lassen, um dies zusätzlich zu bestätigen.
+
+**Status:** Bereit für `flow-game-impl`.
+
+---
+
+#### Implementierungs-Ergebnis (flow-game-impl, 2026-08-09)
+
+**Geänderte Dateien (alle direkt im echten Repo über die Geräte-Brücke, `~/mnt/"Flow Game"`, Diff vor jedem Schreibvorgang gegen ein separat konstruiertes/verifiziertes Zielergebnis geprüft, kein Read-Modify-Write derselben Datei in einem Zug):**
+
+- `public/spiel.html` — `aktualisiereZeitanzeigen()` (innerhalb `renderRundenStatus()`) um eine Fallunterscheidung nach `runde.dorAbgeschlossen` ergänzt: ist DoR noch nicht abgeschlossen, zeigt `zeitDurchlaufEl.textContent` den neuen neutralen Hinweistext (`t('spielbrett.durchlaufzeitNeutralerHinweis')`) statt der sekündlich hochzählenden Zahl; ist DoR abgeschlossen, bleibt die Berechnung `formatiereZeit((endeMs != null ? endeMs : Date.now()) - startMs)` exakt wie zuvor unverändert (voller Zeitraum seit `durchlaufzeitStart`, kein neuer Startpunkt bei 00:00). Kein neuer Client-Zustand — die Fallunterscheidung liest ausschließlich das bereits vorhandene, servergesetzte Feld `runde.dorAbgeschlossen` (Pflichtvorgabe aus Pre-Mortem-Risiko 7). Alle übrigen Teile von `renderRundenStatus()` (Bearbeitungszeit-Box, Sichtbarkeits-Logik, Runde-4-Verzweigung) unverändert.
+- `src/i18n/uebersetzungen.js` — neuer Schlüssel `spielbrett.durchlaufzeitNeutralerHinweis: { de: 'läuft …', en: 'running …' }` ergänzt (Node-Referenz).
+- `public/js/i18n/uebersetzungen.js` — derselbe Schlüssel mit identischem Wortlaut ergänzt (Browser-Kopie, Node/Browser-Sync gewahrt).
+
+**Node/Browser-Sync-Check (Pflichtschritt, Skill-Abschnitt 3a):** `aktualisiereZeitanzeigen()` existiert ausschließlich in `public/spiel.html` (kein Node-Pendant, bereits in der Analyse-Spec bestätigt) — kein Sync-Risiko für die Anzeige-Logik selbst. Der neue i18n-Schlüssel wurde in beiden Kopien (`src/i18n/uebersetzungen.js`, `public/js/i18n/uebersetzungen.js`) mit identischem DE-/EN-Wortlaut ergänzt und per Test AK „Neuer i18n-Schlüssel" beidseitig verifiziert.
+
+**Gewählter Wortlaut des neuen Hinweistexts:** DE „läuft …", EN „running …" — der in der Spec (Schritt 5a) und im Testplan vorgeschlagene Wortlaut wurde unverändert übernommen, da er als sinnvoller, verständlicher Standardvorschlag im Ticket dokumentiert war und die Tests den exakten Wortlaut bewusst offenlassen. **Dieser Wortlaut ist noch nicht mit Stephan im Dialog bestätigt** (laut Spec 5a ausdrücklich vorgesehen, „kurz mit Stephan abzustimmen") — Stephan sollte ihn im Rahmen der Live-Verifikation vor dem finalen Release-Go gegenlesen und bei Bedarf ändern lassen (reine Textänderung, kein weiterer Code-Eingriff nötig).
+
+**Rot/Grün-Verlauf (BUGFIX-007-eigene Testdatei, `tests/game-bugfix-007-durchlaufzeit-anzeige.static.test.js`):** BDD-Phase (2026-08-09, vor Implementierung): 16/22 grün, 6 rot (RED-Phase, wie im Testplan dokumentiert). Nach Implementierung (2026-08-09, `npx jest tests/game-bugfix-007-durchlaufzeit-anzeige.static.test.js`): **22/22 grün**. Kein Testfall wurde abgeschwächt, gelöscht oder in seiner Erwartung verändert — alle sechs zuvor roten Szenarien wurden ausschließlich durch die oben beschriebene Code-Änderung grün, kein Escape-Hatch-Fall nötig.
+
+**Pflicht-Regressionslauf gegen bereits Done-markierte Tickets (Skill-Abschnitt 4, gegen die im Regressionsrisiko-Abschnitt der Spec genannten Tickets FEATURE-002/003/004/012, BUGFIX-011):**
+
+- Nicht-Emulator-Teile real ausgeführt und grün:
+  - `tests/game-round.station-berechtigung.static.test.js`, `tests/game-round4.logic.test.js`, `tests/game-round4-bearbeitungszeit.static.test.js` (BUGFIX-011-Regressionsnetz), `tests/game-round4-warteschlange.static.test.js`, `tests/game-i18n.manual-checks.test.js`, `tests/game-i18n-quelltext-scan.static.test.js` → **118/118 grün**.
+  - Zusätzlich `tests/game-evaluation.logic.test.js` (FEATURE-003-Regressionsnetz, per Grep als nicht emulatorabhängig verifiziert) und `tests/game-feature-012-erklaerungstexte.static.test.js` (FEATURE-012-Regressionsnetz) → **53/53 grün**.
+  - Gesamt Nicht-Emulator-Regression: **171/171 grün**, keine Regression durch diese Änderung.
+- Emulator-abhängige Teile (per Grep auf `rules-unit-testing`/`localhost:8080`/`initializeTestEnvironment` verifiziert, nicht am Dateinamensmuster geraten, siehe Skill-Abschnitt 5l): `tests/game-round.security.rules.test.js`, `tests/game-round.logic.test.js`, `tests/game-round.stapel-zaehlung.test.js` (FEATURE-002), `tests/game-evaluation.security.rules.test.js` (FEATURE-003), `tests/game-round4.security.rules.test.js` (FEATURE-004), `tests/game-i18n.security.rules.test.js`, `tests/game-i18n.logic.test.js` (i18n-Schlüssel-Sync) konnten in der Geräte-Werkstatt-VM **nicht** ausgeführt werden — bekannte, bereits aus früheren Tickets (FEATURE-017 u. a.) dokumentierte Infrastruktur-Einschränkung: kein Internetzugriff zum Download des Firestore-Emulator-JAR (`firebase emulators:exec` schlägt mit „403: Connection blocked by network allowlist" fehl). Es wurde bewusst **kein** eigener Erprobungsversuch unternommen (siehe Skill-Abschnitt 5e) — das ist keine durch dieses Ticket verursachte Regression, sondern eine bekannte Umgebungsgrenze.
+  - **Offener manueller Schritt bei Stephan:** Bitte einmal selbst lokal ausführen, um die Emulator-Regression zu bestätigen:
+    ```bash
+    cd "/Users/stephan/Claude/Projects/Flow Game" && npm run test:emulator:feature-002 > _to_delete/emulator-bugfix-007-feature-002.log 2>&1
+    ```
+    Analog bei Bedarf zusätzlich `test:emulator:feature-004` und `test:emulator:feature-006` (deckt `game-i18n.security.rules.test.js`/`game-i18n.logic.test.js` ab, relevant wegen des neuen i18n-Schlüssels). Hinweis: ein von einer früheren Sitzung übrig gebliebener Firestore-Emulator-Prozess kann Port 8080 blockieren (`Could not start Firestore Emulator, port taken`) — vorher ggf. mit `lsof -nP -iTCP:8080 -sTCP:LISTEN` prüfen.
+
+**Backlog.md-Sync-Hinweis:** Die lokale, git-getrackte `Backlog.md` auf Stephans Mac enthielt vor diesem Schreibvorgang noch nicht den vollständigen Analyse-Spec-/Testplan-Text dieses Tickets (nur die ursprüngliche Kurzbeschreibung, Status „ToDo") — offenbar hatten `flow-game-analyze`/`flow-game-bdd` ihre Ausgabe nur in die Cloud-Kopie (`project_write`) geschrieben, nicht in die lokale Datei. Dieser Schreibvorgang hat den vollständigen Spec-/Testplan-Text aus der Cloud-Kopie übernommen und lokal nachgezogen, damit beide Kopien wieder synchron sind, zusätzlich zum neuen Implementierungs-Ergebnis-Abschnitt hier.
+
+**Noch offen vor „Done":** Release (Deploy nach GitHub Actions/Firebase Hosting) und Live-Verifikation sind laut Release-vor-Done-Gate noch nicht erfolgt — Status bleibt „In Progress", bis Release + Live-Check abgeschlossen sind. Empfehlung: `flow-game-release` als nächsten Schritt anstoßen.
+
+**Stephans Entscheidungen (2026-08-09 14:13):**
+- Wortlaut „läuft …" / „running …" bestätigt — keine Änderung nötig.
+- **Echten Mehrpersonentest für dieses Ticket bewusst übergangen** (Stephans ausdrückliche Entscheidung, kein von der Analyse vorgesehener Automatismus). Damit gilt die sonst für Zeitmessung/Timing-Tickets vorgesehene Zusatzanforderung eines echten Mehrpersonen-Tests (siehe `flow-game-orchestrator`, Gate 3) für BUGFIX-007 als bewusst erlassen — das Test-Gate stützt sich stattdessen ausschließlich auf den grünen automatisierten Regressionslauf oben plus die noch ausstehende Chrome-Live-Verifikation gegen die Akzeptanzkriterien.
 
 ---
 
@@ -2301,6 +2531,125 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 ---
 
 ## ✅ Done
+
+### TASK-007 Akzeptanzkriterien-Qualität: Analyse-Skills und Orchestrator gegen Meta-Framework prüfen
+
+| Feld | Wert |
+|------|------|
+| **Typ** | Task |
+| **Priorität** | Mittel |
+| **Status** | Done |
+| **Done am** | 2026-08-09 |
+| **Erstellt** | 2026-08-08 |
+
+**Entscheidung von Stephan (2026-08-09 07:12):** Orchestratoren sollen zusätzlich selbst prüfen, ob eine Analyse den neuen AK-Qualitäts-Check durchgeführt hat — nicht nur die Analyse-Skills selbst (identische Entscheidung wie bei TASK-101/FotoAlert). Gate 1 damit aufgelöst, Umsetzung beginnt.
+
+**Umsetzung abgeschlossen (2026-08-09 07:36):** Skill-Ergänzungsdateien für `flow-game-analyze` (Granularität + Herkunft organisch in Schritt 3 eingewoben, erweiterter Pre-Mortem in Schritt 4, bedingter Schritt 4c „Gruppierungs-/Stichproben-/Cache-Prüfung"), `flow-game-bdd` (Testfall-Ergänzungen für Gruppierungs-/Äquivalenz-Fälle sowie Polaritäts-Pflicht pro Akzeptanzkriterium) und `flow-game-orchestrator` (neue AK-Qualitäts-Check-Verifikation vor Gate 1, inline im Hauptthread über `gate-auditor` Modus B — kein eigener Subagent) wurden erstellt und Stephan per Datei-Übergabe zugestellt (2026-08-09 07:36). Installierte Skills können in dieser Session nicht live editiert werden — Stephan muss die gelieferten Dateien selbst über „Skill speichern" installieren; eine Bestätigung, dass das geschehen ist, liegt noch nicht vor. Dieses Ticket liefert keinen App-Code, daher ist kein automatisierter Test-/Release-Zyklus anwendbar — als nächstliegende Ersatzprüfung wird Stephans eigene Bestätigung benötigt, dass die Dateien installiert und inhaltlich richtig sind, bevor das Ticket auf Done gesetzt wird.
+
+**Stephan bestätigt (2026-08-09 08:22):** Skills gespeichert/installiert. Verifiziert (nicht nur behauptet): Installationsstand von `flow-game-analyze`, `flow-game-bdd` und `flow-game-orchestrator` per Zeitstempel- und Byte-für-Byte-Vergleich gegen die ausgelieferten `.skill`-Dateien geprüft — identisch. Damit sind alle Akzeptanzkriterien erfüllt; Status auf Done gesetzt. Kein Test-/Release-Gate anwendbar (kein App-Code).
+
+**Beschreibung:** Stephan hat eine Grundlagenanalyse geliefert (gespeichert unter `/Users/stephan/Claude/Projects/Claude Cowork/specs/AkzeptanzkriterienQualitaetsanalyse20260808.md`), die untersucht, warum Akzeptanzkriterien in stark automatisierten Entwicklungsketten (Analyse-Agent → Test-Agent → Implementierungs-Agent) eine andere, kritischere Rolle spielen als in klassischer Entwicklung — lückenhafte Kriterien erzeugen keinen sichtbaren Fehlschlag, sondern falsche Sicherheit (Tests werden grün, weil sie exakt die Lücke abdecken). Das Dokument liefert: ein Prüfraster mit sechs Dimensionen (Granularität, Polarität, Messbarkeit, Abdeckung über vier AK-Kategorien [funktional/nicht-funktional/Architektur/Sonstige], Testbarkeit ohne Rückfrage, Herkunftsnachvollziehbarkeit), eine Checkliste häufig vergessener Negativ-/Randfall-Kategorien, sowie am FotoAlert-Fallbeispiel „Pfaueninsel"-Bug eine generalisierbare Planungsfrage samt Akzeptanzkriterien- und Testfall-Vorlage für eine bestimmte Bug-Klasse („Optimierungsleck durch falsche Äquivalenzannahme" — z. B. bei Gruppierung/Stichprobenprüfung/Caching/Deduplizierung aus Performancegründen).
+
+**Aufgabe dieses Tickets:** Prüfen, ob und wie dieses Prüfraster, die Checkliste und die Planungsfrage/Vorlagen bereits in `flow-game-analyze`, `flow-game-bdd` und `flow-game-orchestrator` abgedeckt sind — und wo konkrete Ergänzungen sinnvoll wären (z. B. ein fester Pre-Mortem-Prüfschritt vor Freigabe einer Spec). Pendant-Ticket zu TASK-101 im FotoAlert-Backlog (dort bereits angelegt, gleiches Thema, projektübergreifend).
+
+**User Story:** Als Stephan, der sich auf automatisiert generierte Tests als Freigabe-Signal verlässt, möchte ich, dass die Analyse-Skills und der Orchestrator im Flow-Game-Projekt systematisch auf Lücken in der Akzeptanzkriterien-Qualität prüfen, sodass lückenhafte Kriterien nicht unbemerkt als grüne Tests durchgehen und falsche Sicherheit erzeugen.
+
+**Bezug:** Keine Dublette gefunden (Grep nach „Akzeptanzkriterien-Qualität", „Prüfraster", „Meta-Framework", „Pfaueninsel", „Äquivalenzannahme" im gesamten Backlog ohne Treffer auf ein bestehendes Ticket zu diesem Thema). Pendant zu **TASK-101** im FotoAlert-Backlog (`BACKLOG.md`, dort bereits als ToDo angelegt) — gleiches Analysedokument, gleiche Fragestellung, dort auf `fotoalert-analyze`/`fotoalert-orchestrator` bezogen, hier auf die Flow-Game-Skills.
+
+---
+
+#### Analyse-Spec (2026-08-08)
+
+**Vorab geprüfte Quellen:** `AkzeptanzkriterienQualitaetsanalyse20260808.md` (Grundlagenanalyse, vollständig gelesen) sowie die aktuellen `SKILL.md`-Inhalte von `flow-game-analyze`, `flow-game-bdd` und `flow-game-orchestrator` (vollständig gelesen, nicht aus Erinnerung zitiert). Pendant-Ticket **TASK-101** (FotoAlert-Backlog) lief laut Auftrag dieser Session bereits durch und endete 🔴 Rot mit einer offenen Wahlfrage, ob Orchestratoren zusätzlich selbst prüfen sollen, ob ein neuer Check durchgeführt wurde — diese Session hatte keinen eigenen Lesezugriff auf `BACKLOG.md` (FotoAlert) und übernimmt diese Angabe deshalb als gegebenen Kontext aus dem Auftrag, nicht als selbst nachgelesenen Beleg.
+
+**Pre-Mortem zur Analyse selbst — was könnte an dieser Prüfung schiefgehen:**
+
+1. **Oberflächlicher Stichwort-Abgleich statt echter Inhaltsprüfung.** Ein Wort wie „Testbarkeit" oder „Fehlerfall" taucht in den Skills auf, meint dort aber etwas Engeres als das Meta-Framework. Gegenmaßnahme: jede Einordnung unten mit wörtlichem Zitat und Fundstelle (Skill + Abschnittsname) belegen, nicht nur „kommt vor"/„kommt nicht vor" behaupten.
+2. **„Teilweise abgedeckt" fälschlich als „voll abgedeckt" gewertet.** Z. B. deckt `flow-game-bdd` Polarität nur für serverautoritative Regeln ab, nicht für Akzeptanzkriterien allgemein — das als vollständige Abdeckung von „Polarität" zu verbuchen wäre eine Beschönigung. Gegenmaßnahme: durchgängig zwischen „voll", „teilweise (mit Einschränkung benannt)" und „fehlt" unterscheiden.
+3. **Vorhandene Flow-Game-Sonderregeln (Mehrspieler/Firestore/Timing) vorschnell als Ersatz für die neuen Prüfpunkte gewertet, obwohl sie etwas anderes leisten.** Die Orchestrator-Sonderregel zu Gate 3 (echter Mehrpersonentest bei Timing-/Berechtigungs-Logik) prüft das Endergebnis der Implementierung, nicht die Vollständigkeit der Akzeptanzkriterien in der Analysephase — beides zu vermischen würde eine echte Lücke verdecken. Gegenmaßnahme: für jeden Punkt einzeln prüfen, auf welcher Phase (Analyse vs. Test vs. Done-Gate) die bestehende Regel tatsächlich ansetzt.
+4. **Projektspezifische Irrelevanz eines Checklistenpunkts als „Lücke" fehlgedeutet.** Flow Game ist eine einzelne, über GitHub Actions automatisch deploybare `public/spiel.html`/Firestore-App ohne externe API-Konsumenten — klassische „Abwärtskompatibilität" (Vertragsbruch mit Drittsystemen) hat hier eine andere Bedeutung als in einer Service-Landschaft. Gegenmaßnahme: bei jedem Punkt explizit einordnen, ob er projektspezifisch umgedeutet werden muss, statt ihn 1:1 zu übernehmen oder blind als irrelevant zu verwerfen.
+5. **Skill-Aufblähung durch zu viele gleichzeitige Ergänzungsvorschläge.** `flow-game-analyze` ist bereits ~334 Zeilen lang; jede Ergänzung ohne Priorisierung würde den Skill weiter aufblähen und schwerer benutzbar machen. Gegenmaßnahme: Vorschläge unten nach Aufwand/Nutzen sortiert und wo möglich als Erweiterung bestehender Schritte statt als neue Schritte formuliert.
+6. **Die real existierende Session-Einschränkung (Skills mit blanker ID nicht live überschreibbar) wird bei der Formulierung der Umsetzungsoptionen übersehen und so getan, als könne die Analyse die Skills direkt ändern.** Gegenmaßnahme: Umsetzungsoptionen unten benennen ausdrücklich, dass eine Ergänzung nur als installierbare `.skill`-/`SKILL.md`-Datei per `SendUserFile` ausgeliefert werden kann, nicht als Live-Edit.
+
+---
+
+**Systematischer Abgleich — Meta-Framework, sechs Dimensionen (Abschnitt 3 der Grundlagenanalyse):**
+
+1. **Granularität** (jedes Kriterium einzeln/unabhängig prüfbar, kein Sammelkriterium): **Fehlt.** `flow-game-analyze` Schritt 3 verlangt nur „beobachtbares Verhalten" und „testbar", enthält aber keine Prüfung, ob sich mehrere Verhalten hinter einem AK verstecken. Weder `flow-game-bdd` noch `flow-game-orchestrator` adressieren das. Echte Lücke.
+2. **Polarität** (zu jedem positiven AK mind. ein korrespondierender Negativ-/Grenzfall): **Teilweise abgedeckt, nicht allgemein.** `flow-game-bdd` Schritt 3 verlangt das explizit, aber ausschließlich für serverautoritative Regeln („für jede Regel, die serverseitig durchgesetzt wird, einen Testfall ergänzen, der genau prüft, dass ein *ungültiger* Client-Versuch … abgelehnt wird"). Für sonstige, nicht-serverautoritative AK (z. B. reine UI-Anzeige-Kriterien) gibt es keine vergleichbare Pflicht. `flow-game-analyze` selbst stellt diese Frage an keiner Stelle. Teil-Lücke.
+3. **Messbarkeit** (beobachtbares Verhalten statt Implementierungsannahme): **Voll abgedeckt.** `flow-game-analyze` Schritt 3, wörtlich: „Es beschreibt beobachtbares Verhalten, keine Implementierung … Es ist testbar." Keine Ergänzung nötig.
+4. **Abdeckung über die vier AK-Kategorien** (funktional/nicht-funktional/Architektur/Sonstige, bewusst statt stillschweigend ausgeklammert): **Fehlt als explizite Kategorien-Prüfung.** Funktional ist durchgehend Kernfokus. Architektur wird über Schritt 4a („Zusammenspiel bestehender Bausteine"), Schritt 5 („Betroffene Architektur") und Schritt 6 („Regressionsrisiko") behandelt — das deckt den Architektur-Teil inhaltlich weitgehend ab, aber ohne die vier Kategorien als solche zu benennen oder eine Pflicht-Durchprüfung aller vier zu erzwingen. Nicht-funktionale Anforderungen (Performance, Sicherheit, Skalierbarkeit, Zugänglichkeit) kommen nur fallweise vor (z. B. Barrierefreiheit in einzelnen Tickets wie FEATURE-005), nicht als Pflichtprüfung. „Sonstige" (Compliance, Datenschutz, Beobachtbarkeit/Logging, Betriebsübergabe) kommt in keinem der drei Skills als eigene Kategorie vor. Echte Lücke, am deutlichsten bei „nicht-funktional" und „Sonstige".
+5. **Testbarkeit ohne Rückfrage** (kein Test ableitbar ohne zusätzliche, versteckte Annahme): **Voll abgedeckt, sogar strenger als im Meta-Framework gefordert.** `flow-game-analyze` Schritt 2a „Annahmen-Protokoll" verlangt explizit, jeden interpretationsoffenen Punkt zu identifizieren und je nach Schwere (🔴 funktional kritisch → Rückfrage an Stephan, ⚪ konventionell → als Annahme markiert, ✅ klar ableitbar) zu behandeln, wörtlich: „Eine Annahme, die nicht als solche markiert ist, ist eine versteckte Entscheidung." Das ist inhaltlich deckungsgleich mit „Testbarkeit ohne Rückfrage" und geht durch die verbindliche Rückfrage-Pflicht bei 🔴-Punkten sogar über die reine Feststellung hinaus.
+6. **Herkunftsnachvollziehbarkeit** (erkennbar, warum ein Kriterium existiert): **Fehlt als AK-eigene Pflicht.** In der Praxis (siehe TASK-003, FEATURE-017 als Beispiele) steht die Begründung meist implizit im Pre-Mortem oder im Kontext/Verweise-Feld, aber kein Schritt verlangt, dass jedes einzelne Akzeptanzkriterium selbst eine kurze Herkunftsangabe trägt. Echte, aber kleine Lücke — geringer Zusatzaufwand zur Behebung.
+
+**Systematischer Abgleich — Checkliste häufig vergessener Negativ-/Randfall-Kategorien (Abschnitt 4):**
+
+- **Grenzwerte** (kleinster/größter zulässiger Wert): fehlt als eigener Prüfpunkt in allen drei Skills.
+- **Ungültige/fehlende Eingaben:** teilweise abgedeckt — `flow-game-analyze` Schritt 2d „Zustands-Check" fragt nach dem Fehlerfall allgemein, `flow-game-bdd` Schritt 3 fragt gezielt nach ungültigen Client-Versuchen gegen Serverregeln. Beides ist enger als „jede Art ungültiger Eingabe".
+- **Nebenläufigkeit/gleichzeitige Zugriffe:** **voll abgedeckt, projektspezifische Stärke.** `flow-game-analyze` Schritt 4 nennt „Gleichzeitige Aktionen mehrerer Spielender (Race Conditions)" als Pflichtpunkt, Schritt 4a verlangt zusätzlich explizit Zustandskombinationen über mehrere Clients hinweg. Keine Ergänzung nötig.
+- **Verhalten unter Lastgrenzen:** fehlt als Pflichtpunkt; taucht nur vereinzelt beiläufig in einzelnen Ticket-Pre-Mortems auf (z. B. „Performance bei bis zu ~20 parallelen Spielen"), nicht als systematischer Skill-Prüfschritt.
+- **Leerer/übervoller Zustand:** teilweise abgedeckt — `flow-game-analyze` Schritt 2d fragt explizit nach dem Leerzustand; „übervoll" (z. B. „alle Stationen belegt") kommt nur fallweise in einzelnen Tickets vor, nicht als eigener Pflichtpunkt.
+- **Berechtigungen und Zugriffsschutz:** **voll abgedeckt, projektspezifische Stärke.** Serverautoritative Regeln sind durchgehend Kernthema (`flow-game-bdd` Schritt 3), und jede `firestore.rules`-Änderung ist laut `flow-game-analyze` Schritt 8a automatisch ein 🔴-Stopp-Kriterium.
+- **Abwärtskompatibilität:** inhaltlich abgedeckt in projektpassender Form über „Regressionsrisiko" (Schritt 6: Abgleich gegen alle Done-Tickets) — für ein Einzel-App-Projekt ohne externe API-Konsumenten die sinnvolle Übersetzung des klassischen Begriffs.
+- **Rollback-/Wiederanlauffähigkeit:** fehlt in den drei geprüften Skills als eigener Punkt (Rejoin-Mechanismen wie FEATURE-005 existieren als Produktfeature, aber nicht als generischer, für jedes Ticket verpflichtender Prüfpunkt „was passiert bei Wiederanlauf nach Abbruch").
+- **Beobachtbarkeit im Fehlerfall** (wird ein Problem überhaupt sichtbar — auch für Entwickelnde, nicht nur für Spielende): teilweise abgedeckt — `flow-game-analyze` Schritt 2d fragt nach dem für Spielende sichtbaren Fehlerfall, aber nicht danach, ob ein Fehler für die Entwicklung selbst nachvollziehbar/protokolliert wird. Echte, wenn auch kleinere Lücke.
+
+**Systematischer Abgleich — Planungsfrage/AK-/Testfall-Vorlage „Optimierungsleck durch falsche Äquivalenzannahme" (Abschnitt 7):**
+
+**Fehlt vollständig als benannte Frage in allen drei Skills.** Die Bug-Klasse (Gruppierung/Stichprobenprüfung/Caching/Deduplizierung nimmt fälschlich Gleichwertigkeit an) hat keinen direkten Treffer. Der einzige inhaltlich verwandte, aber NICHT deckungsgleiche Mechanismus ist `flow-game-analyze` Schritt 4b „Node-Referenz/Browser-Sync-Check" — dort wird ebenfalls eine implizite Gleichheitsannahme hinterfragt („zwei unabhängig geschriebene Dateien, die dasselbe Verhalten abbilden sollen … laufen aber nicht automatisch synchron"), allerdings zwischen zwei parallelen Implementierungen derselben Logik (Node vs. Browser), nicht zwischen mehreren Kandidaten innerhalb EINES Optimierungslaufs. Das ist ein verwandtes Muster („nicht automatisch als gleichwertig annehmen"), aber eine andere Bug-Klasse — sollte nicht als bereits erledigt verbucht werden.
+
+Konkreter Flow-Game-Bezug, an dem diese Bug-Klasse real auftreten könnte: **BUGFIX-009** (Länderkarten-Mehrfachverwendung/Deduplizierung), **BUGFIX-012** (kuratierte Städteliste behandelte reale Städte fälschlich als „nicht gleichwertig" zur Liste — strukturell verwandt, wenn auch nicht identisch), **FEATURE-017** (Warteschlangen-Filterung mehrerer Elemente). Keines dieser Tickets wurde mit der hier vorgeschlagenen Planungsfrage geprüft, weil es sie zum jeweiligen Zeitpunkt noch nicht gab — kein Hinweis auf einen bereits eingetretenen, unentdeckten Bug, aber ein Beleg dafür, dass das Risikomuster im Projekt real vorkommt.
+
+**Besonderheit Flow Game — Mehrspieler/Firestore-Berechtigungen/Timing:** Der Orchestrator hat hierfür bereits eigene Sonderregeln (Gate 3: ein grüner automatisierter Regressionslauf allein reicht bei Mehrspieler-/Berechtigungs-/Timing-relevanter Logik nicht, es braucht zusätzlich einen echten Mehrpersonentest mit unabhängigen Geräten). Die Checkliste der Grundlagenanalyse liefert dazu **keine zusätzliche, neue Anforderung** — „Nebenläufigkeit" und „Berechtigungen" sind wie oben gezeigt bereits eigenständig und mindestens gleichwertig stark abgedeckt. Die bestehende Sonderregel setzt zudem auf einer anderen Ebene an (Done-Gate/Testdurchführung) als das Meta-Framework (Qualität der Akzeptanzkriterien in der Analysephase) — beide ergänzen sich, decken sich aber nicht.
+
+---
+
+**Konkrete Ergänzungsvorschläge mit Empfehlung (priorisiert, um Skill-Aufblähung zu vermeiden):**
+
+1. **Empfehlung, hohe Priorität:** In `flow-game-analyze` Schritt 4 (Pre-Mortem) die bestehende Vier-Punkte-Liste um die real fehlenden Randfall-Kategorien ergänzen (Grenzwerte, Lastgrenzen, Rollback-/Wiederanlauffähigkeit, Beobachtbarkeit im Fehlerfall für Entwickelnde) — als Erweiterung der bestehenden Liste, nicht als neuer eigener Schritt, um den Skill nicht unnötig zu verlängern.
+2. **Empfehlung, hohe Priorität:** In `flow-game-analyze` einen neuen bedingten Pre-Mortem-Unterpunkt „4c — Gruppierungs-/Stichproben-/Cache-Prüfung" ergänzen, ausgelöst immer dann, wenn ein Ticket eine Prüfung/Zuweisung über eine Menge von Kandidaten vornimmt (Duplikat-Erkennung, Zuordnung, Filterung) — mit der Planungsfrage aus Abschnitt 7 der Grundlagenanalyse im Wortlaut sowie einem Verweis auf die AK-Vorlage. Passend als eigener Unterpunkt neben 4a/4b, da inhaltlich klar abgegrenzt. Ergänzend in `flow-game-bdd` Schritt 2 (Edge Cases aus dem Pre-Mortem) einen Hinweis auf die Testfall-Vorlage aufnehmen (gezielt konstruierte Nahe-Kandidaten mit unterschiedlichem korrektem Ergebnis).
+3. **Empfehlung, mittlere Priorität:** In `flow-game-bdd` Schritt 3 die Polaritäts-Pflicht („für jede serverautoritative Regel auch den ungültigen Fall testen") auf alle Akzeptanzkriterien ausweiten, nicht nur auf serverautoritative Regeln — kurze Ergänzung des bestehenden Absatzes reicht, kein neuer Schritt nötig.
+4. **Empfehlung, mittlere Priorität:** In `flow-game-analyze` Schritt 3 (Akzeptanzkriterien) einen kurzen Granularitäts-Hinweis ergänzen („ein AK, ein Verhalten — verstecken sich mehrere Prüfungen hinter einem Kriterium, in mehrere AK aufteilen"), sowie optional einen knappen Herkunfts-Halbsatz je AK, wo nicht ohnehin aus dem Fließtext erkennbar.
+5. **Empfehlung, niedrige Priorität / eher später:** Eine explizite Vier-Kategorien-Pflichtprüfung (funktional/nicht-funktional/Architektur/Sonstige) vor Freigabe der Spec ergänzen. Niedrigere Priorität, weil Architektur bereits über Schritt 4a/5/6 gut abgedeckt ist und „Sonstige" (Compliance/Datenschutz/Betriebsübergabe) für ein internes Workshop-Lernspiel ohne personenbezogene Daten aktuell wenig Substanz hätte — hier eher eine schlanke, einzeilige Pflichtfrage („gibt es bei diesem Ticket eine nicht-funktionale oder sonstige Anforderung, die leicht übersehen wird?") als ein ausführlicher neuer Vier-Kategorien-Block.
+6. **Offene Wahlfrage — identisch zur Wahlfrage aus TASK-101, nicht unabhängig neu gestellt:** Soll `flow-game-orchestrator` zusätzlich zu den Analyse-Skills selbst prüfen, ob eine Analyse die neuen Prüfpunkte (Sechs-Dimensionen-Check, erweiterte Randfall-Liste, Gruppierungs-Planungsfrage) tatsächlich durchgeführt hat — z. B. über eine Erweiterung des bereits bestehenden `gate-auditor`-Mechanismus (der heute schon unabhängig gegen Rohdaten prüft, aktuell aber nur vor Gate 3/Done, nicht vor Gate 1) — oder bleibt das ausschließlich Sache der Analyse-Skills selbst, ohne zusätzliche Gegenprüfung? Diese Analyse trifft dazu bewusst keine eigene Entscheidung, sondern benennt sie explizit als dieselbe strukturelle Frage, die bereits bei TASK-101 offen zu Stephan zurückgespiegelt wurde — eine unabhängig für Flow Game neu erfundene Antwort würde riskieren, von der für FotoAlert getroffenen Antwort abzuweichen, ohne dass das gewollt wäre.
+
+**Hinweis zur Umsetzungsform:** `flow-game-analyze`, `flow-game-bdd` und `flow-game-orchestrator` sind Skills mit blanker ID und können in dieser Sitzung nicht direkt live überschrieben werden. Jede Umsetzung der obigen Vorschläge müsste als aktualisierte `SKILL.md`/`.skill`-Datei über `SendUserFile` ausgeliefert werden, die Stephan über „Save skill" selbst installiert (wie im `flow-game-orchestrator`-Skill, Abschnitt „Fortlaufende Weiterentwicklung", ohnehin als Standardweg vorgesehen) — keine dieser Ergänzungen ist mit Abschluss dieses Tickets bereits automatisch wirksam.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten, Alltagssprache):**
+
+1. Für jede der sechs Prüf-Dimensionen (wie einzeln nachprüfbar ein Kriterium ist, ob auch die Kehrseite geprüft wird, ob es beobachtbar statt technisch formuliert ist, ob mehr als nur die offensichtliche Funktion bedacht wird, ob sich ohne Rückfragen ein Test daraus bauen ließe, ob nachvollziehbar bleibt, warum ein Kriterium existiert) liegt eine klare, belegte Aussage vor, ob die drei Flow-Game-Skills das bereits leisten, teilweise leisten oder nicht leisten.
+2. Für jeden Punkt der Liste typischer vergessener Sonderfälle (u. a. Randwerte, ungültige Eingaben, Gleichzeitigkeit, volle/leere Zustände, Berechtigungen, Rückwärtskompatibilität, Wiederanlauf nach Absturz, Sichtbarkeit von Fehlern) ist vermerkt, ob die Flow-Game-Skills ihn schon verlangen und wo, oder ob er fehlt.
+3. Es gibt eine klare Aussage, ob die Frage zum „Bug durch fälschlich angenommene Gleichwertigkeit von Kandidaten" heute schon irgendwo in den Flow-Game-Skills vorkommt oder komplett neu wäre — mit einer Einschätzung, wo genau bei Flow Game ein ähnliches Risiko in der Vergangenheit bereits aufgetreten sein könnte oder künftig auftreten könnte.
+4. Für jede gefundene Lücke liegt ein konkreter, in normaler Sprache formulierter Vorschlag vor, was ergänzt werden sollte und in welchem Skill — mit einer Empfehlung, wo mehrere Varianten denkbar sind, statt Stephan raten zu lassen, welche gemeint ist.
+5. Es ist ausdrücklich benannt, ob die bestehenden Sonderregeln für Mehrspieler-Situationen, Firestore-Berechtigungen und Zeitmessung die neuen Prüfpunkte bereits ganz oder teilweise abdecken, statt stillschweigend doppelte Arbeit vorzuschlagen.
+6. Falls dieselbe grundsätzliche Frage wie beim FotoAlert-Pendant-Ticket auftaucht (ob die Steuerungs-Ebene selbst zusätzlich prüfen soll, ob eine Analyse den neuen Check wirklich durchgeführt hat), wird das ausdrücklich als dieselbe, bereits woanders gestellte Frage benannt statt als eigenständige neue Frage behandelt.
+7. Es ist klar beschrieben, dass die betroffenen Skills in dieser Sitzung nicht direkt geändert werden können und Stephan die vorgeschlagenen Ergänzungen als eigene, installierbare Datei bekommen müsste — statt des Eindrucks, die Skills seien mit diesem Ticket bereits aktualisiert.
+8. Am Ende steht ein eindeutiges Ampel-Ergebnis (Grün oder Rot) mit einer für Stephan in ein bis zwei Sätzen verständlichen Begründung.
+
+---
+
+**Betroffene Architektur:** Keine Code-/Datenmodell-/`firestore.rules`-Änderung durch dieses Ticket selbst — reine Dokumentenanalyse. Die vorgeschlagenen Ergänzungen betreffen ausschließlich die drei genannten Prozess-Skills (als separat auszuliefernde Dateien, siehe oben), nicht die Spiel-Anwendung selbst.
+
+**Regressionsrisiko:** Keines gegenüber bereits abgenommenen Spiel-Tickets, da keine Code-Änderung. Mittelbares Risiko: Werden die Ergänzungsvorschläge installiert, wirken sie sich auf JEDE künftige Ticket-Analyse aus — das ist beabsichtigt, aber ein Grund, sie nicht unbedacht/vollständig auf einmal zu übernehmen (siehe Priorisierung oben).
+
+**Kein Prototyp nötig (Schritt 8):** Keine UI/UX-Fragestellung — reine Prozess-/Dokumentenanalyse.
+
+---
+
+**Ampel-Ergebnis (Schritt 8a):**
+
+🔴 **Rot — braucht Stephans Entscheidung:** Aus zwei voneinander unabhängigen Gründen, von denen bereits einer allein automatisch Rot auslöst:
+
+1. **Automatischer Stopp nach Kriterium 2 („Eingriff bleibt im Ticket?"):** Die vorgeschlagenen Ergänzungen betreffen `flow-game-analyze`, `flow-game-bdd` UND `flow-game-orchestrator` — also die Prozess-Grundlage für jedes künftige Flow-Game-Ticket, nicht nur den Scope dieses einen Tickets. Das ist dieselbe Kategorie von weitreichender, über das Ticket hinausgehender Wirkung wie eine `firestore.rules`-Änderung und damit laut `flow-game-analyze` Schritt 8a unabhängig von den übrigen vier Kriterien automatisch ein Stopp.
+2. **Dieselbe offene Wahlfrage wie bei TASK-101 (FotoAlert-Pendant):** Ob der Orchestrator zusätzlich zu den Analyse-Skills selbst prüfen soll, dass ein neuer Check tatsächlich durchgeführt wurde, oder ob das ausschließlich Sache der Analyse-Skills bleibt, ist strukturell identisch mit der bei TASK-101 bereits offen gebliebenen Frage — keine neue, unabhängige Entscheidung, sondern derselbe Punkt, konsistent zu TASK-101 zu klären.
+
+Zusätzlich gilt: Da die betroffenen Skills nicht live installiert werden können, braucht jede Umsetzung ohnehin Stephans aktiven Installationsschritt („Save skill") — bereits das macht eine rein autonome Umsetzung strukturell unmöglich, unabhängig von den beiden Gründen oben.
+
+**Status dieses Tickets:** War bis 2026-08-09 auf „ToDo" (Konvention: kein eigener Status-Wert „In Analyse" bei Flow Game), da die offene Wahlfrage (Vorschlag 6) noch nicht entschieden war. Stephan hat die Wahlfrage am 2026-08-09 entschieden (identisch zu TASK-101/FotoAlert) — siehe „Entscheidung von Stephan" und „Stephan bestätigt" oben. Status jetzt Done.
+
+---
 
 ### BUGFIX-014 Browser-Produktivcode wendet den BUGFIX-001-Verbindungs-Retry bei Spielerstellung nie an
 

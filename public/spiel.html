@@ -1573,7 +1573,21 @@
       const startMs = alsMillisLokal(runde.durchlaufzeitStart);
       const endeMs = alsMillisLokal(runde.durchlaufzeitEnde);
       if (startMs != null) {
-        zeitDurchlaufEl.textContent = formatiereZeit((endeMs != null ? endeMs : Date.now()) - startMs);
+        // BUGFIX-007 (Option B, Backlog.md): Vor "Definition of Ready
+        // abgeschlossen" zeigt die Durchlaufzeit-Box keinen sekuendlich
+        // hochzaehlenden Zahlenwert mehr, sondern einen neutralen Hinweis -
+        // abgeleitet AUSSCHLIESSLICH aus dem bereits vorhandenen,
+        // servergesetzten Feld runde.dorAbgeschlossen (kein neuer
+        // Client-Zustand, siehe Pre-Mortem-Risiko 7). Die SERVER-seitige
+        // Zeitmessung selbst (startMs, endeMs) bleibt unveraendert - sobald
+        // dorAbgeschlossen true ist, zeigt die Anzeige weiterhin exakt wie
+        // bisher die volle bereits vergangene Zeit seit durchlaufzeitStart
+        // (kein neuer Startpunkt bei 00:00).
+        if (runde.dorAbgeschlossen) {
+          zeitDurchlaufEl.textContent = formatiereZeit((endeMs != null ? endeMs : Date.now()) - startMs);
+        } else {
+          zeitDurchlaufEl.textContent = t('spielbrett.durchlaufzeitNeutralerHinweis');
+        }
       }
       if (bearbeitungGesetzt) {
         const bStartMs = alsMillisLokal(runde.bearbeitungszeitStart);
