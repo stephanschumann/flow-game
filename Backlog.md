@@ -2238,8 +2238,9 @@ Drei neue, dauerhaft im Repo abgelegte Testdateien (Option B1 + B3, siehe Freiga
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Mittel |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-23 |
+| **Done am** | 2026-08-09 |
 
 **Stephans Entscheidung (2026-08-09 13:47):** Option B — nur die sichtbare Anzeige während der Klärungsphase wird entschärft, die Server-Messung bleibt unverändert. Die sieben Akzeptanzkriterien für Option B im Analyse-Spec unten gelten damit als bestätigt und gehen so an `flow-game-bdd`.
 
@@ -2475,7 +2476,15 @@ Bei Bestätigung von Option C: kein Testplan nötig, nur Status-/Verweis-Update 
 
 **Stephans Entscheidungen (2026-08-09 14:13):**
 - Wortlaut „läuft …" / „running …" bestätigt — keine Änderung nötig.
-- **Echten Mehrpersonentest für dieses Ticket bewusst übergangen** (Stephans ausdrückliche Entscheidung, kein von der Analyse vorgesehener Automatismus). Damit gilt die sonst für Zeitmessung/Timing-Tickets vorgesehene Zusatzanforderung eines echten Mehrpersonen-Tests (siehe `flow-game-orchestrator`, Gate 3) für BUGFIX-007 als bewusst erlassen — das Test-Gate stützt sich stattdessen ausschließlich auf den grünen automatisierten Regressionslauf oben plus die noch ausstehende Chrome-Live-Verifikation gegen die Akzeptanzkriterien.
+- **Echten Mehrpersonentest für dieses Ticket bewusst übergangen** (Stephans ausdrückliche Entscheidung, kein von der Analyse vorgesehener Automatismus). Damit gilt die sonst für Zeitmessung/Timing-Tickets vorgesehene Zusatzanforderung eines echten Mehrpersonen-Tests (siehe `flow-game-orchestrator`, Gate 3) für BUGFIX-007 als bewusst erlassen — das Test-Gate stützt sich stattdessen ausschließlich auf den grünen automatisierten Regressionslauf oben plus die Chrome-Live-Verifikation gegen die Akzeptanzkriterien.
+
+**Release (2026-08-09 18:15):** Commit `da8abde` ("BUGFIX-007: Zeitmessungs-Anzeige während Klärungsphase entschärft (Option B)") von Stephan lokal committet und auf `main` gepusht. GitHub Actions „Deploy to Firebase Hosting on merge" Run #54: **Success** (33s). Firestore-Regeln nicht betroffen, kein separater Regel-Deploy nötig.
+
+**Live-Verifikation (2026-08-09, Chrome-Subagent + eigener WebFetch-Gegencheck):** Live ausgelieferter Code auf `https://flow-game-19f01.web.app` enthält nachweislich die neue Anzeige-Logik (`aktualisiereZeitanzeigen()`: neutraler Hinweistext vor `dorAbgeschlossen`, unveränderte Zeitrechnung danach) sowie den neuen Übersetzungsschlüssel `spielbrett.durchlaufzeitNeutralerHinweis` mit dem bestätigten Wortlaut in beiden Sprachen — unabhängig zweimal geprüft (Chrome-Subagent per `fetch()` im Seitenkontext, zusätzlich eigener `WebFetch`-Gegencheck auf `js/i18n/uebersetzungen.js`). Kein veralteter Deploy-Stand. Ein Test mit einem echten laufenden Mehrpersonen-Spiel wurde bewusst nicht durchgeführt (siehe „Stephans Entscheidungen" oben — Mehrpersonentest für dieses Ticket ausdrücklich übergangen).
+
+**`gate-auditor` (Modus A, Pflichtschritt vor Done):** Unabhängiger Subagent mit ausschließlich Rohdaten (Ticket-Text/AK, echter Code-Diff des Release-Commits, echte Testdatei, echte Live-URL — keine Zusammenfassung vorheriger Subagenten) geprüft: alle 7 Akzeptanzkriterien einzeln im echten Code nachgewiesen, Testdatei selbst ausgeführt (22/22 grün), Live-Code-Abgleich bestätigt, server-seitige Zeitmessung (`firestore.rules`, `rundenStart.js` beide Kopien) nachweislich unverändert, Scope sauber (nur die drei erwarteten Dateien plus Testdatei betroffen). **Urteil: Bestätigt.**
+
+**Status:** Test-Gate (Chrome-Verifikation + gate-auditor „Bestätigt") und Release-Gate (Commit gepusht, GitHub Actions grün, Live-Verifikation abgeschlossen) sind beide erfüllt — Status auf **Done** gesetzt.
 
 ---
 
