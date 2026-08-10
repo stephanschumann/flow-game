@@ -163,6 +163,41 @@ const UEBERSETZUNGEN = {
     en: 'You are in the lobby – the game will begin once the host starts it.',
   },
 
+  // ---- FEATURE-014: Wartehinweis für beigetretene Mitspielende (Option B) --
+  // Ergänzung, kein Ersatz, der bestehenden BUGFIX-003-Texte oben
+  // (lobby.startHinweis/lobby.liveZaehler bleiben unverändert bestehen).
+  // (1) Persönliche "du bist fertig"-Bestätigung, unterscheidbar vom
+  // allgemeinen Erläuterungstext lobby.startHinweis.
+  'lobby.duBistFertig': {
+    de: 'Du bist startklar – du musst jetzt nichts weiter tun, es geht automatisch los, sobald genug Personen da sind.',
+    en: 'You are all set – there is nothing more to do, it will start automatically once enough people have joined.',
+  },
+  // (2) Explizite "Wir warten noch auf N weitere Person(en)"-Formulierung,
+  // ergänzend zum bestehenden, positiv gerahmten Live-Zähler
+  // (lobby.liveZaehler) - Plural- und Singular-Variante sowie der
+  // Grenzfall N=0 (Mindestbesetzung bereits erreicht). Kein hartcodiertes
+  // Zahlenbeispiel - {anzahl} wird von renderTeilnehmerListe() eingesetzt.
+  'lobby.wartetNochAuf': {
+    de: 'Wir warten noch auf {anzahl} weitere Personen.',
+    en: 'We are still waiting for {anzahl} more people.',
+  },
+  'lobby.wartetNochAufEinzeln': {
+    de: 'Wir warten noch auf {anzahl} weitere Person.',
+    en: 'We are still waiting for {anzahl} more person.',
+  },
+  'lobby.wartetAlleDa': {
+    de: 'Alle sind da – es kann jederzeit losgehen.',
+    en: 'Everyone is here – it can start any moment.',
+  },
+
+  // ---- FEATURE-016: eigene Identität (Name + Rolle) durchgängig sichtbar --
+  // Kompaktes Badge-Format für die sitzende HUD-Leiste (Analyse-Spec,
+  // Annahme 1: "{name} · {rolle}") - {name} ist der freie, nie zu
+  // übersetzende Anzeigename der Person, {rolle} kommt bereits übersetzt aus
+  // rollenLabel() (siehe aktualisiereEigeneIdentitaetAnzeige() in
+  // public/spiel.html).
+  'hud.eigeneIdentitaet': { de: '{name} · {rolle}', en: '{name} · {rolle}' },
+
   // ---- Rollen (auch für Badges/Anzeigetexte) ------------------------------
   'rollen.host': { de: 'Host', en: 'Host' },
   'rollen.spielende': { de: 'Spielende', en: 'Players' },

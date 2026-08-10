@@ -29,6 +29,11 @@
   .hud-in{max-width:1080px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   .brand{font-weight:800;letter-spacing:.14em;font-size:13px;text-transform:uppercase}
   .brand b{color:var(--amber)}
+  /* FEATURE-016 (AK6): Grenzwert-Absicherung für einen sehr langen,
+     selbst gewählten Anzeigenamen (bis 40 Zeichen) - analog zum
+     bestehenden Muster für .spalte-person (Zeile ~93), zusätzlich
+     abgefedert durch das bereits bestehende flex-wrap:wrap von .hud-in. */
+  .hud-eigene-identitaet{font-size:13px;font-weight:700;color:var(--text);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .hero{text-align:center;padding:38px 0 6px}
   .hero .logo{font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--amber);font-weight:800}
   .hero h1{font-size:40px;line-height:1;margin:14px 0 8px;font-weight:900;letter-spacing:-.02em}
@@ -187,6 +192,15 @@
 <body>
 <div class="hud"><div class="hud-in">
   <div class="brand">FLOW <b>GAME</b></div>
+  <!-- FEATURE-016 (AK1/AK2/AK3/AK4): durchgängige Anzeige der eigenen
+       Identität (Name + Rolle), Option A der Analyse-Spec - liegt bewusst
+       hier in der sitzenden .hud-in-Leiste (nicht in einem einzelnen
+       Panel), da diese Leiste die einzige DOM-Zone ist, die keine der
+       Panel-Wechsel-Funktionen berührt (siehe Backlog.md, Ausgangslage).
+       Trägt von Anfang an das native hidden-Attribut (AK4: kein
+       Platzhaltertext vor dem ersten Snapshot) und wird ausschliesslich von
+       aktualisiereEigeneIdentitaetAnzeige() befüllt/sichtbar geschaltet. -->
+  <div class="hud-eigene-identitaet" id="hud-eigene-identitaet" hidden></div>
   <!-- FEATURE-006 (AK 2, 8, 9): Sprachumschalter. Vor dem Beitritt/Erstellen
        eines Spiels wirkt er rein lokal (Personen-Vorliebe, noch kein
        spielweites sprache-Feld vorhanden); sobald ein Spiel besteht, ist er
@@ -329,6 +343,16 @@
            manueller Zurückeroberung durch eine vorher mitspielende
            gastgebende Person – siehe form-host-zurueckerlangen-Handler. -->
       <p class="hinweis info" id="lobby-host-karteileiche-hinweis" hidden></p>
+      <!-- FEATURE-014 (Option B): persönliche "du bist fertig"-Bestätigung
+           (AK1, zentral in zeigeLobby() gesetzt) sowie die explizite "Wir
+           warten noch auf N weitere Person(en)"-Formulierung (AK2/AK3/AK4,
+           zentral in renderTeilnehmerListe() berechnet) - bewusst NACH dem
+           Host-Kennzeichen-Bereich platziert (Regressionsschutz FEATURE-011:
+           das dortige Fenster von "host-kennzeichen" bis zum Kopieren-Knopf
+           darf durch neues Markup nicht vergrößert werden, siehe
+           game-feature-011-host-zurueckerlangen.static.test.js). -->
+      <p class="muted" id="lobby-du-bist-fertig-hinweis"></p>
+      <p class="muted" id="lobby-wartet-hinweis"></p>
       <div class="row" id="host-rundenstart-bereich" hidden>
         <button type="button" class="btn primary" id="btn-runde-starten">Aufgabe vorstellen (Runde 1 starten)</button>
       </div>
@@ -531,6 +555,10 @@
   const beitrittCodeInput = document.getElementById('beitritt-code');
   const lobbyCode = document.getElementById('lobby-code');
   const lobbyRolleHinweis = document.getElementById('lobby-rolle-hinweis');
+  // FEATURE-016 (AK1/AK2): durchgängige Anzeige der eigenen Identität
+  // (Name + Rolle) in der sitzenden HUD-Leiste, siehe Markup oben und
+  // aktualisiereEigeneIdentitaetAnzeige() weiter unten.
+  const hudEigeneIdentitaet = document.getElementById('hud-eigene-identitaet');
   const lobbyEigeneStation = document.getElementById('lobby-eigene-station');
   const teilnehmerListe = document.getElementById('teilnehmer-liste');
   // BUGFIX-003 (a): Live-Zähler, wird ausschliesslich in renderTeilnehmerListe()
@@ -828,6 +856,16 @@
 
   let eigeneUid = null;
   let eigeneRolle = null;
+  // FEATURE-016 (AK1/AK2/AK5/AK7): von zeigeLobby() auf ein neues Objekt
+  // zurückgesetzt (siehe dort), aber - wie eigeneUid/eigeneRolle - bewusst
+  // auf Modul-Ebene deklariert (nicht mehr lokal innerhalb von zeigeLobby),
+  // damit sowohl aktualisiereEigeneIdentitaetAnzeige() als auch
+  // wendeSpracheAufSichtbareAnsichtenAn() (beide ausserhalb von zeigeLobby
+  // definiert) lesend darauf zugreifen können - unverändertes Verhalten für
+  // alle bestehenden, innerhalb von zeigeLobby verschachtelten Funktionen
+  // (verarbeiteTeilnehmerDoc()/renderTeilnehmerListe()), die weiterhin
+  // dieselbe Variable über ihre Closure erreichen.
+  let teilnehmendeCache = {}; // uid -> Teilnehmenden-Daten
   let eigeneStationsNummer = null; // 1-5, oder null für Host/Beobachtende
   let eigeneRundeVierPosition = null; // 1-5, dieselbe Nummer wie eigeneStationsNummer
   const teilnehmendeNamenMap = {}; // uid -> anzeigename, für Kennzahlen-Anzeige
@@ -876,6 +914,11 @@
   // über t() mit der aktuellen Sprache neu berechnen kann, statt den alten,
   // eingefrorenen String wiederzuverwenden.
   let lobbyRolleHinweisArt = null; // 'hostSchlicht' | 'hostMitTeilen' | 'teilnehmendeRolle'
+  // FEATURE-014 (AK1/AK6, Option B): Referenz auf die neue, persönliche
+  // Bestätigung - wird zentral EINMAL in zeigeLobby() per getElementById
+  // geholt (siehe dort) und danach hier sowie bei jedem Sprachwechsel
+  // wiederverwendet, statt erneut über den Element-Bezeichner nachzuschlagen.
+  let lobbyDuBistFertigHinweisElement = null;
 
   // Re-rendert alle aktuell sichtbaren, datengetriebenen Ansichten nach einem
   // Sprachwechsel (AK 2, AK 4: kein Sprachen-Mix, kein Seiten-Neuladen) - die
@@ -897,6 +940,18 @@
     // aktuellen aktuelleSprache komplett neu berechnet, NICHT der zuletzt
     // übersetzte String wiederverwendet.
     if (lobbyRolleHinweisArt) lobbyRolleHinweis.textContent = berechneLobbyRolleHinweisText();
+    // FEATURE-014 (AK6): dieselbe Logik wie oben für die neue, persönliche
+    // Bestätigung - datengetrieben (gilt für alle drei Rollen gleichermaßen,
+    // siehe zeigeLobby()), deshalb ebenfalls hier statt in
+    // wendeSpracheAufStatischeTexteAn() neu berechnet.
+    if (lobbyDuBistFertigHinweisElement) lobbyDuBistFertigHinweisElement.textContent = t('lobby.duBistFertig');
+    // FEATURE-016 (AK5, Pre-Mortem-Risiko 4): eigene Identitäts-Anzeige
+    // nimmt am bestehenden Sprachwechsel-Mechanismus teil - sonst bliebe die
+    // Rollenbezeichnung nach einem Sprachwechsel als einzige Stelle in der
+    // alten Sprache stehen. Unkritisch, auch bevor überhaupt ein Spiel
+    // besteht (teilnehmendeCache/eigeneRolle dann noch leer, Anzeige bleibt
+    // in diesem Fall einfach verborgen).
+    aktualisiereEigeneIdentitaetAnzeige();
   }
 
   function zeigeFehler(nachricht) {
@@ -989,6 +1044,28 @@
     return rolle;
   }
 
+  // FEATURE-016 (AK1/AK2/AK4/AK5/AK7, Option A): durchgängige Anzeige der
+  // eigenen Identität (Name + Rolle) in der sitzenden HUD-Leiste -
+  // unabhängig vom aktuell sichtbaren Panel, da .hud/.hud-in von keiner der
+  // Panel-Wechsel-Funktionen berührt wird (AK3, code-verifiziert in der
+  // Analyse-Spec). Wird sowohl vom onSnapshot-Listener auf
+  // teilnehmende/{eigeneUid} aufgerufen (AK7: gilt automatisch nach jedem
+  // Neu-Beitritt UND jedem automatischen Rejoin, da derselbe Listener bei
+  // jedem zeigeLobby()-Aufruf neu abonniert wird) als auch von
+  // wendeSpracheAufSichtbareAnsichtenAn() bei jedem Sprachwechsel (AK5).
+  // Schaltet sich erst sichtbar, sobald SOWOHL der eigene Anzeigename ALS
+  // AUCH die eigene Rolle tatsächlich vorliegen (AK4, Pre-Mortem-Risiko 3) -
+  // kein Platzhaltertext vor dem ersten Snapshot.
+  function aktualisiereEigeneIdentitaetAnzeige() {
+    const eigeneDaten = teilnehmendeCache[eigeneUid];
+    const anzeigename = eigeneDaten ? eigeneDaten.anzeigename : null;
+    const sichtbar = Boolean(anzeigename) && Boolean(eigeneRolle);
+    hudEigeneIdentitaet.hidden = !sichtbar;
+    if (sichtbar) {
+      hudEigeneIdentitaet.textContent = t('hud.eigeneIdentitaet', { name: anzeigename, rolle: rollenLabel(eigeneRolle) });
+    }
+  }
+
   // Siehe Kommentar bei lobbyRolleHinweisArt weiter oben - berechnet den
   // lobbyRolleHinweis-Text anhand des zuletzt für diese Person ermittelten
   // Einstiegspfads (lobbyRolleHinweisArt) und der aktuellen eigeneRolle, statt
@@ -1039,6 +1116,14 @@
     eigeneRolle = rolle;
     lobbyRolleHinweisArt = rolleHinweisArt;
     lobbyRolleHinweis.textContent = berechneLobbyRolleHinweisText();
+    // FEATURE-014 (AK1/AK5/AK8, Option B): persönliche "du bist fertig"-
+    // Bestätigung - zentral hier verankert (gilt automatisch für alle vier
+    // Aufrufstellen von zeigeLobby(), nicht dupliziert), OHNE Rollen-
+    // Einschränkung (gilt für Host, Spielende UND Beobachtende gleichermaßen,
+    // siehe AK5). Element-Referenz wird hier EINMAL geholt und in
+    // wendeSpracheAufSichtbareAnsichtenAn() wiederverwendet (siehe dort, AK6).
+    lobbyDuBistFertigHinweisElement = document.getElementById('lobby-du-bist-fertig-hinweis');
+    lobbyDuBistFertigHinweisElement.textContent = t('lobby.duBistFertig');
     // FEATURE-011 (AK5/AK9): Anzeige-/Kopierbereich nur für den aktuellen
     // Host sichtbar - für eine teilnehmende Person bleibt er verborgen.
     aktualisiereHostKennzeichenBereich();
@@ -1095,7 +1180,11 @@
     // (kein station-Feld) jemals anzufragen.
     // Beide/alle drei Listener aktualisieren einen gemeinsamen
     // Zwischenspeicher und rendern daraus die komplette Liste neu.
-    const teilnehmendeCache = {}; // uid -> Teilnehmenden-Daten
+    // FEATURE-016: teilnehmendeCache ist jetzt auf Modul-Ebene deklariert
+    // (siehe dort) - hier weiterhin bei jedem zeigeLobby()-Aufruf auf ein
+    // frisches Objekt zurückgesetzt, exakt wie zuvor mit der lokalen
+    // const-Deklaration (unverändertes Verhalten).
+    teilnehmendeCache = {}; // uid -> Teilnehmenden-Daten
 
     function verarbeiteTeilnehmerDoc(uid, daten) {
       teilnehmendeNamenMap[uid] = daten.anzeigename;
@@ -1193,6 +1282,23 @@
         aktuell: anzahlSpielendeBeigetreten,
         minimum: MINDESTBESETZUNG_SPIELENDE,
       });
+
+      // FEATURE-014 (AK2/AK3/AK4, Option B): explizite "Wir warten noch auf
+      // N weitere Person(en)"-Formulierung, ergänzend zum positiv gerahmten
+      // Live-Zähler oben (kein Ersatz) - zentral hier verankert statt an den
+      // zeigeLobby()-Aufrufstellen dupliziert zu werden (Pflicht-Hinweis der
+      // Analyse-Spec), gilt automatisch für Host UND Mitspielende (keine
+      // Rollen-Bedingung um diese Zuweisung). Wiederverwendet dieselbe
+      // anzahlSpielendeBeigetreten-Zählbasis wie oben (FEATURE-018).
+      const lobbyWartetHinweisElement = document.getElementById('lobby-wartet-hinweis');
+      const nochFehlendeSpielende = MINDESTBESETZUNG_SPIELENDE - anzahlSpielendeBeigetreten;
+      if (nochFehlendeSpielende <= 0) {
+        lobbyWartetHinweisElement.textContent = t('lobby.wartetAlleDa');
+      } else if (nochFehlendeSpielende === 1) {
+        lobbyWartetHinweisElement.textContent = t('lobby.wartetNochAufEinzeln', { anzahl: nochFehlendeSpielende });
+      } else {
+        lobbyWartetHinweisElement.textContent = t('lobby.wartetNochAuf', { anzahl: nochFehlendeSpielende });
+      }
     }
     // FEATURE-006: über die äussere Variable auch von einem Sprachwechsel
     // aus erneut aufrufbar (siehe wendeSpracheAufSichtbareAnsichtenAn()) -
@@ -1206,6 +1312,14 @@
           const eigeneDaten = docSnap.data();
           verarbeiteTeilnehmerDoc(docSnap.id, eigeneDaten);
           renderTeilnehmerListe();
+          // FEATURE-016 (AK4/AK7): eigene Identitäts-Anzeige aktualisieren,
+          // sobald sich das eigene Teilnehmenden-Dokument ändert - deckt
+          // sowohl den erstmaligen Snapshot ab (AK4: erst sichtbar, sobald
+          // Name+Rolle tatsächlich vorliegen) als auch jeden Reload/Rejoin
+          // (AK7), da genau dieser Listener bei jedem zeigeLobby()-Aufruf
+          // neu abonniert wird (sowohl beim Neu-Beitritt als auch bei jedem
+          // automatischen Rejoin-Pfad weiter unten im Skript).
+          aktualisiereEigeneIdentitaetAnzeige();
           // FEATURE-005 (AK16): neuester Tab gewinnt - hat ein anderer
           // (neuerer) Tab dieselbe uid inzwischen als aktiv registriert,
           // markiert sich dieser Tab selbst als getrennt/inaktiv. Keine

@@ -125,6 +125,31 @@
       en: 'You are in the lobby – the game will begin once the host starts it.',
     },
 
+    // FEATURE-014: Wartehinweis für beigetretene Mitspielende (Option B) -
+    // siehe Kommentare in src/i18n/uebersetzungen.js (diese Datei muss
+    // inhaltlich synchron gehalten werden, siehe Kopfkommentar oben).
+    'lobby.duBistFertig': {
+      de: 'Du bist startklar – du musst jetzt nichts weiter tun, es geht automatisch los, sobald genug Personen da sind.',
+      en: 'You are all set – there is nothing more to do, it will start automatically once enough people have joined.',
+    },
+    'lobby.wartetNochAuf': {
+      de: 'Wir warten noch auf {anzahl} weitere Personen.',
+      en: 'We are still waiting for {anzahl} more people.',
+    },
+    'lobby.wartetNochAufEinzeln': {
+      de: 'Wir warten noch auf {anzahl} weitere Person.',
+      en: 'We are still waiting for {anzahl} more person.',
+    },
+    'lobby.wartetAlleDa': {
+      de: 'Alle sind da – es kann jederzeit losgehen.',
+      en: 'Everyone is here – it can start any moment.',
+    },
+
+    // FEATURE-016: eigene Identität (Name + Rolle) durchgängig sichtbar -
+    // siehe Kommentare in src/i18n/uebersetzungen.js (diese Datei muss
+    // inhaltlich synchron gehalten werden, siehe Kopfkommentar oben).
+    'hud.eigeneIdentitaet': { de: '{name} · {rolle}', en: '{name} · {rolle}' },
+
     'rollen.host': { de: 'Host', en: 'Host' },
     'rollen.spielende': { de: 'Spielende', en: 'Players' },
     'rollen.beobachtende': { de: 'Beobachtende', en: 'Observers' },
