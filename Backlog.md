@@ -3023,9 +3023,11 @@ Nicht ausgeführt (emulatorpflichtig, Netzwerk-Restriktion der Geräte-Bridge-VM
 | **Typ** | Bug |
 | **Priorität** | Mittel |
 | **Erstellt** | 2026-07-27 |
-| **Status** | Wartet auf Entscheidung |
+| **Status** | In Progress |
+| **Spec freigegeben am** | 2026-08-10 |
+| **In Progress seit** | 2026-08-10 12:26 |
 
-**Wartet auf dich seit:** 2026-08-09 23:14 (Grund: Offene UI/UX-Frage – Haltezeit vs. explizite Bestätigung nach dem Wurf, genaue Wartezeit-Dauer, Würfel-Optik; Prototyp empfohlen)
+**Stephans Entscheidung (2026-08-10 12:26, nach Prototyp-Test):** Option B — explizite Bestätigung ("Nochmal würfeln"-Button statt fester Haltezeit), abweichend von der Empfehlung Option C. Würfel-Optik: Würfel-Augen (Pips), nicht Zahl-im-Rahmen. Zusatz-Scope: "Ruhiger Modus" (reduced-motion)-Reparatur wird mit umgesetzt (Würfel-Animation künftig verkürzt/übersprungen, wenn aktiviert; Ergebnis bleibt trotzdem sichtbar). Die zweite vorgelegte Zusatzoption (aria-live-Ankündigung des Wurfergebnisses für Screenreader) wird NICHT in diesen Scope aufgenommen, bleibt offen für ein eigenes, späteres Ticket. Damit gelten AK1-AK7 mit der Bestätigungs-Variante (nicht der Haltezeit-Variante) aus AK3/AK5/AK6 als bestätigt und gehen so an `flow-game-bdd`.
 
 **Beschreibung:** FEATURE-004s Akzeptanzkriterium 10 verlangt eine „kurze Wurf-Animation" analog zur `RollButton`-Komponente aus CatTube. Im echten Test (2026-07-27) wirkte die Anzeige nicht wie ein echter grafischer Würfel, und das Ergebnis eines nicht ausreichenden Wurfs (≤3) war nicht klar sichtbar, bevor der nächste Wurfversuch gestartet werden konnte.
 
