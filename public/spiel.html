@@ -158,7 +158,10 @@
   .rv-fokus-card{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:26px;text-align:center;max-width:440px;width:100%}
   .rv-fokus-typ{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800}
   .rv-karten-position{font-size:13px;font-weight:700;color:var(--muted);margin-top:6px}
-  .rv-wuerfel-anzeige{font-size:68px;font-weight:900;font-variant-numeric:tabular-nums;margin:16px 0;color:var(--amber)}
+  .rv-wuerfel-anzeige{border:3px solid var(--line);border-radius:16px;width:104px;height:104px;margin:16px auto;padding:14px;box-sizing:border-box;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:6px;place-items:center;background:var(--panel)}
+  .rv-wuerfel-anzeige-leer{display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:900;color:var(--muted)}
+  .rv-wuerfel-auge{width:16px;height:16px;border-radius:50%;background:var(--amber)}
+  .rv-wuerfel-hinweis{margin-top:10px;color:var(--muted);font-size:14px;font-weight:700}
   .rv-land{font-size:22px;font-weight:800;margin:8px 0 14px;color:var(--blue)}
   .rv-staedte-liste{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:6px;text-align:left}
   .rv-staedte-liste li{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:14px}
@@ -888,6 +891,7 @@
   let bewegungsLogRundeVier = []; // FEATURE-004: analog zu bewegungsLog
   let eigenerFortschrittTyp = null; // FEATURE-004: fortschritt/{eigeneUid}.letzterAbgeschlossenerTyp
   let wuerfelAnimationLaeuft = false; // FEATURE-004: verhindert Doppel-Klicks während der Wurf-Animation
+  let wuerfelBestaetigungAusstehend = false; // BUGFIX-010: verhindert, dass ein durch irgendein Firestore-Update ausgeloester Re-Render die gehaltene Bestaetigungs-Ansicht (Option B) vorzeitig ueberschreibt
   let unsubRundenDoc = null;
   let unsubKartenCol = null;
   let unsubElementeCol = null; // FEATURE-004
@@ -1492,6 +1496,7 @@
     bewegungsLogRundeVier = []; // FEATURE-004
     eigenerFortschrittTyp = null; // FEATURE-004
     wuerfelAnimationLaeuft = false; // FEATURE-004
+    wuerfelBestaetigungAusstehend = false; // BUGFIX-010: neue Runde faengt nie mit haengendem Guard an
     rundenEndeSchreibversuchLaeuft = false;
     rundenEndeSchreibversuchLaeuftRundeVier = false; // FEATURE-004
     btnDor.disabled = false;
@@ -2131,6 +2136,38 @@
     return liste[0].element;
   }
 
+  // BUGFIX-010: Positionen der Würfel-Augen (Pips) auf einem 3x3-Raster,
+  // Spalte/Zeile 1-3 - Standardwürfel-Muster (1 = Mitte, 6 = zwei Spalten
+  // mit je drei Augen, usw.), analog zu physischen Würfeln.
+  const WUERFEL_PIP_POSITIONEN = {
+    1: [[2, 2]],
+    2: [[1, 1], [3, 3]],
+    3: [[1, 1], [2, 2], [3, 3]],
+    4: [[1, 1], [3, 1], [1, 3], [3, 3]],
+    5: [[1, 1], [3, 1], [2, 2], [1, 3], [3, 3]],
+    6: [[1, 1], [3, 1], [1, 2], [3, 2], [1, 3], [3, 3]],
+  };
+
+  // BUGFIX-010 (AK1): baut die grafische Würfel-Anzeige (echte Würfel-Augen/
+  // Pips statt einer nackten Ziffer, Stephans Entscheidung 2026-08-10) -
+  // wert=null/undefined zeigt den bestehenden Leerzustand ('?').
+  function rendereWuerfelAnzeige(anzeige, wert) {
+    anzeige.innerHTML = '';
+    if (wert === null || typeof wert === 'undefined') {
+      anzeige.classList.add('rv-wuerfel-anzeige-leer');
+      anzeige.textContent = '?';
+      return;
+    }
+    anzeige.classList.remove('rv-wuerfel-anzeige-leer');
+    (WUERFEL_PIP_POSITIONEN[wert] || []).forEach(function (pos) {
+      const auge = document.createElement('span');
+      auge.className = 'rv-wuerfel-auge';
+      auge.style.gridColumn = String(pos[0]);
+      auge.style.gridRow = String(pos[1]);
+      anzeige.appendChild(auge);
+    });
+  }
+
   // Würfel-Zwischenschritt: Wurf >3 gibt das Element weiter (Kettenfortschritt),
   // Wurf <=3 bleibt bei derselben Person stehen und wird als Zwischenwurf
   // festgehalten (window.FlowGame.schreibeWuerfelZwischenwurf() existiert laut
@@ -2171,7 +2208,50 @@
     }
   }
 
+  // BUGFIX-010 (AK3/AK5/AK6, Stephans Entscheidung 2026-08-10 - Option B,
+  // explizite Bestätigung statt fester Haltezeit): wird NACH dem letzten
+  // Animations-Tick aufgerufen, STATT dass der Klick-Handler direkt
+  // schliesseRundeVierWurfAb() aufruft. Hält das Ergebnis (Pips) sichtbar,
+  // zeigt bei einem Ergebnis <=3 zusätzlich einen Hinweistext plus den
+  // Button "Nochmal würfeln"; bei einem Ergebnis >3 stattdessen den Button
+  // "weiter" (Erfolgsfall-Symmetrie, AK6). ERST der Klick auf diesen Button
+  // ruft die bestehende, unveränderte schliesseRundeVierWurfAb() auf.
+  function renderRundeVierWuerfelBestaetigung(db, code, element, wert, btn, anzeige) {
+    btn.hidden = true;
+    rendereWuerfelAnzeige(anzeige, wert);
+
+    const erfolgreich = window.FlowGame.istWurfErfolgreich(wert);
+
+    if (!erfolgreich) {
+      const hinweis = document.createElement('div');
+      hinweis.className = 'rv-wuerfel-hinweis';
+      hinweis.textContent = t('rundeVier.wurfNichtAusreichend');
+      rvFokusCard.appendChild(hinweis);
+    }
+
+    const bestaetigenBtn = document.createElement('button');
+    bestaetigenBtn.type = 'button';
+    bestaetigenBtn.className = 'btn primary';
+    bestaetigenBtn.textContent = erfolgreich ? t('rundeVier.weiter') : t('rundeVier.nochmalWuerfeln');
+    bestaetigenBtn.addEventListener('click', function () {
+      // Pre-Mortem-Risiko 5 (Analyse-Spec): schützt den neuen
+      // Bestätigungs-Button selbst gegen einen zweiten, überlappenden Klick,
+      // bevor die eigentliche Schreibfunktion überhaupt aufgerufen wird.
+      bestaetigenBtn.disabled = true;
+      wuerfelBestaetigungAusstehend = false;
+      schliesseRundeVierWurfAb(db, code, element, wert, btn);
+    });
+    rvFokusCard.appendChild(bestaetigenBtn);
+  }
+
   function renderRundeVierFokusCard(db, code, element) {
+    // BUGFIX-010 (zentraler Umsetzungs-Stolperstein aus der Analyse-Spec,
+    // Pre-Mortem-Risiko 3): solange eine Würfel-Bestätigung aussteht, darf
+    // KEIN durch irgendein Firestore-Update ausgelöster Re-Render die
+    // gehaltene Bestätigungs-Ansicht überschreiben - deshalb Guard-Prüfung
+    // ganz am Anfang, vor jedem Neuaufbau der Karte.
+    if (wuerfelBestaetigungAusstehend) return;
+
     rvFokusCard.innerHTML = '';
 
     const typLabel = document.createElement('div');
@@ -2182,7 +2262,7 @@
     if (element.typ === 'wuerfel') {
       const anzeige = document.createElement('div');
       anzeige.className = 'rv-wuerfel-anzeige';
-      anzeige.textContent = '?';
+      rendereWuerfelAnzeige(anzeige, null);
       rvFokusCard.appendChild(anzeige);
 
       const btn = document.createElement('button');
@@ -2193,17 +2273,24 @@
         if (wuerfelAnimationLaeuft) return;
         wuerfelAnimationLaeuft = true;
         btn.disabled = true;
+        // BUGFIX-010 (Zusatz-Scope, Stephans Entscheidung 2026-08-10):
+        // "Bewegung reduzieren" verkürzt die Wurf-Animation auf einen
+        // einzigen Schritt, das Endergebnis bleibt trotzdem über die
+        // Bestätigungs-Funktion sichtbar - nur der Weg dorthin wird kürzer.
+        const bewegungReduziert = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        const anzahlDurchlaeufe = bewegungReduziert ? 1 : 7;
         let durchlaeufe = 0;
         let letzterWert = 1;
         const intervallId = setInterval(function () {
           letzterWert = 1 + Math.floor(Math.random() * 6);
-          anzeige.textContent = String(letzterWert);
+          rendereWuerfelAnzeige(anzeige, letzterWert);
           durchlaeufe += 1;
-          if (durchlaeufe >= 7) {
+          if (durchlaeufe >= anzahlDurchlaeufe) {
             clearInterval(intervallId);
-            schliesseRundeVierWurfAb(db, code, element, letzterWert, btn);
+            wuerfelBestaetigungAusstehend = true;
+            renderRundeVierWuerfelBestaetigung(db, code, element, letzterWert, btn, anzeige);
           }
-        }, 55);
+        }, bewegungReduziert ? 0 : 55);
       });
       rvFokusCard.appendChild(btn);
     } else {

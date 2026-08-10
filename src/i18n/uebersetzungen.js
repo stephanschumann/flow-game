@@ -329,6 +329,16 @@ const UEBERSETZUNGEN = {
   // hartcodierte Verkettung 'Karte ' + kartenNr + ' von 6' (siehe
   // tests/game-round4.logic.test.js fuer den mitgezogenen Regressionstest).
   'rundeVier.kartenPosition': { de: 'Karte {nummer} von 6', en: 'Card {nummer} of 6' },
+  // BUGFIX-010 (Stephans Entscheidung 2026-08-10 - Option B, explizite
+  // Bestaetigung statt fester Haltezeit): Bestaetigungs-Button-Texte fuer
+  // Erfolg (>3) und Misserfolg (<=3) sowie der begleitende Hinweistext bei
+  // einem nicht ausreichenden Wurf.
+  'rundeVier.weiter': { de: 'Weiter', en: 'Continue' },
+  'rundeVier.nochmalWuerfeln': { de: 'Nochmal würfeln', en: 'Roll again' },
+  'rundeVier.wurfNichtAusreichend': {
+    de: 'Das reicht noch nicht - du musst nochmal würfeln.',
+    en: 'Not enough yet - you need to roll again.',
+  },
   'rundeVier.leerHinweis': {
     de: 'Du wartest gerade auf das nächste Element - es ist noch bei einer anderen Person unterwegs.',
     en: 'You are currently waiting for the next element - it is still on its way with someone else.',

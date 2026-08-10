@@ -3186,6 +3186,37 @@ Neue Testdatei `tests/game-bugfix-010-wuerfelanzeige.static.test.js` gegen den e
 
 ---
 
+#### Implementierungs-Ergebnis (flow-game-impl, 2026-08-10)
+
+**Umgesetzte Variante:** Stephans Entscheidung vom 2026-08-10 12:26 (Option B — explizite Bestätigung statt fester Haltezeit; Würfel-Augen/Pips statt Zahl-im-Rahmen; Reduced-Motion-Reparatur mit im Scope; `aria-live`-Ankündigung ausdrücklich NICHT umgesetzt, bleibt eigenes, späteres Ticket) wortgetreu wie in der Namensgebung des Testplans festgelegt umgesetzt — keine Abweichung von den dort benannten Funktions-/Guard-/Klassen-/Schlüsselnamen.
+
+**Geänderte Dateien:**
+- `public/spiel.html`: CSS-Klasse `.rv-wuerfel-anzeige` bekommt Rahmen + quadratisches Format (Zeile 161-164 alt → jetzt 4 Regeln inkl. neuer Klassen `.rv-wuerfel-anzeige-leer`, `.rv-wuerfel-auge`, `.rv-wuerfel-hinweis`). Neue Konstante `WUERFEL_PIP_POSITIONEN` + neue Funktion `rendereWuerfelAnzeige()` (baut die Pip-Darstellung 1-6 bzw. den Leerzustand „?"). Neue Guard-Variable `wuerfelBestaetigungAusstehend` (deklariert neben `wuerfelAnimationLaeuft`, zusätzlich beim Rundenwechsel zurückgesetzt). Neue Funktion `renderRundeVierWuerfelBestaetigung(db, code, element, wert, btn, anzeige)` — zeigt Ergebnis + Hinweistext (≤3) bzw. Erfolgstext (>3) + Bestätigungs-Button, ruft `schliesseRundeVierWurfAb()` erst nach dessen Klick auf. `renderRundeVierFokusCard()` prüft den neuen Guard direkt am Funktionsanfang und überspringt den kompletten Kartenneuaufbau, solange eine Bestätigung aussteht (behebt den in der Analyse-Spec benannten zentralen Umsetzungs-Stolperstein: der bestehende Firestore-`onSnapshot`-Re-Render überschreibt die gehaltene Anzeige nicht mehr vorzeitig). Würfel-Klick-Handler ruft nach der Animation nicht mehr direkt `schliesseRundeVierWurfAb()` auf, sondern `renderRundeVierWuerfelBestaetigung()`; zusätzlich neue `window.matchMedia('(prefers-reduced-motion: reduce)')`-Prüfung im Handler, die die Anzahl der Animations-Durchläufe bei aktivierter Einstellung von 7 auf 1 verkürzt (Endergebnis bleibt über dieselbe Bestätigungs-Funktion sichtbar). `schliesseRundeVierWurfAb()` selbst inhaltlich unverändert (nur als Aufrufziel verschoben) — der bestehende `wuerfelAnimationLaeuft`-Reset im `finally`-Block sowie der `starteBearbeitungszeitFallsNoetig()`-Aufruf im Erfolgspfad (BUGFIX-011) blieben unangetastet. Länderkarten-Zweig derselben Funktion (BUGFIX-009, `rv-karten-position`) nicht verändert.
+- `src/i18n/uebersetzungen.js` (Node-Referenz): drei neue Schlüssel `rundeVier.weiter`, `rundeVier.nochmalWuerfeln`, `rundeVier.wurfNichtAusreichend` (je DE/EN).
+- `public/js/i18n/uebersetzungen.js` (Browser-Kopie): dieselben drei Schlüssel identisch nachgezogen (Doppelpflege-Pflicht, direkt mitgeprüft von den BDD-Tests).
+
+**Node/Browser-Sync-Check (Pflichtschritt 3a):** Grep über `src/` und `public/js/game/` nach allen in diesem Ticket geänderten Funktionsnamen (`renderRundeVierFokusCard`, `schliesseRundeVierWurfAb`, `renderRundeVierWuerfelBestaetigung`, `rendereWuerfelAnzeige`, `wuerfelBestaetigungAusstehend`, `wuerfelAnimationLaeuft`) ergab **null Treffer** in beiden Ordnern — bestätigt die Analyse-Spec: die Würfel-Anzeige/-Animation existiert ausschließlich in `public/spiel.html`, kein Node-Pendant, kein separates Browser-Produktivmodul. Kein Sync-Risiko, keine zweite Fundstelle zu pflegen.
+
+**Testergebnis BUGFIX-010 (eigene Tests):** `npx jest tests/game-bugfix-010-wuerfel-anzeige.static.test.js` — **17 von 17 Tests grün** (vorher, laut BDD-Phase: 13 rot/4 grün). Kein Test geschwächt, gelöscht, geskippt oder nachträglich an die Implementierung angepasst — alle 13 vormals roten Tests wurden durch echten neuen Code grün, kein Escape-Hatch-Fall.
+
+**Pflicht-Regressionslauf (6 Test-Suiten, jeweils einzeln per `device_bash`/`npx jest <Datei>` ausgeführt, 2026-08-10):**
+- `tests/game-round4.logic.test.js` (FEATURE-004/BUGFIX-012-Regressionsnetz Runde 4) — **82/82 grün**.
+- `tests/game-round4-warteschlange.static.test.js` (FEATURE-017-Regressionsnetz, dieselbe `renderRundeVier()`/`renderRundeVierWarteschlange()`-Nachbarschaft wie der Würfel-Zweig) — **10/10 grün**.
+- `tests/game-round4-bearbeitungszeit.static.test.js` (BUGFIX-011-Regressionsnetz, `starteBearbeitungszeitFallsNoetig()` im Würfel-Erfolgspfad) — **7/7 grün**.
+- `tests/game-feature-018-host-mitspielen.logic.test.js` (FEATURE-018) — **8/8 grün**.
+- `tests/game-feature-018-text-und-zaehler.static.test.js` (FEATURE-018, u. a. `renderRundeVier`-Textstellen) — **20/20 grün**.
+- `tests/game-a11y-static.test.js` (FEATURE-005, wegen der neuen `prefers-reduced-motion`-Prüfung als Zusatzstichprobe gewählt) — **5 grün, 1 vorbestehend geskippt** (Skip unverändert, nicht durch dieses Ticket verursacht).
+
+Damit alle sechs stichprobenartig geprüften Regressionsdateien vollständig grün, keine Kollateralschäden. `tests/game-round4.security.rules.test.js` sowie `tests/game-feature-018-host-mitspielen.security.rules.test.js` sind laut Grep-Pflichtcheck (`rules-unit-testing`/`localhost:8080`/`initializeTestEnvironment`) emulatorpflichtig und in der Cloud-Sandbox/Geräte-Brücken-VM nicht lauffähig (siehe `flow-game-impl` Schritt 5e) — dieses Ticket ändert `firestore.rules` ohnehin nicht (siehe Analyse-Spec, Annahme 6), daher hier bewusst nicht über den Fallback-Weg (Stephans eigener Terminal-Lauf) nachgeholt.
+
+**Nicht automatisiert geprüft (offen für Stephan/nächste Phase):** Der in der Analyse-Spec (Pre-Mortem-Risiko 6) verlangte manuelle Chrome-Live-Check (echte Serie mehrerer Fehlwürfe hintereinander, insbesondere ob die Bestätigungs-Button-Klicks sich in der Praxis nicht zäh anfühlen) wurde in diesem Schritt NICHT durchgeführt — reine Code-/Jest-Verifikation. Dieser Schritt bleibt vor der endgültigen Done-Freigabe offen.
+
+**Git-Bestätigung:** In diesem gesamten Implementierungsschritt wurde ausnahmslos KEIN `git`-Befehl verwendet — weder lesend noch schreibend, weder im Cloud-Sandbox-Bash noch über `device_bash` gegen das gemountete Repo. Alle Dateiänderungen liegen jetzt unversioniert lokal im gemounteten Repo-Ordner vor; Commit/Push bleibt bewusst Stephans eigenem Terminal überlassen.
+
+**Status:** Implementierung abgeschlossen, alle automatisierten Tests grün. Noch NICHT auf Done gesetzt (Release-vor-Done-Gate, `flow-game-impl` Schritt 6) — Release sowie der oben genannte manuelle Live-Check stehen noch aus.
+
+---
+
 ### BUGFIX-015 „Ich spiele selbst mit" (Host) schlägt bei Spielerstellung mit Firestore-Berechtigungsfehler fehl
 
 | Feld | Wert |
