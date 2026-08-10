@@ -2344,12 +2344,15 @@ Falls Stephan Option B wählt (frühestens nach FEATURE-014-Abschluss): neue Tes
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Mittel |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Erstellt** | 2026-07-23 |
 | **Spec freigegeben am** | 2026-08-09 |
 | **In Progress seit** | 2026-08-09 23:35 |
+| **Done am** | 2026-08-10 |
 
 **Stephans Entscheidung (2026-08-09 23:35):** Option B — schmaler, gezielter Zusatz (persönliche „du bist fertig"-Bestätigung + explizite „wir warten noch auf N weitere"-Formulierung, als Ergänzung zur bestehenden Zählung aus BUGFIX-003). Die acht Akzeptanzkriterien für Option B im Analyse-Spec unten gelten damit als bestätigt und gehen so an `flow-game-bdd`.
+
+**Gate-Auditor Modus A (2026-08-10):** Unabhängig geprüft — AK-Herkunft-Klauseln und erweitertes Pre-Mortem (Grenzwerte/Rollback/Beobachtbarkeit) am echten Ticket-Text bestätigt; Tests selbst ausgeführt (18/18 grün); 3 Regressionsstichproben aus bereits Done-markierten Tickets grün (BUGFIX-003, FEATURE-018, a11y); Commit `56d04b3` per Git-Historie als korrekt/gepusht/scope-sauber (exakt 6 erwartete Dateien) verifiziert; i18n-Schlüssel live auf https://flow-game-19f01.web.app bestätigt. Ampel: 🟢 Grün. Ergebnis: freigegeben für Done.
 
 **Beschreibung:** Nach dem Beitritt sieht eine Person nur die eigene Zeile und die Liste der anderen, aber keinen Hinweis wie „Warte, bis der/die Gastgeber(in) die Runde startet". Fühlt sich für Erstnutzer(innen) wie eine Sackgasse an (ist das fertig? muss ich noch etwas tun?). Einen klaren Wartehinweis mit kurzer Erklärung ergänzen — sowohl aus Mitspielenden- als auch aus Gastgeber-Sicht fehlt aktuell eine „Wir warten noch auf …"-Anzeige.
 
@@ -2821,9 +2824,12 @@ Bei Bestätigung von Option C: kein Testplan nötig, nur Status-/Verweis-Update 
 | **Typ** | Feature |
 | **Priorität** | Mittel |
 | **Erstellt** | 2026-07-27 |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Spec freigegeben am** | 2026-08-10 (automatisch, Ampel Grün) |
 | **In Progress seit** | 2026-08-10 00:00 |
+| **Done am** | 2026-08-10 |
+
+**Gate-Auditor Modus A (2026-08-10):** Unabhängig geprüft — AK-Herkunft-Klauseln und erweitertes Pre-Mortem am echten Ticket-Text bestätigt; Tests selbst ausgeführt (14/14 grün); Commit `56d04b3` als korrekt/gepusht/scope-sauber verifiziert; i18n-Schlüssel live bestätigt. Ampel: 🟢 Grün. Ergebnis: freigegeben für Done.
 
 **Beschreibung:** Aktuell ist nicht auf jedem Bildschirm im Spiel durchgängig sichtbar, mit welchem Namen und welcher Rolle man selbst gerade angemeldet ist. Betrifft alle Ansichten (Lobby, laufende Runde, Auswertung), nicht nur einen einzelnen Screen.
 
