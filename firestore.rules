@@ -418,6 +418,47 @@ service cloud.firestore {
         && neu[neuerSchluessel].am == request.time;
     }
 
+    // Cross-Referenz-Helfer fuer BUGFIX-015: prueft fuer einen NICHT-LEEREN
+    // belegteStationen-Eintrag beim Erstellen, ob er exakt der Station/uid
+    // entspricht, die im selben Commit dem eigenen, neu angelegten
+    // teilnehmende/{uid}-Dokument mit rolle=='host' zugewiesen wird. Als
+    // eigene Funktion ausgelagert, damit getAfter() NUR dann ausgewertet
+    // wird, wenn belegteStationen tatsaechlich nicht leer ist (Short-Circuit
+    // von "||" in belegteStationenBeimErstellenErlaubt() unten) - der
+    // unveraenderte, bereits bestehende Leerfall ruft diese Funktion nie
+    // auf und ist von dieser Cross-Referenz-Pruefung unberuehrt.
+    function mitspielenderHostStationErlaubt(spielId, belegteStationen) {
+      let eigeneTeilnahme = getAfter(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data;
+      let eigeneStation = eigeneTeilnahme.get('station', null);
+      return belegteStationen.size() == 1
+        && eigeneTeilnahme.get('rolle', null) == 'host'
+        && eigeneStation != null
+        && belegteStationen.get(eigeneStation, null) == request.auth.uid;
+    }
+
+    // BUGFIX-015 (2026-08-10, Stephans Entscheidung: Option A, siehe
+    // Backlog.md): erweitert die bislang starre Vorgabe "belegteStationen
+    // ist beim Erstellen immer leer" um eine eng eingeschraenkte Ausnahme
+    // fuer FEATURE-018 (Host spielt selbst mit) - ohne diese Ausnahme
+    // scheiterte JEDE Spielerstellung mit aktivierter "Ich spiele selbst
+    // mit"-Option an dieser Regel, weil createGame.js (Node + Browser,
+    // unveraendert) die eigene Station im SELBEN Commit vorbelegt
+    // (Race-Condition-Schutz, FEATURE-018-Pre-Mortem-Risiko 1). Erlaubt
+    // zusaetzlich zum leeren Fall GENAU EINEN Eintrag, dessen Schluessel/
+    // Wert per getAfter()-Cross-Referenz gegen teilnehmende/{eigene uid}
+    // verifiziert wird (mitspielenderHostStationErlaubt() oben) - dasselbe,
+    // in der teilnehmende/{uid}-Erstellregel bereits etablierte Muster
+    // (siehe dort Fall (b), hostKennung-Nachweis per getAfter()).
+    // Verhindert damit gezielt, dass ein Client beim Erstellen eine
+    // falsche/fremde Station oder mehr als eine Station vorbelegt
+    // (Pre-Mortem-Risiko 2) - bewusst NICHT die laxere Option B
+    // (belegteStationen.size() <= 1 ohne Cross-Referenz), die diese
+    // Schwachstelle geoeffnet haette.
+    function belegteStationenBeimErstellenErlaubt(spielId) {
+      return request.resource.data.belegteStationen == {}
+        || mitspielenderHostStationErlaubt(spielId, request.resource.data.belegteStationen);
+    }
+
     match /spiele/{spielId} {
       // Lesbar für jede angemeldete Person (auch anonym), die den Code kennt
       // oder rät – das ist die Grundlage des Beitritts-Flusses (Code-Prüfung,
@@ -433,7 +474,7 @@ service cloud.firestore {
         && request.resource.data.code == spielId
         && request.resource.data.keys().hasAll(['code', 'erstelltAm', 'letzteAktivitaet', 'belegteStationen'])
         && !('hostKennung' in request.resource.data.keys())
-        && request.resource.data.belegteStationen == {}
+        && belegteStationenBeimErstellenErlaubt(spielId)
         && request.resource.data.erstelltAm is number
         && request.resource.data.letzteAktivitaet is number;
 

@@ -3023,11 +3023,14 @@ Nicht ausgeführt (emulatorpflichtig, Netzwerk-Restriktion der Geräte-Bridge-VM
 | **Typ** | Bug |
 | **Priorität** | Mittel |
 | **Erstellt** | 2026-07-27 |
-| **Status** | In Progress |
+| **Status** | Done |
 | **Spec freigegeben am** | 2026-08-10 |
 | **In Progress seit** | 2026-08-10 12:26 |
+| **Done am** | 2026-08-10 |
 
 **Stephans Entscheidung (2026-08-10 12:26, nach Prototyp-Test):** Option B — explizite Bestätigung ("Nochmal würfeln"-Button statt fester Haltezeit), abweichend von der Empfehlung Option C. Würfel-Optik: Würfel-Augen (Pips), nicht Zahl-im-Rahmen. Zusatz-Scope: "Ruhiger Modus" (reduced-motion)-Reparatur wird mit umgesetzt (Würfel-Animation künftig verkürzt/übersprungen, wenn aktiviert; Ergebnis bleibt trotzdem sichtbar). Die zweite vorgelegte Zusatzoption (aria-live-Ankündigung des Wurfergebnisses für Screenreader) wird NICHT in diesen Scope aufgenommen, bleibt offen für ein eigenes, späteres Ticket. Damit gelten AK1-AK7 mit der Bestätigungs-Variante (nicht der Haltezeit-Variante) aus AK3/AK5/AK6 als bestätigt und gehen so an `flow-game-bdd`.
+
+**Gate-Auditor Modus A (2026-08-10):** Unabhängig geprüft — AK-Herkunft-Klauseln und erweitertes Pre-Mortem (8 Risiken, inkl. Beobachtbarkeit/Rollback/Stichproben-Kategorien) am echten Ticket-Text bestätigt; Tests selbst ausgeführt (17/17 grün) plus 4 Regressionsstichproben grün (game-round4.logic 82/82, game-round4-warteschlange 10/10, game-feature-018-text-und-zaehler 20/20, game-a11y 5/5+1 vorbestehend geskippt); Commit `77347eb` per frischem GitHub-Klon als scope-sauber (exakt 4 erwartete Dateien) und tatsächlich auf origin/main gepusht verifiziert; explizite-Bestätigung-Variante (kein fester setTimeout) und reduced-motion-Check am echten Code in `public/spiel.html` bestätigt; i18n-Schlüssel und neue Funktionen live auf https://flow-game-19f01.web.app bestätigt. Ampel: 🟢 Grün. Ergebnis: freigegeben für Done. Offener Punkt bleibt der nicht automatisiert durchführbare volle Runde-4-Mehrpersonen-Sichttest (siehe Release-Vermerk oben).
 
 **Beschreibung:** FEATURE-004s Akzeptanzkriterium 10 verlangt eine „kurze Wurf-Animation" analog zur `RollButton`-Komponente aus CatTube. Im echten Test (2026-07-27) wirkte die Anzeige nicht wie ein echter grafischer Würfel, und das Ergebnis eines nicht ausreichenden Wurfs (≤3) war nicht klar sichtbar, bevor der nächste Wurfversuch gestartet werden konnte.
 
@@ -3215,6 +3218,22 @@ Damit alle sechs stichprobenartig geprüften Regressionsdateien vollständig gr�
 
 **Status:** Implementierung abgeschlossen, alle automatisierten Tests grün. Noch NICHT auf Done gesetzt (Release-vor-Done-Gate, `flow-game-impl` Schritt 6) — Release sowie der oben genannte manuelle Live-Check stehen noch aus.
 
+#### Release (2026-08-10)
+
+**Commit & Push (Stephan, eigenes Terminal):** Commit `77347eb` ("BUGFIX-010: explizite Bestätigung nach Würfelwurf, Würfel-Augen statt…"), gepusht `0adf520..77347eb main -> main`. Automatischer GitHub-Actions-Hosting-Deploy ausgelöst.
+
+**GitHub Actions (per Claude-in-Chrome, Stephans echter Browser, 2026-08-10):** Workflow „Deploy to Firebase Hosting on merge" Run #59 (`https://github.com/stephanschumann/flow-game/actions/runs/31400467311`) für Commit `77347eb` — **Status: Success**, Gesamtlaufzeit 46s, Job `build_and_deploy` 37s. Eine Annotation (Node.js-20-Deprecation-Warnung für `actions/checkout@v4`), keine Fehler.
+
+**Live-Verifikation (per Claude-in-Chrome, Stephans echter Browser, 2026-08-10):** Da BUGFIX-010 erst in Runde 4 (Würfel-Element) sichtbar wird und Runde 4 Mehrpersonen-Spielfortschritt voraussetzt, der mit einer einzelnen Testidentität nicht praktikabel simulierbar ist (siehe `chrome-multi-identity-testing-conventions` — keine mehreren Tabs im selben Profil als unabhängige Testidentitäten), wurde die Verifikation auf zwei Teile beschränkt:
+1. **`fetch()`-Check gegen den ausgelieferten Produktionscode (im Seitenkontext ausgeführt):** `https://flow-game-19f01.web.app/spiel.html` (183.135 Zeichen) enthält alle sechs geprüften neuen Bezeichner: `rendereWuerfelAnzeige`, `renderRundeVierWuerfelBestaetigung`, `wuerfelBestaetigungAusstehend`, `rundeVier.weiter`, `rundeVier.nochmalWuerfeln`, `rundeVier.wurfNichtAusreichend` — alle sechs gefunden. `https://flow-game-19f01.web.app/js/i18n/uebersetzungen.js` (34.827 Zeichen) enthält die drei neuen Übersetzungsschlüssel `rundeVier.weiter`, `rundeVier.nochmalWuerfeln`, `rundeVier.wurfNichtAusreichend` — alle drei gefunden (die drei Funktionsnamen stehen erwartungsgemäß nicht in der i18n-Datei, da sie im Spiellogik-Code liegen, nicht in den Übersetzungstexten). Bestätigt: der neue BUGFIX-010-Code ist live ausgeliefert.
+2. **Allgemeiner Sichtcheck (Host-Lobby-Erstellung):** `https://flow-game-19f01.web.app` lädt fehlerfrei (Startseite, Sprachumschaltung sichtbar). Klick auf „Spiel erstellen oder beitreten" erzeugte erfolgreich eine neue Host-Lobby (`spiel.html`, Beitritts-Code `873RLCCB`, Rolle „Host" korrekt angezeigt, Wartezustand „0 von 5 Spielenden beigetreten"). Keine anwendungsbezogenen Konsolenfehler; die einzigen Konsoleneinträge stammen nachweislich von einer Chrome-Erweiterung (`chrome-extension://ccbpbkebodcjkknkfkpmfeciinhidaeh/...`), nicht von der App selbst.
+
+**Offener Punkt (ehrlich benannt, nicht automatisiert durchführbar):** Der volle Runde-4-Würfel-Sichttest (mehrere Personen spielen bis Runde 4, Würfel-Element wird tatsächlich im UI angezeigt und bedient) wurde in dieser Verifikation **nicht** durchgeführt — das deckt sich mit dem bereits in der Implementierungsphase vermerkten offenen Punkt (Pre-Mortem-Risiko 6: manueller Chrome-Live-Check mit echter Fehlwurf-Serie steht noch aus) und mit dem bei früheren Releases dieser Sitzung dokumentierten Muster (z. B. BUGFIX-012: „Kein vollständiger Mehrpersonen-Durchlauf durch Runde 4 im Rahmen dieser Live-Verifikation"). Bleibt als optionaler manueller Test bei Stephan offen.
+
+**Git-Bestätigung:** In diesem Release-/Verifikationsschritt wurde ausnahmslos KEIN `git`-Befehl verwendet — weder lesend noch schreibend, weder im Cloud-Sandbox-Bash noch über `device_bash` gegen das gemountete Repo. Commit und Push erfolgten ausschließlich durch Stephan selbst in seinem eigenen Terminal.
+
+**Status:** Release durchgeführt, GitHub Actions grün, Basis-Live-Verifikation (Code-Auslieferung + allgemeiner Sichtcheck) bestanden. Voller Runde-4-Würfel-Mehrpersonentest weiterhin offen (siehe oben). Noch NICHT auf Done gesetzt — das bleibt ein separater, nachgelagerter Schritt.
+
 ---
 
 ### BUGFIX-015 „Ich spiele selbst mit" (Host) schlägt bei Spielerstellung mit Firestore-Berechtigungsfehler fehl
@@ -3223,7 +3242,7 @@ Damit alle sechs stichprobenartig geprüften Regressionsdateien vollständig gr�
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Mittel |
-| **Status** | ToDo |
+| **Status** | In Progress |
 | **Erstellt** | 2026-08-10 |
 
 **Beschreibung:** Beim Live-Check nach dem Release von FEATURE-014/FEATURE-016 (2026-08-10, https://flow-game-19f01.web.app) wurde beiläufig festgestellt: Ein neues Spiel mit aktivierter Option „Ich spiele selbst mit" (Host möchte selbst an einer Station mitspielen) schlägt bei der Spielerstellung mit einem Firestore-Fehler „Missing or insufficient permissions" fehl. Ohne diese Option (Host nur Moderation) funktioniert die Spielerstellung fehlerfrei. Nicht weiter analysiert oder eingegrenzt — reiner Fundbericht aus einem Randbefund, kein Bestandteil des FEATURE-014/016-Release-Tests.
@@ -3231,6 +3250,284 @@ Damit alle sechs stichprobenartig geprüften Regressionsdateien vollständig gr�
 **Kontext/Verweise:** Vermutlich betrifft dies FEATURE-018 („Host kann selbst mitspielen") — dessen Schreiblogik bei der Spielerstellung oder die zugehörigen `firestore.rules` sind naheliegende Ansatzpunkte, aber nicht verifiziert. Dokumentiert im FEATURE-014/016-Release-Vermerk in diesem Backlog (Abschnitt „Live-Verifikation", 2026-08-10).
 
 ---
+
+#### Analyse-Spec (2026-08-10)
+
+**Vorab geprüfte Quellen (Pflicht-Code-Verifikation, Schritt 2b):** Der echte, aktuelle Code wurde gelesen (frischer Klon von `github.com/stephanschumann/flow-game` in eine isolierte Sandbox — Repo-Zugriff war möglich, siehe Skill-Vorgabe zur Pflicht-Prüfung —, Größenabgleich gegen die über die Geräte-Brücke gemountete lokale `Backlog.md`/`firestore.rules` bestätigt praktisch identischen Stand), nicht aus dem Gedächtnis oder aus alten Zitaten behauptet — konkret `firestore.rules` (`match /spiele/{spielId}` Z. 421, `allow get` Z. 429–430, **`allow create` Z. 432–438**, `allow update` Z. 451–484, `match /geheim/kennung` Z. 493–498, `match /teilnehmende/{uid}` Z. 501–610), `src/game/createGame.js` (Z. 85–140, insb. `hostStation`/`belegteStationen` Z. 119–121, `teilnehmerDaten.station` Z. 134) + `public/js/game/createGame.js` (Z. 74–130, insb. Z. 111–113/126, inhaltlich deckungsgleich), `tests/game-feature-018-host-mitspielen.security.rules.test.js` (`seedGame()` Z. 93–125, `withSecurityRulesDisabled` Z. 98), `tests/game-feature-018-host-mitspielen.logic.test.js`, `tests/helpers/fakeFirestore.js` (Kopfkommentar), `public/spiel.html` (Erstellen-Formular-Handler Z. 3114–3163, insb. `zeigeFehler(err.code ? uebersetzeFehlercode(...) : err.message)` Z. 3163), `public/js/i18n/uebersetzungen.js` (`uebersetzeFehlercode()` Z. 491–495, `FEHLERCODE_ZU_SCHLUESSEL`), `package.json` (Skript `test:emulator:feature-018` vorhanden), sowie die vollständige FEATURE-018-Analyse-/Implementierungs-/Release-Dokumentation in diesem Backlog (Ticket „FEATURE-018", Status Done) und `Product.md` Abschnitt 2/3.
+
+**Root Cause (verifiziert, nicht vermutet):**
+
+`firestore.rules`, `allow create`-Regel für `spiele/{spielId}` (Z. 432–438):
+```
+allow create: if request.auth != null
+  && request.resource.data.code == spielId
+  && request.resource.data.keys().hasAll(['code', 'erstelltAm', 'letzteAktivitaet', 'belegteStationen'])
+  && !('hostKennung' in request.resource.data.keys())
+  && request.resource.data.belegteStationen == {}
+  && request.resource.data.erstelltAm is number
+  && request.resource.data.letzteAktivitaet is number;
+```
+verlangt beim Anlegen des `spiele/{spielId}`-Dokuments zwingend `belegteStationen == {}` — eine leere Map, ausnahmslos. Diese Regel ist älter als FEATURE-018 und wurde bei dessen Umsetzung nicht angepasst.
+
+`src/game/createGame.js` (Z. 119–121) und identisch `public/js/game/createGame.js` (Z. 111–113) schreiben aber, sobald `mitspielen === true` übergeben wird (das setzt `spiel.html`s Erstellen-Formular exakt dann, wenn die Checkbox „Ich spiele selbst mit" aktiviert ist), innerhalb derselben Transaktion:
+```js
+const hostStation = mitspielen ? STATIONEN[0] : undefined;      // z. B. 'wareneingang'
+const belegteStationen = hostStation ? { [hostStation]: uid } : {};
+tx.set(spielRef, { code, erstelltAm, letzteAktivitaet, belegteStationen, sprache });
+```
+Das ist exakt das gewollte, im FEATURE-018-Pre-Mortem bewusst so entworfene Verhalten (dortiges Risiko 1: `belegteStationen` wird im selben Commit wie das Spiel-Dokument vorbelegt, damit keine zweite, getrennte Schreiboperation und keine Race Condition mit einer parallel über `joinGame()` beitretenden Person entstehen kann).
+
+Da eine Firestore-Transaktion jeden einzelnen Schreibvorgang gegen die Regeln prüft und die GESAMTE Transaktion ablehnt, sobald auch nur einer der Schreibvorgänge eine Regel verletzt, scheitert die komplette `createGame()`-Transaktion — obwohl der zweite Schreibvorgang (`teilnehmende/{uid}`) für sich genommen bereits korrekt an FEATURE-018 angepasst wurde —, sobald `belegteStationen` nicht leer ist. Der Client sieht dabei exakt den gemeldeten, undifferenzierten Firestore-Fehler „Missing or insufficient permissions": `public/spiel.html`s Fehlerbehandlung (Z. 3163) gibt für einen nicht in `FEHLERCODE_ZU_SCHLUESSEL` bekannten Firebase-Fehlercode wie `permission-denied` unverändert den rohen `err.message`-Text aus (`uebersetzeFehlercode()`, Z. 491–495: `if (!schluessel) return fallbackText || code || '';`).
+
+Ohne aktivierte Option bleibt `belegteStationen` `{}` (Default) — die Regel ist erfüllt, die Erstellung gelingt. Das erklärt exakt den im Ticket beschriebenen, beobachteten Unterschied zwischen beiden Fällen.
+
+**Warum kein bestehender Test das vorab gefunden hat (systemischer Befund, nicht nur Einzelfall):** Der eigens für FEATURE-018 geschriebene Sicherheitsregel-Test (`tests/game-feature-018-host-mitspielen.security.rules.test.js`, `seedGame()`, Z. 93–125) legt Testdaten ausschließlich über `testEnv.withSecurityRulesDisabled(...)` (Z. 98) an — das umgeht die echte `allow create`-Regel für `spiele/{spielId}` vollständig, auch für den mitspielenden-Host-Fall mit vorbefüllter `belegteStationen`. Die separate, mit dem In-Memory-`fakeFirestore.js` laufende Logik-Testdatei (`tests/game-feature-018-host-mitspielen.logic.test.js`) prüft `createGame()`s Anwendungslogik korrekt (u. a. explizit den Fall „belegteStationen im selben Commit vorbelegt"), aber `fakeFirestore.js` kennt laut eigenem Kopfkommentar keine Sicherheitsregeln — sie sind rein clientseitig simuliert. Damit wurde die tatsächliche Kombination aus „echte Firestore-Regel" + „echter, durch `mitspielen=true` erzeugter Schreibinhalt" nie zusammen getestet — weder in der Analyse-Sandbox (technisch bedingt: Emulator-Download blockiert) noch in Stephans lokalem Emulatorlauf am 2026-08-05 (`npm run test:emulator:feature-018`, damals 4/4 grün gemeldet — lief exakt gegen dieselbe, die Lücke nicht abdeckende Testdatei). Das ist der eigentliche Grund, warum der Fehler erst beim echten Live-Test am 2026-08-10 auffiel, nicht vorher.
+
+---
+
+**Brainstorming / Example Mapping (Schritt 2):**
+- **Regeln:** FEATURE-018-Grundregel „Host kann mitspielen" (`Product.md` Abschnitt 2/3); FEATURE-018-Pre-Mortem-Risiko 1 (atomare Vorbelegung von `belegteStationen` gegen Race Conditions); genereller Firestore-Grundsatz dieses Projekts „jede Schreiboperation wird serverseitig durchgesetzt, nie nur clientseitig vertraut".
+- **Beispiele:** Host aktiviert Checkbox → Fehler (bestätigter Ist-Zustand, Ticket-Beschreibung). Host lässt Checkbox aus → funktioniert (bestätigter Kontrollfall). Ein zweites, parallel erstelltes Spiel mit aktivierter Checkbox → derselbe Fehler zu erwarten (die Regel ist spielunabhängig formuliert, keine separate Verifikation pro Spiel nötig).
+- **Fragen (nicht selbst beantwortet, siehe Annahmen-Protokoll):** Wie streng muss die korrigierte Regel sein, um keine neue Sicherheitslücke zu öffnen?
+
+**Annahmen-Protokoll (Schritt 2a):**
+
+1. 🔴 **Funktional/sicherheitskritisch — wie streng muss die korrigierte Regel sein?** Reicht eine reine Größenprüfung (`belegteStationen.size() <= 1`), oder muss zusätzlich sichergestellt werden, dass (a) es höchstens einen Eintrag gibt, (b) dessen Wert exakt der anlegenden Person selbst (`request.auth.uid`) entspricht, und (c) der Stationsname mit dem `station`-Feld übereinstimmt, das im selben Commit auf `teilnehmende/{request.auth.uid}` mit `rolle=='host'` angelegt wird? Firestore Security Rules können das per `getAfter()` auf den gleichzeitig geschriebenen `teilnehmende`-Pfad prüfen — genau dieses Muster verwendet die bestehende `teilnehmende/{uid}`-Erstellregel bereits selbst (Z. 583, `getAfter(.../geheim/kennung)`). **Empfehlung dieser Analyse:** die strenge Variante (a)+(b)+(c) — eine bloße Größenprüfung würde einem beliebigen angemeldeten Client erlauben, beim Erstellen eine EINZELNE, aber frei wählbare Station im Namen einer beliebigen (auch fremden) uid vorzubelegen, ohne selbst mitspielender Host zu werden. Das wäre eine neue, von FEATURE-018 nicht beabsichtigte Schwachstelle (siehe Pre-Mortem Risiko 2 und Zusammenspiel-Abschnitt unten).
+
+**Ohne Antwort auf diese eine 🔴-Frage bleiben die sicherheitsrelevanten Akzeptanzkriterien 4/5 und die Empfehlung in Schritt 7 bedingt. Status bleibt ToDo.**
+
+**Fundstellen-Sweep (Schritt 2d):** Gesucht wurde nach jeder weiteren Stelle im Projekt, die dieselbe Fehlerklasse zeigen könnte („eine `allow create`-Regel verlangt einen leeren/festen Ausgangszustand für ein Feld, das ein bereits umgesetztes Feature beim Anlegen aber vorbefüllt"). Ergebnis: `firestore.rules` enthält genau **eine** Stelle, an der beim initialen Anlegen eines Spiels überhaupt ein `belegteStationen`-Feld erwartet/geprüft wird (Z. 432–438) — alle späteren Änderungen an `belegteStationen` laufen ausschließlich über `update()` (`joinGame.js`), das dieser `create`-Regel nicht unterliegt. Die übrigen drei in derselben Regel geprüften Felder (`code` muss `== spielId` sein, `erstelltAm`/`letzteAktivitaet` müssen `number` sein) werden von FEATURE-018 nicht verändert und bleiben unauffällig. Keine weiteren Fundstellen im gesamten Repo.
+
+**Zustands-Check (Schritt 2d):**
+- **Wartezustand:** Der Erstellen-Button zeigt bereits während der Erstellung `t('lobby.wirdBearbeitet')` (BUGFIX-002) — unverändert korrekt, auch im aktuell fehlschlagenden Fall (kein Hängenbleiben). Keine Änderung durch diesen Bugfix nötig.
+- **Leerzustand:** nicht anwendbar (wie bereits in der FEATURE-018-Spec festgestellt — ein neu erstelltes Spiel hat immer alle Stationen frei).
+- **Fehlerfall (Kern dieses Tickets):** `spiel.html` zeigt bei einem fehlschlagenden `createGame()`-Aufruf zuverlässig eine sichtbare Fehlermeldung über `zeigeFehler()`, der Button wird korrekt zurückgesetzt (BUGFIX-002-Verhalten, bestätigt unverändert korrekt) — **aber** der angezeigte Text ist aktuell der rohe, unübersetzte Firestore-Fehlertext „Missing or insufficient permissions", weil der Firebase-Fehlercode `permission-denied` nicht in `FEHLERCODE_ZU_SCHLUESSEL` enthalten ist. Das ist eine vorbestehende, generische Lücke (jeder unerwartete Firestore-Fehler zeigt einen rohen Text, nicht nur dieser eine Fall) und wird für den hier behandelten Regelfall durch den Rules-Fix ohnehin gegenstandslos — als eigener, niedrig priorisierter AK unten aufgenommen (Verteidigung in der Tiefe), aber kein Blocker für die Kernkorrektur.
+
+---
+
+**Akzeptanzkriterien (beobachtbares Verhalten, alltagssprachlich):**
+
+1. Aktiviert eine gastgebende Person beim Erstellen eines neuen Spiels „Ich spiele selbst mit", wird das Spiel erfolgreich angelegt — keine Fehlermeldung, kein Abbruch. (Herkunft: BUGFIX-015, Kernsymptom.)
+2. Nach erfolgreicher Erstellung mit aktivierter Option ist die gastgebende Person sofort ihrer Station zugeordnet und in der Lobby als mitspielende Person erkennbar — unverändertes FEATURE-018-Verhalten, mit diesem Fix erstmals tatsächlich erreichbar.
+3. Erstellt eine gastgebende Person ein Spiel OHNE die Option, bleibt das Verhalten exakt wie bisher — weiterhin fehlerfrei, weiterhin keine Station vorbelegt. (Regressionsschutz, entspricht AK6 aus FEATURE-018.)
+4. Niemand kann beim Erstellen eines Spiels mehr als eine Station gleichzeitig als „belegt" markieren — unabhängig davon, ob „ich spiele mit" aktiviert ist oder nicht, bleibt die Zahl der beim Erstellen vorbelegten Stationen auf 0 oder 1 begrenzt. (Herkunft: sicherheitsrelevante Ableitung dieser Analyse, notwendige Nebenbedingung der Regelkorrektur, siehe Annahmen-Protokoll Frage 1 — hängt von deren Klärung ab.)
+5. Die einzige beim Erstellen vorbelegbare Station ist ausschließlich diejenige, die im selben Erstellungsvorgang tatsächlich der eigenen, neu angelegten Host-Rolle der erstellenden Person zugewiesen wird — niemand kann beim Erstellen eine Station im Namen einer anderen, noch gar nicht existierenden Person vorbelegen. (Herkunft: wie AK4, hängt von Annahmen-Protokoll Frage 1 ab.)
+6. Zwei unabhängig voneinander erstellte Spiele beeinflussen sich dabei nicht — die Stationsbelegung des einen Spiels bleibt für das andere vollständig unsichtbar/unwirksam. (Regressionsschutz gegen die bestehende Spiel-Isolation, FEATURE-001.)
+7. Schlägt eine Spielerstellung aus einem anderen, unerwarteten Grund fehl, bekommt die Person weiterhin sichtbar mitgeteilt, dass etwas schiefgegangen ist, und kann es erneut versuchen (kein stilles Hängenbleiben) — bereits heute erfüllt (BUGFIX-002), hier nur als Regressionsschutz festgehalten, keine Änderung für dieses Ticket zwingend nötig.
+
+---
+
+**Pre-Mortem — was könnte schiefgehen:**
+
+1. **Zu strenge Korrektur verhindert weiterhin auch den legitimen Fall.** Gegenmaßnahme: ein neuer Testfall, der GENAU den gemeldeten Fehlerfall (mitspielen=true, eine Station korrekt vorbelegt) gegen den echten Firestore-Emulator grün werden lässt — nicht nur ein Regel-Syntax-Check.
+2. **Zu lockere Korrektur öffnet eine neue Schwachstelle** (beliebiger Client belegt beim Erstellen eine fremde/beliebige Station im Namen einer beliebigen uid, ohne selbst Host zu werden — eine Art Denial-of-Service gegen eine einzelne Station). Gegenmaßnahme: Cross-Dokument-Prüfung per `getAfter()` gegen das im selben Commit angelegte `teilnehmende/{uid}`-Dokument (Annahmen-Protokoll Frage 1, Implementierungsoption A unten).
+3. **Erneuter Testabdeckungs-Blindspot.** Wird die korrigierte Regel wieder nur über `withSecurityRulesDisabled()` geseedet statt über einen echten `assertSucceeds/assertFails`-Aufruf gegen die reale `allow create`-Regel getestet, bleibt dieselbe Fehlerklasse für die Zukunft unentdeckt — exakt der Mechanismus, der diesen Bug bereits einmal durchgelassen hat. Gegenmaßnahme: der neue Testfall MUSS die reale Regel tatsächlich durchlaufen, kein Rules-Bypass für genau diesen einen Schreibvorgang.
+4. **Race Condition:** keine neue — die Korrektur ändert nur eine Prüfbedingung der Regel, nicht das Transaktionsverhalten selbst; die bereits bestehende Atomaritätsgarantie (ein Commit für `spiele`+`geheim`+`teilnehmende`) bleibt unverändert.
+5. **Grenzwerte:** Es gibt beim Erstellen nur zwei gültige Zustände (0 oder 1 vorbelegter Eintrag) — beide sowie der ungültige Zwischenwert (2 oder mehr Einträge, bzw. 1 Eintrag mit falschem Schlüssel/Wert) müssen im Testfall abgedeckt sein, nicht nur der Erfolgsfall.
+6. **Verhalten unter Lastgrenzen:** nicht relevant — reine Einzelschreiboperation, keine Laständerung durch diesen Fix.
+7. **Rollback-/Wiederanlauffähigkeit:** unverändert — schlägt die Transaktion (auch nach dem Fix) aus einem anderen Grund fehl, committet nichts (atomar), kein Teilzustand möglich; bereits von FEATURE-018 korrekt so entworfen.
+8. **Beobachtbarkeit im Fehlerfall:** siehe Zustands-Check oben — der generische „roher Firestore-Text"-Fallback bleibt als eigenständiges, kleines, hier nicht zwingend zu behebendes UX-Detail bestehen (AK7), sollte Stephan aber benannt sein, da genau dieser generische Fallback der Grund war, warum der ursprüngliche Fehlertext technisch und nicht auf Deutsch/verständlich war.
+
+**Zusammenspiel bestehender Bausteine (Schritt 4a):**
+
+- **Betroffene Bausteine:** `firestore.rules` (`allow create` für `spiele/{spielId}`, ggf. Cross-Referenz auf `teilnehmende/{uid}` im selben Commit), `createGame()` (Node + Browser — bleibt unverändert, das bestehende Verhalten ist bereits korrekt und gewollt), `tests/game-feature-018-host-mitspielen.security.rules.test.js` (muss um mindestens einen echten, nicht per `withSecurityRulesDisabled` umgangenen `create`-Testfall erweitert werden).
+- **Reihenfolge des Zusammenwirkens:** Host aktiviert Checkbox → `spiel.html` ruft `createGame({mitspielen:true})` → die Transaktion versucht ATOMAR drei Schreibvorgänge (`spiele/{code}`, `geheim/kennung`, `teilnehmende/{uid}`) → Firestore prüft JEDEN einzeln gegen die Regeln, BEVOR irgendetwas committet wird → **aktuell:** Schreibvorgang 1 (`spiele/{code}`) scheitert an `belegteStationen == {}` → gesamte Transaktion abgelehnt, Client erhält `permission-denied` → **nach Fix:** alle drei Schreibvorgänge bestehen die jeweiligen Regeln → Transaktion committet atomar wie in FEATURE-018 vorgesehen.
+- **Kombinationen, die zu Fehlern führen könnten:** (a) Prüft die korrigierte Regel nur `belegteStationen.size() <= 1` ohne Cross-Referenz auf das eigene `teilnehmende`-Dokument, könnte ein Client beim Erstellen eine Station im Namen einer BELIEBIGEN uid vorbelegen — spätere `joinGame()`-Aufrufe anderer Personen würden diese Station fälschlich als belegt ansehen, obwohl real niemand dort sitzt. (b) Prüft die Cross-Referenz nur den Stationsnamen, nicht den zugeordneten uid-Wert in `belegteStationen`, könnte ein Client `belegteStationen: {wareneingang: 'fremde-uid'}` senden, während das eigene `teilnehmende`-Dokument korrekt `station: 'wareneingang'` trägt — die Regel muss also sowohl Schlüssel (Stationsname) als auch Wert (eigene uid) prüfen, nicht nur einen von beiden.
+
+**Node-Referenz/Browser-Sync-Check (Schritt 4b):**
+
+| Funktion | Node-Referenz | Browser-Produktivcode | Befund |
+|---|---|---|---|
+| `createGame()` (Stationsvorbelegung) | `src/game/createGame.js` Z. 119–121/134 | `public/js/game/createGame.js` Z. 111–113/126 | Inhaltlich deckungsgleich (identische Bedingung `mitspielen ? STATIONEN[0] : undefined`) — beide Fassungen sind vom Rules-Bug gleichermaßen betroffen. Da die Korrektur ausschließlich serverseitig in `firestore.rules` liegt und **kein** Anwendungscode in `createGame.js` geändert wird, entfällt für dieses Ticket das sonst übliche Risiko einer neu entstehenden Node/Browser-Divergenz vollständig. |
+
+**Gruppierungs-/Stichproben-/Cache-Prüfung (Schritt 4c):** Nicht einschlägig — dieses Ticket nimmt keine Gruppierung, Stichprobenprüfung, Zuordnung oder Caching über eine Menge von Kandidaten vor; es korrigiert eine einzelne, dokumentweise ausgewertete Sicherheitsregel.
+
+---
+
+**Betroffene Architektur (grob, ohne Implementierungsdetails vorwegzunehmen):**
+
+- Sicherheitsregeln: `firestore.rules`, ausschließlich die `allow create`-Regel für `spiele/{spielId}` (aktuell Z. 432–438) — Erweiterung um eine erlaubte, eng eingeschränkte Alternative zu `belegteStationen == {}`.
+- Kein Datenmodell-Wechsel: das `belegteStationen`-Feld existiert bereits, wird nur beim Anlegen jetzt korrekt zugelassen statt pauschal verboten.
+- Kein Client-Code betroffen: `createGame.js` bleibt in Node UND Browser unverändert (das dortige Verhalten ist bereits korrekt).
+- Test-Infrastruktur: `tests/game-feature-018-host-mitspielen.security.rules.test.js` wird um mindestens einen echten (nicht `withSecurityRulesDisabled`-basierten) `create`-Testfall erweitert.
+
+**Reichweite von Implementierungsdetail-Festlegungen (Schritt 5a):** In dieser Analyse wurde bewusst NICHTS als „Implementierungsdetail" abgetan — die exakte Formulierung der Regel-Bedingung (Cross-Referenz-Mechanik, Annahmen-Protokoll Frage 1) ist eine funktionale/sicherheitsrelevante Entscheidung und wurde deshalb als 🔴-Frage behandelt, nicht als beim Coden nebenbei zu entscheidende Kleinigkeit.
+
+---
+
+**Regressionsrisiko (Pflicht ab dem zweiten Ticket):**
+
+- **FEATURE-018 (Done, unmittelbar betroffen):** Kern dieses Bugfixes. Regressionstest muss zusätzlich sicherstellen, dass der klassische (nicht mitspielende) Host-Fall unverändert mit `belegteStationen == {}` funktioniert (bereits grün, muss grün bleiben).
+- **FEATURE-001 (Rollen/Spiel-Erstellung, Done):** Die `spiele/{spielId}`-Erstellregel ist die zentrale Regel für JEDE Spielerstellung, nicht nur die mitspielende. Ein Fehler in der Korrektur würde ALLE Spielerstellungen betreffen — höchste Priorität für einen Regressionstest des klassischen Falls.
+- **BUGFIX-014 (Verbindungs-Retry bei Spielerstellung, Done, 2026-08-08):** betrifft denselben `createGame()`-Aufruf (Retry-Wrapper), aber durch diesen Bugfix nicht berührt (reine Regel-Änderung, kein Code in `createGame.js`) — nur als Nachbar-Ticket am selben Funktionsaufruf erwähnt.
+- **FEATURE-011 (Host-Zurückerlangen, Done, 2026-08-08):** hat dieselbe `teilnehmende/{uid}`-Erstellregel bereits einmal geändert (Reclaim-Fall, `!('station' in ...)`), OHNE den hier gefundenen `spiele/{spielId}`-Regel-Bug zu berühren oder zu beheben — bestätigt, dass der Bug seit der FEATURE-018-Implementierung (2026-08-04/05) unverändert und unbemerkt im Live-System lag, bis zum Fund am 2026-08-10. Regressionstest: FEATURE-011s Host-Zurückerlangen-Fall bleibt von dieser Korrektur unberührt (reklamiert nie ein `station`-Feld, wie bereits in FEATURE-011 selbst festgehalten).
+- Kein weiteres Ticket betroffen (Fundstellen-Sweep oben: exakt eine Regel-Fundstelle im gesamten Repo).
+
+---
+
+**Implementierungsoptionen mit Empfehlung:**
+
+*Option A — Regel um eine eng eingeschränkte, cross-referenzierte Ausnahme erweitern (empfohlen, bedingt auf Annahmen-Protokoll Frage 1):*
+Die `allow create`-Regel für `spiele/{spielId}` akzeptiert `belegteStationen` entweder leer, ODER mit genau einem Eintrag, dessen Schlüssel/Wert-Paar exakt dem `station`/eigene-uid-Paar entspricht, das im selben Commit auf `spiele/{spielId}/teilnehmende/{request.auth.uid}` mit `rolle=='host'` angelegt wird (Prüfung via `getAfter()` auf den Teilnehmenden-Pfad — dasselbe, im Regelwerk bereits etablierte Cross-Referenz-Muster wie in der `teilnehmende/{uid}`-Erstellregel selbst, Z. 583). Vorteile: schließt exakt die im Pre-Mortem benannten Schwachstellen (fremde/mehrfache Stationsvorbelegung) aus, bleibt vollständig serverseitig, kein Client-Code ändert sich, nutzt ein bereits etabliertes Rules-Muster. Nachteile: etwas komplexere Regel-Bedingung, muss sorgfältig gegen den echten Emulator getestet werden (Pre-Mortem Risiko 1/3).
+
+*Option B — Regel auf reine Größenprüfung lockern (`belegteStationen.size() <= 1`, nicht empfohlen):*
+Vorteile: kürzeste, einfachste Änderung. Nachteile: öffnet genau die in Pre-Mortem Risiko 2 und im Zusammenspiel-Abschnitt beschriebene Schwachstelle — jeder angemeldete Client könnte beim Erstellen eine beliebige Station im Namen einer beliebigen uid vorbelegen, unabhängig davon, ob er selbst mitspielender Host wird. Würde eine neue, von FEATURE-018 nicht gewollte Sicherheitslücke einführen, nur um den gemeldeten Bug zu kaschieren statt ihn sauber zu beheben.
+
+*Option C — Stationszuweisung des mitspielenden Hosts aus dem `createGame()`-Commit herauslösen, als separates `update()` direkt danach (nicht empfohlen):*
+Vorteile: `spiele/{spielId}`-`create`-Regel bliebe komplett unverändert (`belegteStationen` beim Erstellen immer leer). Nachteile: widerspricht direkt der in FEATURE-018 bewusst getroffenen, im dortigen Pre-Mortem dokumentierten Architekturentscheidung (Risiko 1: genau deshalb atomar im selben Commit, um eine Race Condition mit einer parallel über `joinGame()` beitretenden Person zu vermeiden) — würde exakt das Risiko wieder einführen, das FEATURE-018 bewusst vermieden hat, nur um die Regel unangetastet zu lassen.
+
+**Empfehlung (fachliche Einschätzung, nicht direkt aus den Dokumenten ableitbar — Stephan entscheidet, insbesondere abhängig von Annahmen-Protokoll Frage 1):** Option A. Sie behebt den Bug an der tatsächlichen Ursache (eine zu strenge, nicht an das FEATURE-018-Datenmodell angepasste Regel), ohne die bewusste FEATURE-018-Architekturentscheidung (atomare Vorbelegung) rückgängig zu machen und ohne eine neue Sicherheitslücke zu öffnen.
+
+---
+
+**Ampel-Prüfung (Schritt 8a):**
+
+1. **Klarer Abstand?** Ja — Option A hat klaren Abstand zu B (öffnet eine Sicherheitslücke) und C (widerspricht einer bewussten FEATURE-018-Architekturentscheidung).
+2. **Eingriff bleibt im Ticket?** **NEIN** — das Ticket ändert `firestore.rules` (das ist der Kern des Fixes selbst, kein Nebeneffekt). Automatisches Stopp-Kriterium laut Skill-Vorgabe, unabhängig von den übrigen vier Antworten.
+3. **Ohne Datenverlust rückgängig?** Ja — reine Regeländerung, jederzeit rückgängig machbar, keine Datenmigration.
+4. **Pre-Mortem ohne hohes Risiko?** Mittleres Risiko vorhanden (Gefahr einer zu laxen Regel, Pre-Mortem Risiko 2), aber mit einer konkreten Gegenmaßnahme (Option A) adressiert — kein unadressiertes hohes Risiko.
+5. **Keine reine Geschmacks-/Optikfrage?** Korrekt, keine — rein funktional/sicherheitsrelevant.
+
+**Ampel-Ergebnis: 🔴 Rot — braucht Stephans Entscheidung: Ticket ändert `firestore.rules`.** Zusätzlich zur formalen Ampel-Regel enthält Annahmen-Protokoll-Frage 1 (Strenge der Cross-Referenz-Prüfung) eine echte, nicht triviale Sicherheitsentscheidung, die inhaltlich ebenfalls Stephans Bestätigung braucht, unabhängig vom formalen Stopp-Kriterium.
+
+---
+
+**Testplan-Grundgerüst (für `flow-game-bdd`, nach Klärung von Annahmen-Protokoll Frage 1):**
+
+- Given ein Host erstellt ein neues Spiel und aktiviert „ich spiele mit", When die Erstellung versucht wird, Then gelingt sie ohne Fehler (Kern-Regressionstest gegen den gemeldeten Bug — MUSS über eine echte, nicht per `withSecurityRulesDisabled` geseedete Firestore-Transaktion laufen, nicht nur ein Syntax-Check).
+- Given ein Host erstellt ein Spiel OHNE „ich spiele mit", When die Erstellung versucht wird, Then gelingt sie weiterhin wie bisher (Regressionstest, bereits grün, muss grün bleiben).
+- Given ein Client versucht, beim Erstellen eines Spiels `belegteStationen` mit einer Station vorzubelegen, die NICHT der im selben Commit angelegten eigenen Host-Station entspricht (falsche Station ODER falsche uid), When die Erstellung versucht wird, Then wird das abgelehnt (neuer Sicherheitstest, deckt Pre-Mortem-Risiko 2 und den Zusammenspiel-Abschnitt ab).
+- Given ein Client versucht, beim Erstellen eines Spiels `belegteStationen` mit MEHR ALS EINER Station vorzubelegen, When die Erstellung versucht wird, Then wird das abgelehnt (Grenzwert-Test).
+- Given zwei parallel erstellte Spiele mit je mitspielendem Host, Then bleiben ihre jeweiligen `belegteStationen` vollständig unabhängig voneinander (Regressionstest gegen Spiel-Isolation, FEATURE-001).
+- Given ein klassischer, nicht mitspielender Host, When das Spiel erstellt wird, Then bleibt `belegteStationen` weiterhin exakt `{}` (Regressionstest, unverändertes Verhalten).
+
+**Entscheidung von Stephan (2026-08-10):** Annahmen-Protokoll Frage 1 entschieden zugunsten von **Option A** (strenge, cross-referenzierte Regel-Korrektur — nur die im selben Erstellungsvorgang der eigenen Host-Rolle zugewiesene Station darf vorbelegt werden, geprüft per `getAfter()` gegen das gleichzeitig angelegte `teilnehmende/{uid}`-Dokument). Option B (reine Größenprüfung) wurde bewusst abgelehnt, da sie eine neue Sicherheitslücke geöffnet hätte. Damit ist die 🔴-Frage aus dem Annahmen-Protokoll geklärt und Akzeptanzkriterien 4/5 sind nicht mehr bedingt. Die formale Ampel-Rot-Einstufung (Änderung an `firestore.rules`) bleibt als dokumentiertes Stopp-Kriterium bestehen, ist aber durch Stephans Entscheidung aufgelöst — Freigabe zur Umsetzung erteilt. Status auf **In Progress** gesetzt, bereit für `flow-game-bdd`.
+
+---
+
+#### BDD-Testergebnis (`flow-game-bdd`, 2026-08-10)
+
+**Testdatei erweitert (nicht neu angelegt):** `tests/game-feature-018-host-mitspielen.security.rules.test.js` (183 → 351 Zeilen). Neuer Block `describe('BUGFIX-015 (echte, scharfgeschaltete allow-create-Regel, KEIN withSecurityRulesDisabled): Stationsvorbelegung beim Spiel-Erstellen', ...)` mit 6 Testfällen plus Helper-Funktion `versucheSpielErstellung()`. Import-Zeile um `runTransaction` ergänzt (einzige Änderung an bestehendem Code, sonst reiner Anhang).
+
+**Zwingende Abgrenzung zur bestehenden `seedGame()`-Hilfsfunktion (schließt den dokumentierten Blindspot):** Alle 6 neuen Testfälle legen `spiele/{spielId}` ausschließlich über eine echte `runTransaction()`-Schreiboperation GEGEN die tatsächlichen `firestore.rules` an — `withSecurityRulesDisabled()` wird für diesen Schreibvorgang bewusst NICHT verwendet (anders als `seedGame()`, das weiterhin nur für die bereits bestehenden FEATURE-018-Sichtbarkeits-/Bewegungstests genutzt wird).
+
+**Die 6 Testfälle (Szenario-Namen):**
+1. Host aktiviert „ich spiele mit" → Erstellung gelingt (Kern-Regressionstest gegen den gemeldeten Bug, AK1).
+2. Host ohne „ich spiele mit" → Erstellung gelingt weiterhin (Regressionstest, AK3/AK6).
+3. Client belegt beim Erstellen eine falsche Station ODER falsche uid vor → wird abgelehnt (AK5, zwei Teilfälle in einem Testfall).
+4. Client belegt beim Erstellen mehr als eine Station vor → wird abgelehnt (AK4, Grenzwert-Test).
+5. Zwei parallel erstellte Spiele mit je mitspielendem Host an derselben Stationsbezeichnung → beide gelingen, `belegteStationen` bleibt vollständig unabhängig (Isolation, FEATURE-001).
+6. Klassischer, nicht mitspielender Host → `belegteStationen` bleibt exakt `{}` (Regressionstest).
+
+**Tatsächlicher Ausführungsversuch (nicht nur behauptet):** `npx firebase emulators:exec --only firestore "jest ..."` sowie `npx firebase emulators:start --only firestore --debug` wurden über `device_bash` mehrfach real ausgeführt (nicht nur angekündigt). Ergebnis: kein Emulator-Start, kein Log-Output, Prozess läuft bis zum Timeout (30–40s) ohne jede Ausgabe. `~/.cache/firebase/emulators/` existiert nicht (kein gecachtes Emulator-JAR). Ursache: identischer, bereits im Kopfkommentar dieser Testdatei dokumentierter Blocker (Firestore-Emulator-JAR-Download durch fehlenden Netzwerkzugang blockiert) — gilt hier zusätzlich bestätigt sowohl für die Cloud-Sandbox als auch für die `device_bash`-Geräte-Werkstatt-VM (beide ohne freien Internetzugang, siehe `device-access-conventions`). Die neuen Testfälle konnten in dieser Sitzung deshalb NICHT tatsächlich rot/grün beobachtet werden — wie bereits bei der ursprünglichen FEATURE-018-Testdatei braucht es dafür Stephans lokalen Testlauf (`npm run test:emulator:feature-018`). Node-Syntax-Check (`node --check`) und ein reiner Diff-Abgleich gegen das Original wurden dagegen real durchgeführt und waren unauffällig.
+
+**Analytisch hergeleiteter Rot/Grün-Status (aus dem Regeltext von `firestore.rules` Z. 432–438, NICHT empirisch beobachtet — siehe oben):**
+
+| # | Testfall | Erwarteter Status vor dem Rules-Fix | Begründung |
+|---|---|---|---|
+| 1 | Mitspielender Host, korrekte Station | 🔴 ROT | Aktuelle Regel verlangt zwingend `belegteStationen == {}` — ein korrekter, aber nicht-leerer Eintrag wird ebenfalls abgelehnt. Exakt der gemeldete Bug. |
+| 2 | Klassischer Host, keine Option | 🟢 GRÜN | `belegteStationen` bleibt `{}` — von der aktuellen Regel bereits erfüllt, unverändert. |
+| 3 | Falsche Station/uid vorbelegt | 🟢 GRÜN | **Wichtiger Befund, weicht von der ursprünglichen Erwartung ab (siehe unten):** Da die aktuelle Regel JEDEN nicht-leeren `belegteStationen`-Wert pauschal ablehnt (`== {}`), lehnt sie auch diesen böswilligen Versuch bereits heute ab — der Testfall ist also schon jetzt grün, allerdings nur als Kollateralschaden der zu strengen Regel, nicht durch eine gezielte Cross-Referenz-Prüfung. Bleibt nach dem Rules-Fix als einzige verbleibende Verteidigungslinie gegen diese Angriffsfläche zwingend bestehen (Pre-Mortem-Risiko 2). |
+| 4 | Mehr als eine Station vorbelegt | 🟢 GRÜN | Gleicher Grund wie Testfall 3 — bereits heute durch die pauschale `== {}`-Ablehnung abgedeckt, nicht durch eine gezielte Größenprüfung. |
+| 5 | Isolation zweier Spiele mit mitspielendem Host | 🔴 ROT | Folgt direkt aus Testfall 1 — beide Spielerstellungen scheitern aktuell bereits am selben `belegteStationen == {}`-Erfordernis, bevor Isolation überhaupt geprüft werden kann. |
+| 6 | Klassischer Host, `belegteStationen` bleibt `{}` | 🟢 GRÜN | Wie Testfall 2, zusätzlich mit expliziter Feldwert-Prüfung. |
+
+**Transparenter Hinweis zur Abweichung vom ursprünglichen Auftrag:** Im Arbeitsauftrag wurde erwartet, dass auch Testfälle 3 und 4 aktuell ROT laufen ("neue Sicherheitstests, die erst nach der Korrektur greifen"). Der reale Regeltext in `firestore.rules` (Z. 436, `request.resource.data.belegteStationen == {}`) zeigt aber: die heutige Regel ist eine pauschale Gleichheitsprüfung gegen die leere Map, die ausnahmslos JEDEN nicht-leeren Wert ablehnt — unabhängig davon, ob er böswillig (Testfall 3/4) oder eigentlich korrekt (Testfall 1) ist. Testfälle 3/4 sind deshalb nach sorgfältiger Prüfung des Regeltexts bereits vor dem Fix grün zu erwarten, nicht rot. Das ändert nichts an ihrer Notwendigkeit — sie werden nach dem Rules-Fix (der die pauschale Ablehnung aufhebt) zur einzig verbleibenden Absicherung gegen genau die in Pre-Mortem-Risiko 2 beschriebene Schwachstelle, deshalb bewusst trotzdem Teil des Testplans. Diese Einschätzung ist analytisch aus dem Regeltext hergeleitet, nicht empirisch per Testlauf verifiziert (siehe Ausführungsversuch oben) — Stephans lokaler Testlauf sollte das bei Gelegenheit bestätigen.
+
+**Übergabe an `flow-game-impl`:** Die Korrektur der `allow create`-Regel (Option A, `getAfter()`-Cross-Referenz gegen `teilnehmende/{uid}`) ist noch nicht implementiert. Nach der Implementierung müssen laut obiger Tabelle mindestens die Testfälle 1 und 5 von Rot auf Grün wechseln, während 2, 3, 4 und 6 grün bleiben müssen (kein Regressions-Rot bei den bereits grünen Fällen).
+
+---
+
+#### Implementierungs-Ergebnis (`flow-game-impl`, 2026-08-10)
+
+**Geänderte Datei (ausschließlich):** `firestore.rules`. Keine weitere Datei angefasst — insbesondere `src/game/createGame.js` und `public/js/game/createGame.js` bleiben laut Analyse-Entscheidung unverändert; ein Abgleich der Datei-Zeitstempel nach der Implementierung bestätigt das (`mtime` beider Dateien liegt vor Beginn dieser Sitzung).
+
+**Exakte Änderung (Diff-Auszug, unmittelbar vor `match /spiele/{spielId} {` wurden zwei neue Hilfsfunktionen eingefügt, danach wurde in der bestehenden `allow create`-Regel genau eine Zeile ersetzt):**
+
+Neu eingefügt (Cross-Referenz-Helfer, ausgelagert, damit `getAfter()` NUR im Nicht-Leer-Fall ausgewertet wird — Short-Circuit von `||`, kein Risiko für den unveränderten Leerfall):
+```
+function mitspielenderHostStationErlaubt(spielId, belegteStationen) {
+  let eigeneTeilnahme = getAfter(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data;
+  let eigeneStation = eigeneTeilnahme.get('station', null);
+  return belegteStationen.size() == 1
+    && eigeneTeilnahme.get('rolle', null) == 'host'
+    && eigeneStation != null
+    && belegteStationen.get(eigeneStation, null) == request.auth.uid;
+}
+
+function belegteStationenBeimErstellenErlaubt(spielId) {
+  return request.resource.data.belegteStationen == {}
+    || mitspielenderHostStationErlaubt(spielId, request.resource.data.belegteStationen);
+}
+```
+
+Geänderte Zeile in der bestehenden `allow create`-Regel für `spiele/{spielId}`:
+```diff
+-        && request.resource.data.belegteStationen == {}
++        && belegteStationenBeimErstellenErlaubt(spielId)
+```
+(alle übrigen Bedingungen der Regel — `code == spielId`, `keys().hasAll(...)`, `!('hostKennung' in ...)`, `erstelltAm is number`, `letzteAktivitaet is number` — unverändert.)
+
+Die Änderung wurde nach dem sicheren Muster vorgenommen: Neuer Inhalt zunächst in eine separate Datei (`firestore.rules.new`) geschrieben, per `diff -u` gegen das Original geprüft (Ergebnis: ausschließlich die oben gezeigten Zeilen betroffen, sonst keine einzige Abweichung), erst danach per `cp` übernommen. Eine Sicherungskopie des Vorzustands liegt unter `_to_delete/firestore.rules.bak-bugfix015`.
+
+**Warum genau dieses Muster (Cross-Referenz statt reiner Größenprüfung):** Setzt Stephans Entscheidung für Option A eins zu eins um — `belegteStationen` darf beim Erstellen entweder leer sein (unverändert) oder genau einen Eintrag enthalten, dessen Schlüssel/Wert-Paar per `getAfter()` gegen das im selben Commit angelegte `teilnehmende/{eigene uid}`-Dokument verifiziert wird (`rolle=='host'`, `station`-Feld == Schlüssel, eigene `request.auth.uid` == Wert). Folgt damit exakt dem bereits etablierten `getAfter()`-Cross-Referenz-Muster der bestehenden `teilnehmende/{uid}`-Erstellregel (dort Fall (b), `hostKennung`-Nachweis).
+
+**Syntax-Verifikation — was wirklich geprüft wurde vs. nicht:**
+- **Real ausgeführt:** Klammern-/Balance-Check der gesamten Datei per Python (`{`/`}`/`(`/`)`/`[`/`]` vor/nach identisch bis auf den erwarteten Zuwachs durch die zwei neuen Funktionsrümpfe — vor: 74/74 `{}`, 549/549 `()`; nach: 79/79 `{}`, 577/577 `()`, jeweils balanciert). Manuelle Zeile-für-Zeile-Herleitung aller 6 BUGFIX-015-Testfälle gegen die neue Regel-Logik (Ergebnis siehe Tabelle unten). Direkter Syntax-/Stil-Abgleich mit der bestehenden, bereits produktiv laufenden `getAfter()`-Regel bei `teilnehmende/{uid}` (Z. ~583) sowie mit `rundeVierStaedteAngehaengt()` (einzige weitere Stelle im Regelwerk, die `let` + verschachtelten Funktionsaufruf kombiniert) — identisches Muster (`let`-Bindungen vor `return`, `.get(schlüssel, default)`-Zugriff auf Maps, `!= null`-Vergleich), keine neue, unbelegte Syntax verwendet.
+- **Tatsächlicher, realer Versuch (kein reines Behaupten) mit dem Firebase-Emulator/CLI:** `npm run test:emulator:feature-018` sowie zuvor `node_modules/.bin/firebase deploy --only firestore:rules --dry-run --non-interactive` und sogar `firebase --help`/`firebase --version` wurden über `device_bash` real ausgeführt. Ergebnis durchgehend: Timeout nach 20–40s, **kein einziges** Ausgabezeichen (nicht einmal ein Start-Banner) — Exit-Code 124 in allen Fällen. Bestätigt exakt den bereits in der BDD-Phase dokumentierten Blocker (kein Netzwerkzugang für den Emulator-JAR-Download), zusätzlich verschärft festgestellt: selbst `firebase --help` ohne jede Emulator-/Deploy-Aktion hängt bereits beim Start (vermutlich ein Update-Check der CLI selbst) — es gibt in dieser Umgebung keinen funktionierenden Weg, die Firebase-CLI überhaupt aufzurufen, nicht nur den Emulator zu starten. Log liegt unter `_to_delete/bugfix-015-emulator-attempt.log`.
+- **NICHT ausgeführt / weiterhin offen:** Die 6 neuen BUGFIX-015-Testfälle wurden in dieser Sitzung **nicht empirisch gegen einen echten Firestore-Emulator beobachtet** — weder vor noch nach der Regeländerung. Der unten stehende Vorher/Nachher-Status ist analytisch (durch genaues Lesen des Regeltexts) hergeleitet, keine tatsächliche Testausführung. Stephans lokaler Testlauf (`npm run test:emulator:feature-018`) ist weiterhin die einzige Möglichkeit, das empirisch zu bestätigen.
+
+**Testergebnis-Tabelle vorher/nachher (vorher aus BDD-Phase übernommen, nachher analytisch aus dem neuen Regeltext hergeleitet — siehe Einschränkung oben):**
+
+| # | Testfall | Status vorher (BDD-Phase, analytisch) | Status nachher (diese Implementierung, analytisch hergeleitet) | Begründung nachher |
+|---|---|---|---|---|
+| 1 | Mitspielender Host, korrekte Station | 🔴 ROT | 🟢 GRÜN (analytisch) | `belegteStationen.size()==1`, `rolle=='host'`, `eigeneStation=='wareneingang'`, `belegteStationen.get('wareneingang',null)==eigene uid` — alle vier Teilbedingungen erfüllt. |
+| 2 | Klassischer Host, keine Option | 🟢 GRÜN | 🟢 GRÜN (analytisch, unverändert) | `belegteStationen == {}` bleibt als erster, unveränderter Zweig der Bedingung erhalten — `getAfter()` wird für diesen Fall dank Short-Circuit gar nicht ausgewertet. |
+| 3 | Falsche Station/uid vorbelegt (zwei Teilfälle) | 🟢 GRÜN (Kollateralschaden der alten, zu strengen Regel) | 🟢 GRÜN (analytisch, jetzt gezielt) | Fall (a) falsche Station: `belegteStationen.get('wareneingang', null)` liefert `null` (Schlüssel im übermittelten `belegteStationen` nicht vorhanden) ≠ eigene uid → abgelehnt. Fall (b) falsche uid: `belegteStationen.get('wareneingang', null)` liefert die fremde uid ≠ eigene `request.auth.uid` → abgelehnt. Beide jetzt durch die gezielte Cross-Referenz-Prüfung abgedeckt, nicht mehr nur zufällig durch die pauschale Ablehnung. |
+| 4 | Mehr als eine Station vorbelegt | 🟢 GRÜN (Kollateralschaden) | 🟢 GRÜN (analytisch, jetzt gezielt) | `belegteStationen.size() == 1` ist bei zwei Einträgen falsch → abgelehnt, unabhängig von den übrigen Teilbedingungen. |
+| 5 | Isolation zweier Spiele mit mitspielendem Host | 🔴 ROT | 🟢 GRÜN (analytisch) | Folgt aus Testfall 1 — beide Erstellungen erfüllen die Bedingung unabhängig voneinander (der `getAfter()`-Pfad ist über den jeweiligen `spielId`-Parameter pro Spiel isoliert), keine Überschneidung zwischen den beiden Spielen möglich. |
+| 6 | Klassischer Host, `belegteStationen` bleibt `{}` | 🟢 GRÜN | 🟢 GRÜN (analytisch, unverändert) | Wie Testfall 2. |
+
+**Ergebnis gegen die Vorgabe aus der BDD-Phase:** Testfälle 1 und 5 wechseln laut dieser analytischen Herleitung wie gefordert von Rot auf Grün, Testfälle 2, 3, 4 und 6 bleiben grün — kein analytisch hergeleitetes Regressions-Rot. **Diese Aussage ist ausdrücklich nicht empirisch verifiziert** (siehe Einschränkung oben) und muss durch Stephans lokalen Emulatorlauf noch bestätigt werden.
+
+**Pflicht-Regressionstest (Fundstellen-Sweep, Schritt 4 aus `flow-game-impl`):** Geprüft wurde, welche Testdateien eine `spiele/{spielId}`-Dokumenterstellung berühren könnten:
+- Alle 51 Dateien in `tests/` per Grep nach `belegteStationen|createGame|spiele/${...code|'spiele/'` durchsucht (20 Treffer).
+- Für jede der potenziell betroffenen Sicherheitsregel-Testdateien geprüft, ob sie `spiele/{spielId}` tatsächlich über die ECHTE `allow create`-Regel anlegt oder nur über `testEnv.withSecurityRulesDisabled(...)` seedet (Letzteres umgeht die geänderte Regel vollständig und kann durch diese Änderung nicht regressieren):
+  - `tests/game-rooms.security.rules.test.js` (FEATURE-001) — seedet ausschließlich über `withSecurityRulesDisabled`; die dortigen `assertSucceeds`/`assertFails`-Fälle prüfen `allow update`/`allow get`/`teilnehmende`-Regeln, NICHT die `spiele`-`allow create`-Regel selbst. Kein direkter Testfall für die geänderte Regel vorhanden — insofern liefert diese Datei keine echte Abdeckung der Änderung, sondern nur allgemeine FEATURE-001-Regressionssicherheit für alle übrigen, unveränderten `spiele`-Regeln.
+  - `tests/game-feature-011-host-zurueckerlangen.security.rules.test.js`, `tests/game-host-claim-overwrite.security.rules.test.js`, `tests/game-i18n.security.rules.test.js`, `tests/game-round.security.rules.test.js`, `tests/game-round4.security.rules.test.js`, `tests/game-drag-drop.security.rules.test.js`, `tests/game-evaluation.security.rules.test.js` — alle seeden `spiele/{spielId}` ausschließlich über `withSecurityRulesDisabled`, keine davon exerziert die geänderte `allow create`-Regel real.
+  - `tests/game-bugfix-014-createGame-browser.integration.test.js`, `tests/game-connection-retry.integration.test.js` — nutzen `runTransaction`, aber gegen eine In-Memory-/VM-Simulation (`fakeFirestore`/`vm`-Sandbox von `createGame.js`), NICHT gegen echte `firestore.rules` — von dieser reinen Regel-Änderung nicht betroffen (bereits in der Analyse-Spec, Node/Browser-Sync-Check, so festgehalten).
+  - **Einzige Datei, die die geänderte Regel real (nicht per Bypass) exerziert:** `tests/game-feature-018-host-mitspielen.security.rules.test.js`, Block `describe('BUGFIX-015 ...')` — die 6 oben tabellierten Testfälle.
+- **Schlussfolgerung Fundstellen-Sweep:** Der Regressionsschutz für FEATURE-001 (Spiel-Erstellung generell) und FEATURE-018 (Host mitspielen) ist damit vollständig auf `tests/game-feature-018-host-mitspielen.security.rules.test.js` konzentriert — sowohl der neue BUGFIX-015-Block als auch die dort bereits bestehenden FEATURE-018-Testfälle (Sichtbarkeit, Bewegungsregeln). Die übrigen 19 Fundstellen sind zwar thematisch benachbart, aber durch `withSecurityRulesDisabled` bzw. reine In-Memory-Simulation von der geänderten Regel unberührt — sie mit auszuführen liefert reguläre Gesamt-Regressionssicherheit, aber keine zusätzliche Abdeckung DIESER spezifischen Änderung.
+
+**Empfohlener lokaler Regressionslauf für Stephan (zwei Skripte, siehe `package.json`):**
+- `npm run test:emulator:feature-018` — Pflicht, einzige Datei mit echter Abdeckung der geänderten Regel (BUGFIX-015-Block + bestehende FEATURE-018-Tests).
+- `npm run test:emulator:rules` — zusätzlich empfohlen (deckt `game-rooms.security.rules.test.js`/FEATURE-001, `game-round.security.rules.test.js`, `game-evaluation.security.rules.test.js` ab); da diese Dateien laut Fundstellen-Sweep die geänderte Regel nicht real exerzieren, dient dieser Lauf der allgemeinen Absicherung, nicht der gezielten Verifikation dieser Änderung.
+
+**Emulatorlauf durch `flow-game-impl` selbst:** Nicht möglich (siehe Syntax-Verifikation oben, identischer Blocker wie in der BDD-Phase, hier zusätzlich auch für den reinen CLI-Aufruf ohne Emulator bestätigt). Kein automatisierter Testlauf in dieser Sitzung tatsächlich beobachtet — weder für die neuen BUGFIX-015-Tests noch für die Regressionsdateien.
+
+**Ehrliche Gesamteinschätzung:** Die Regeländerung ist nach bestem Wissen syntaktisch korrekt und folgt exakt dem bereits produktiv bewährten `getAfter()`-Cross-Referenz-Muster dieser Datei; die Logik wurde für alle 6 Testfälle manuell durchgerechnet und ergibt das laut BDD-Phase geforderte Rot→Grün für Testfälle 1/5 bei unverändertem Grün für 2/3/4/6. Diese Einschätzung ist jedoch **ausschließlich analytisch**, nicht durch einen tatsächlichen Testlauf bestätigt — die Umgebung (weder Cloud-Sandbox noch `device_bash`-VM) erlaubt keinen funktionierenden Firebase-CLI-/Emulator-Aufruf. Vor einem Release ist Stephans lokaler Testlauf (`npm run test:emulator:feature-018`, ergänzend `npm run test:emulator:rules`) zwingend erforderlich, um diese Einschätzung empirisch zu bestätigen. Status bleibt **In Progress** (kein Wechsel auf Done durch diesen Schritt).
+
+
+#### Stephans lokaler Testlauf & Testinfrastruktur-Korrektur (2026-08-10)
+
+**Stephan hat `npm run test:emulator:feature-018` lokal ausgeführt** (Log liegt bei ihm unter `test-bugfix015.log`, von mir eingelesen). Ergebnis: 7 von 10 Tests bestanden, 3 fehlgeschlagen. Wichtig für die eigentliche Fragestellung dieses Tickets:
+
+| # | Testfall | Ergebnis | Bedeutung |
+|---|---|---|---|
+| 1 | Mitspielender Host, korrekte Station (Kern-Regressionstest gegen den gemeldeten Bug) | ✅ Bestanden | **Der gemeldete Bug ist empirisch bestätigt behoben** — dieser Fall war vor der Regeländerung Rot, jetzt Grün. |
+| 2 | Klassischer Host, keine Option | ✅ Bestanden | Unverändertes Verhalten bestätigt. |
+| 3 | Falsche Station/uid vorbelegt | ❌ Fehlgeschlagen | Fehlerursache NICHT die Sicherheitsregel (siehe unten). |
+| 4 | Mehr als eine Station vorbelegt | ✅ Bestanden | Wie erwartet abgelehnt. |
+| 5 | Isolation zweier Spiele mit mitspielendem Host | ❌ Fehlgeschlagen | Fehlerursache NICHT die Sicherheitsregel (siehe unten). |
+| 6 | Klassischer Host, `belegteStationen` bleibt `{}` | ❌ Fehlgeschlagen | Fehlerursache NICHT die Sicherheitsregel (siehe unten). |
+
+**Ursachenanalyse der 3 Fehlschläge (von mir eigenständig durchgeführt, nicht nur das Log-Ergebnis übernommen):** Alle drei Fehlschläge zeigen exakt dieselbe Fehlermeldung — `FirebaseError: [code=failed-precondition]: Firestore has already been started and its settings can no longer be changed.` — NICHT `PERMISSION_DENIED`. Das ist kein Urteil der Sicherheitsregel, sondern ein Fehler der Testinfrastruktur selbst. Ich habe die Ursache direkt im Quelltext der verwendeten Bibliotheken verifiziert (`node_modules/@firebase/rules-unit-testing/dist/index.cjs.js`: `RulesTestContextImpl.prototype.firestore()` ruft bei JEDEM Aufruf erneut `firestore.useEmulator(...)` auf derselben, pro Kontext gecachten Firestore-Instanz auf; `node_modules/@firebase/firestore/dist/index.node.cjs.js`, Funktion `_setSettings()`, wirft genau diesen Fehler, sobald die Instanz bereits eine Operation ausgeführt hat/„eingefroren" ist). Die Testfälle 3, 5 und 6 waren die einzigen, die `kontext.firestore()` mehr als einmal für denselben Kontext aufgerufen haben (Testfall 3: zweiter Erstellungsversuch im selben Testfall; Testfall 5 und 6: ein anschließender `getDoc()`-Aufruf nach der Erstellung) — exakt deckungsgleich mit den 3 fehlgeschlagenen Fällen. Testfälle 1, 2 und 4 riefen `kontext.firestore()` nur je einmal auf und bestanden anstandslos.
+
+**Korrektur (nur Testdatei, `firestore.rules` unverändert):** `tests/game-feature-018-host-mitspielen.security.rules.test.js` angepasst — `versucheSpielErstellung()` nimmt jetzt eine bereits aufgelöste `db`-Instanz statt des `kontext`-Objekts entgegen, und jeder Aufrufer löst `kontext.firestore()` genau einmal pro Kontext auf und verwendet dieselbe Instanz weiter (statt sie erneut aufzulösen). Per `diff` gegen die Ursprungsdatei geprüft: **ausschließlich diese Instanz-Beschaffung wurde geändert** — keine einzige `assertFails`/`assertSucceeds`-Erwartung, kein einziger Eingabewert (`belegteStationen`, `hostStation`, `code`, `uid`) wurde angetastet oder gelockert. Syntax mit `node --check` verifiziert. Datei per MD5-Abgleich (Original vor dem Schreiben, Zieldatei nach dem Schreiben: beide `114b90e5d24af063568106029931bde3`) korrekt auf Stephans Rechner zurückgeschrieben.
+
+**Noch offen:** Die 3 zuvor fehlgeschlagenen Testfälle müssen nach dieser Korrektur erneut laufen, um empirisch zu bestätigen, dass die Sicherheitsregel-Logik für sie tatsächlich wie analytisch hergeleitet grün ist (Testfall 5 ist dabei der zweite von zwei Kern-Regressionstests gegen den gemeldeten Bug, Testfall 3/6 sind Regressionsschutz). Bitte Stephan: `npm run test:emulator:feature-018` erneut ausführen und Ergebnis melden — Status bleibt **In Progress**.
+
+**Erneuter Testlauf nach der Korrektur (2026-08-10):** Stephan hat `npm run test:emulator:feature-018` erneut ausgeführt. Ergebnis: **10 von 10 Tests bestanden, 0 fehlgeschlagen** (Test Suites: 1 passed, 1 total). Alle 6 BUGFIX-015-Testfälle sind damit empirisch — nicht mehr nur analytisch — bestätigt grün, inklusive der beiden Kern-Regressionstests gegen den gemeldeten Bug (Testfälle 1 und 5) und der Regressionsschutz-Fälle (2, 3, 4, 6). Die Testinfrastruktur-Korrektur hat die 3 zuvor fehlgeschlagenen Fälle wie erwartet behoben, ohne die Sicherheitsregel-Logik selbst zu berühren. Damit ist die Implementierung vollständig empirisch verifiziert — bereit für Release.
 
 ## ✅ Done
 
