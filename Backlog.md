@@ -3162,6 +3162,30 @@ Neue Testdatei `tests/game-bugfix-010-wuerfelanzeige.static.test.js` gegen den e
 
 ---
 
+### Testplan (flow-game-bdd, 2026-08-10)
+
+**Stephans Entscheidung (2026-08-10 12:26, nach Prototyp-Test) als Grundlage:** Option B (explizite Bestätigung „Nochmal würfeln"/„Weiter" statt fester Haltezeit), Würfel-Augen/Pips statt Zahl-im-Rahmen, Zusatz-Scope Reduced-Motion-Reparatur mit im Scope, `aria-live`-Ankündigung ausdrücklich NICHT im Scope (bleibt eigenes, späteres Ticket) — dafür wurden hier bewusst keine Tests geschrieben. Neue Testdatei im echten Repo: `tests/game-bugfix-010-wuerfel-anzeige.static.test.js` (kein DOM/jsdom im Projekt — Textmuster-Prüfung gegen den echten Quelltext von `public/spiel.html`, analog zu `tests/game-feature-016-eigene-identitaet.static.test.js`).
+
+**NAMENSGEBUNG (eigene BDD-Annahme, von Stephan bei der Implementierung zu bestätigen):** neue Bestätigungs-Render-Funktion `renderRundeVierWuerfelBestaetigung()` (wird nach dem letzten Animations-Tick STATT eines direkten Aufrufs von `schliesseRundeVierWurfAb()` aufgerufen; ruft diese bestehende Schreibfunktion erst nach Klick auf einen eigenen Bestätigungs-Button auf), neue Guard-Variable `wuerfelBestaetigungAusstehend` (verhindert laut dem in der Analyse-Spec benannten „zentralen Umsetzungs-Stolperstein", dass ein durch irgendein Firestore-Update ausgelöster Re-Render die gehaltene Bestätigungs-Ansicht überschreibt), neue CSS-Klasse `.rv-wuerfel-auge` (Pips) plus Rahmen-Ergänzung an der bestehenden `.rv-wuerfel-anzeige`-Klasse, neue i18n-Schlüssel `rundeVier.weiter`, `rundeVier.nochmalWuerfeln`, `rundeVier.wurfNichtAusreichend` (Node- und Browser-Kopie).
+
+**Testszenarien (17 Testfälle in 8 Szenario-Gruppen):**
+- AK1 (echter grafischer Würfel — Rahmen + Würfel-Augen/Pips): `.rv-wuerfel-anzeige` bekommt Rahmen + quadratisches Format; neue `.rv-wuerfel-auge`-Klasse mit runder Punkt-Optik.
+- AK2 (Regressionsschutz-AK: Wurf-Animation mit schnell wechselnden Zahlen bleibt bestehen): unverändertes Intervall-/Zufallswert-Verhalten im Würfel-Klick-Handler.
+- AK3/AK5 (Kern der Ticket-Beschwerde + Pre-Mortem-Risiko 3, zentraler Umsetzungs-Stolperstein): letzter Animations-Tick ruft nicht mehr direkt die Schreibfunktion auf, sondern die neue Bestätigungs-Funktion; diese ruft die Schreibfunktion erst bei Bestätigungs-Klick auf; `renderRundeVierFokusCard()` prüft den neuen Guard und überspringt den Neuaufbau, solange eine Bestätigung aussteht.
+- AK4 (Hinweistext bei ≤3): neuer i18n-Schlüssel `rundeVier.wurfNichtAusreichend` (DE/EN, Node- und Browser-Kopie), bedingt gesetzt in der Bestätigungs-Funktion.
+- AK6 (Erfolgsfall-Symmetrie): Bestätigungs-Funktion behandelt Erfolg (`rundeVier.weiter`) und Misserfolg (`rundeVier.nochmalWuerfeln`) einheitlich über dieselbe Mechanik, beide Texte mit DE/EN-Inhalt vorhanden.
+- AK7 + Pre-Mortem-Risiko 5 (Doppel-Klick-Schutz während der jetzt längeren Sperrzeit): Regressionsschutz, dass `wuerfelAnimationLaeuft` weiterhin ausschließlich im bestehenden `finally`-Block von `schliesseRundeVierWurfAb()` zurückgesetzt wird; neuer Bestätigungs-Button schützt sich selbst gegen einen zweiten, überlappenden Klick.
+- Zusatz-Scope Reduced-Motion (Stephans Entscheidung): `renderRundeVierFokusCard()` prüft `window.matchMedia('(prefers-reduced-motion: reduce)')`; der reduzierte Pfad führt trotzdem zur Bestätigungs-Funktion (Ergebnis bleibt sichtbar, nur der Weg dorthin wird verkürzt).
+- Regressionsschutz gegen bereits abgenommene Tickets (Schritt 6 der Analyse-Spec): BUGFIX-011 (`starteBearbeitungszeitFallsNoetig()` bleibt im Erfolgspfad von `schliesseRundeVierWurfAb()` erhalten), BUGFIX-009 (Länderkarten-Zweig derselben `renderRundeVierFokusCard()`-Funktion — `rv-karten-position`/`rundeVier.kartenPosition` bleiben unangetastet).
+
+**Realer Testlauf (2026-08-10, device_bash im echten Repo, `npx jest tests/game-bugfix-010-wuerfel-anzeige.static.test.js`):** **17 Tests gesamt — 13 rot, 4 grün**, wie erwartet (RED-Phase, siehe Kopfkommentar der Testdatei; keine Modul-/Syntaxfehler, ausschließlich echte Assertion-Fehlschläge). Rot sind alle Testfälle, die tatsächlich neue, noch nicht implementierte Bausteine voraussetzen: beide AK1-Szenarien (Rahmen/Pips-CSS), alle drei AK3/AK5-Szenarien (Bestätigungs-Funktion + Guard existieren noch nicht, letzter Animations-Tick ruft heute weiterhin direkt die Schreibfunktion auf), alle drei AK4-Szenarien (neuer Hinweistext-Schlüssel fehlt in beiden i18n-Kopien), beide AK6-Szenarien (Bestätigungstexte fehlen), das AK7-Doppelklick-Schutz-Szenario für den neuen Bestätigungs-Button, sowie beide Reduced-Motion-Szenarien (keine `matchMedia`-Prüfung im Würfel-Klick-Handler vorhanden). Grün sind ausschließlich die vier explizit als Regressionsschutz gekennzeichneten Szenarien, die bereits heute bestehendes, unverändert bleibendes Verhalten korrekt als erfüllt erkennen: AK2 (Zufallswert-Animation), der bestehende `wuerfelAnimationLaeuft`-Reset-Ort (AK7-Regressionsteil), sowie die beiden Nachbar-Ticket-Regressionstests (BUGFIX-011, BUGFIX-009).
+
+**Regressionslauf gegen die vom Testplan-Grundgerüst genannten Nachbardateien** (`tests/game-round4.logic.test.js`, `tests/game-round4.security.rules.test.js`, `tests/game-round4-warteschlange.static.test.js`, `tests/game-round4-bearbeitungszeit.static.test.js`) sowie der manuelle Chrome-Live-Check (Pre-Mortem-Risiko 6, echte Serie mehrerer Fehlwürfe hintereinander) sind laut Testplan-Grundgerüst zwingend vor Done — bleiben Aufgabe von `flow-game-impl`.
+
+**Status:** Bereit für `flow-game-impl`.
+
+---
+
 ### BUGFIX-015 „Ich spiele selbst mit" (Host) schlägt bei Spielerstellung mit Firestore-Berechtigungsfehler fehl
 
 | Feld | Wert |
