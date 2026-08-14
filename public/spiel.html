@@ -1427,6 +1427,28 @@
     return String(minuten).padStart(2, '0') + ':' + String(sekunden).padStart(2, '0');
   }
 
+  // BUGFIX-004 (Option A, freigegeben 2026-08-14): "Abstand 1.<->letzte
+  // Lieferung" wird NICHT mehr separat aus der rohen Millisekunden-Differenz
+  // (runde.abstandErsteLetzteLieferung) gerundet, sondern aus der Differenz
+  // der beiden BEREITS gerundeten Anzeigewerte "Bis 1. Lieferung" und "Bis
+  // letzter Lieferung" gebildet - dadurch stimmt der angezeigte Abstand immer
+  // optisch mit den beiden daneben angezeigten Werten ueberein. Der exakte,
+  // servergesetzte Millisekundenwert in Firestore (abstandErsteLetzteLieferung)
+  // bleibt unveraendert (AK5) - ausschliesslich diese Anzeige-Ableitung ist neu.
+  function formatiereAbstand(ersteMs, letzteMs) {
+    if (ersteMs == null || letzteMs == null) return '00:00';
+    // Bewusst NICHT formatiereZeit() aufrufen (Funktion muss isoliert ohne
+    // Closure-Abhaengigkeit funktionieren), sondern dieselbe Rundungsregel
+    // (Math.floor(ms/1000), negative ms -> 0) inline nachbilden und danach
+    // die Differenz der bereits gerundeten Sekundenwerte bilden.
+    const ersteSekunden = ersteMs < 0 ? 0 : Math.floor(ersteMs / 1000);
+    const letzteSekunden = letzteMs < 0 ? 0 : Math.floor(letzteMs / 1000);
+    const abstandSekunden = Math.max(0, letzteSekunden - ersteSekunden);
+    const minuten = Math.floor(abstandSekunden / 60);
+    const sekunden = abstandSekunden % 60;
+    return String(minuten).padStart(2, '0') + ':' + String(sekunden).padStart(2, '0');
+  }
+
   // FEATURE-006: stationsLabel()/positionLabels()/phaseLabel() sind jetzt
   // Funktionen statt statischer Tabellen, damit sie bei jedem Aufruf die
   // aktuell eingestellte Sprache widerspiegeln (aktuelleSprache), statt nur
@@ -2607,7 +2629,7 @@
     zeile(t('spielbrett.bearbeitungszeit'), function (r) { return formatiereZeit(r.bearbeitungszeit); });
     zeile(t('vergleich.zeitBisErsteLieferung'), function (r) { return formatiereZeit(r.zeitBisErsterLieferung); });
     zeile(t('vergleich.zeitBisLetzteLieferung'), function (r) { return formatiereZeit(r.zeitBisLetzterLieferung); });
-    zeile(t('vergleich.abstandKundenerlebnis'), function (r) { return formatiereZeit(r.abstandErsteLetzteLieferung); });
+    zeile(t('vergleich.abstandKundenerlebnis'), function (r) { return formatiereAbstand(r.zeitBisErsterLieferung, r.zeitBisLetzterLieferung); });
 
     window.FlowGame.STATIONEN.forEach(function (stationName, index) {
       const station = index + 1;
@@ -2744,13 +2766,18 @@
       [t('spielbrett.bearbeitungszeit'), runde.bearbeitungszeit],
       [t('kennzahlen.bisErsteLieferung'), runde.zeitBisErsterLieferung],
       [t('kennzahlen.bisLetzteLieferung'), runde.zeitBisLetzterLieferung],
-      [t('kennzahlen.abstandLieferung'), runde.abstandErsteLetzteLieferung],
+      // BUGFIX-004: dritter Eintrag ist hier bereits ein fertig formatierter
+      // Text (formatiereAbstand statt roher ms-Wert) - die forEach-Schleife
+      // erkennt das per eintrag[2]===true und ueberspringt fuer diese eine
+      // Zeile den generischen formatiereZeit()-Aufruf. Die anderen vier
+      // Zeilen bleiben unveraendert (Regressionsschutz BUGFIX-007).
+      [t('kennzahlen.abstandLieferung'), formatiereAbstand(runde.zeitBisErsterLieferung, runde.zeitBisLetzterLieferung), true],
     ].forEach(function (eintrag) {
       const box = document.createElement('div');
       box.className = 'kennzahl-box';
       const wert = document.createElement('div');
       wert.className = 'wert';
-      wert.textContent = formatiereZeit(eintrag[1]);
+      wert.textContent = eintrag[2] ? eintrag[1] : formatiereZeit(eintrag[1]);
       const label = document.createElement('div');
       label.className = 'label';
       label.textContent = eintrag[0];
