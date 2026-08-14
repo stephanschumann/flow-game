@@ -210,9 +210,9 @@ const UEBERSETZUNGEN = {
 
   // ---- Spielbrett Runde 1-3 ------------------------------------------------
   'spielbrett.runde': { de: 'Runde', en: 'Round' },
-  'spielbrett.durchlaufzeit': { de: 'Durchlaufzeit', en: 'Lead time' },
+  'spielbrett.durchlaufzeit': { de: 'Lead Time', en: 'Lead Time' },
   'spielbrett.durchlaufzeitNeutralerHinweis': { de: 'läuft …', en: 'running …' },
-  'spielbrett.bearbeitungszeit': { de: 'Bearbeitungszeit', en: 'Processing time' },
+  'spielbrett.bearbeitungszeit': { de: 'Cycle Time', en: 'Cycle Time' },
   // FEATURE-012 (AK5, freigegebener Wortlaut Stephan 2026-08-01, zweite
   // Korrekturrunde): erklärt sowohl die Bedeutung der DoR-Bestätigung selbst
   // ("alle Informationen, um loszulegen") als auch die Vorher-/Nachher-Rechte
@@ -373,7 +373,7 @@ const UEBERSETZUNGEN = {
   'kennzahlen.fehlversuche': { de: 'Fehlversuche', en: 'Failed attempts' },
   'kennzahlen.beteiligungTitel': { de: 'Beteiligung je Station:', en: 'Participation per station:' },
   'kennzahlen.bewegungen': { de: 'Bewegungen', en: 'moves' },
-  'kennzahlen.beteiligungsspanne': { de: 'Beteiligungsspanne', en: 'participation span' },
+  'kennzahlen.beteiligungsspanne': { de: 'Individual Cycle Time', en: 'Individual Cycle Time' },
   // FEATURE-010: zwei zusätzliche, additive Kennzahlen je Station.
   'kennzahlen.wartezeitVorher': { de: 'Wartezeit vorher', en: 'wait time before' },
   'kennzahlen.wartezeitNachher': { de: 'Wartezeit danach', en: 'wait time after' },
