@@ -77,6 +77,17 @@ async function berechneKennzahlen(eingabe = {}) {
         anzahlBewegungen: eintrag ? eintrag.anzahl : 0,
         beteiligungsspanne: eintrag ? (eintrag.letzteBewegungAm - eintrag.ersteBewegungAm) : 0,
         fehlversuche: fehlversuchEintrag ? fehlversuchEintrag.anzahl : 0,
+        // FEATURE-010: Wartezeit vor/nach der eigenen aktiven Bearbeitung,
+        // additiv aus den bereits vorhandenen ersteBewegungAm/letzteBewegungAm
+        // relativ zu bearbeitungszeitStart/-Ende gebildet - kein neu
+        // gemessener Wert. Station ohne jede Bewegung in der Runde (kein
+        // eintrag) oder ohne bekannten Bearbeitungszeit-Rahmen: beide Felder
+        // explizit 0 (Stephans Entscheidung, Variante c, AK9) statt "—"
+        // oder der vollen Rundenzeit.
+        wartezeitVorher: (eintrag && typeof bearbeitungszeitStart === 'number')
+          ? (eintrag.ersteBewegungAm - bearbeitungszeitStart) : 0,
+        wartezeitNachher: (eintrag && typeof bearbeitungszeitEnde === 'number')
+          ? (bearbeitungszeitEnde - eintrag.letzteBewegungAm) : 0,
       };
     });
     ergebnis.proStation = proStation;

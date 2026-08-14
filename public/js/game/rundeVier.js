@@ -480,6 +480,24 @@
       bewegungsLog: bewegungsLog,
     });
 
+    // FEATURE-010 (AK6, technische Entscheidung flow-game-impl,
+    // 2026-08-14): Runde 4 zeigt weiterhin KEINE Wartezeit-Spalten (Scope-
+    // Abgrenzung der freigegebenen Spec - Runde 4 hat kein Gate-Konzept,
+    // Warten ist dort explizit gewollte spielerische Friktion, keine zu
+    // messende Kennzahl). window.FlowGame.berechneKennzahlen() kennt die
+    // Rundennummer nicht und wuerde proStation[].wartezeitVorher/
+    // .wartezeitNachher auch hier befuellen, weil bearbeitungszeitStart/
+    // -Ende fuer Runde 4 ebenfalls vorhanden sind. Bewusst NICHT in
+    // kennzahlen.js geloest (die Funktion soll rundennummer-unabhaengig
+    // bleiben) - stattdessen HIER, am einzigen Aufrufort fuer Runde 4,
+    // direkt vor dem Schreiben wieder entfernt.
+    if (kennzahlen.proStation) {
+      Object.keys(kennzahlen.proStation).forEach(function (station) {
+        delete kennzahlen.proStation[station].wartezeitVorher;
+        delete kennzahlen.proStation[station].wartezeitNachher;
+      });
+    }
+
     // Qualitäts-Kennzahl (AK 15/16): ausschliesslich über die sechs
     // Länderkarten, nachträglich, wie in der Spec vorgesehen.
     const laenderkarten = elemente.filter(function (e) { return e.typ === 'laenderkarte'; });

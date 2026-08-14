@@ -90,6 +90,14 @@
     const stationenAnzahl = (global.FlowGame && Array.isArray(global.FlowGame.STATIONEN))
       ? global.FlowGame.STATIONEN.length : 5;
     const proStation = {};
+    // FEATURE-010: wartezeitVorher/wartezeitNachher werden NUR befuellt,
+    // wenn ein Bearbeitungszeit-Rahmen bekannt ist. Bewusste Asymmetrie zur
+    // Node-Referenz (dort immer vorhanden, siehe src/game/kennzahlen.js) -
+    // gleiches, bereits etabliertes Muster wie bei proStation[].fehlversuche
+    // (siehe Kopfkommentar dieser Datei): aeltere Aufrufer ohne
+    // bearbeitungszeitStart/-Ende (z.B. bestehende Tests) sollen die neuen
+    // Felder gar nicht erst sehen statt eines irrefuehrenden 0.
+    const mitWartezeit = bearbeitungszeitStartMs != null && bearbeitungszeitEndeMs != null;
     for (let station = 1; station <= stationenAnzahl; station += 1) {
       const zeiten = (bewegungsLog || [])
         .filter((eintrag) => eintrag.station === station)
@@ -99,6 +107,12 @@
         anzahlBewegungen: zeiten.length,
         beteiligungsspanne: zeiten.length > 0 ? (Math.max(...zeiten) - Math.min(...zeiten)) : 0,
       };
+      if (mitWartezeit) {
+        proStation[station].wartezeitVorher = zeiten.length > 0
+          ? (Math.min(...zeiten) - bearbeitungszeitStartMs) : 0;
+        proStation[station].wartezeitNachher = zeiten.length > 0
+          ? (bearbeitungszeitEndeMs - Math.max(...zeiten)) : 0;
+      }
     }
     ergebnis.proStation = proStation;
 

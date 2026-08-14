@@ -516,9 +516,6 @@
      rundenwechsel.js ruft window.FlowGame.starteRunde() (aus rundenStart.js)
      jeweils beim eigenen IIFE-Aufruf, nicht erst zur Klickzeit. -->
 <script src="js/game/stapelTor.js"></script>
-<!-- FEATURE-010: braucht window.FlowGame.stapelTorSchwelle/zaehleAngekommeneKartenAusListe
-     aus stapelTor.js oben - deshalb direkt danach. -->
-<script src="js/game/stationVerfuegbarkeit.js"></script>
 <script src="js/game/rundenStart.js"></script>
 <script src="js/game/kartenBewegung.js"></script>
 <script src="js/game/fehlversuch.js"></script>
@@ -1664,7 +1661,6 @@
         });
         renderBrett(db, code);
         versucheRundenEnde(db, code);
-        versucheStationVerfuegbarkeit(db, code);
       }, function (err) {
         zeigeFehler(t('fehler.datenNichtGeladen') + ': ' + err.message);
       });
@@ -2085,32 +2081,10 @@
         // FEATURE-010: fließen additiv in proStation[].wartezeitVorher/
         // .wartezeitNachher ein, siehe kennzahlen.js.
         dorAbgeschlossenAm: aktuelleRundenDaten.dorAbgeschlossenAm,
-        stationVerfuegbarAb: aktuelleRundenDaten.stationVerfuegbarAb,
       }, db);
     } finally {
       rundenEndeSchreibversuchLaeuft = false;
     }
-  }
-
-  // FEATURE-010 (Gate 1, Option B; Gate 2 "jede anwesende Person"): analoges
-  // Muster zu versucheRundenEnde() oben - jeder verbundene Client versucht
-  // opportunistisch, sobald sich das Stapel-Tor einer Station öffnet, den
-  // dazugehörigen "verfügbar seit"-Zeitpunkt EINMALIG servergesetzt zu
-  // schreiben. Kein eigenes Busy-Flag nötig (anders als
-  // rundenEndeSchreibversuchLaeuft): pruefeUndSetzeStationVerfuegbarkeit()
-  // prüft selbst je Schlüssel, ob schon gesetzt, und schlägt bei einem
-  // parallelen "Wettlauf" zwischen zwei Clients serverseitig einfach fehl
-  // (siehe firestore.rules, Fall D) - identisches Toleranzmuster wie beim
-  // bestehenden Rundenende-Wettlauf.
-  async function versucheStationVerfuegbarkeit(db, code) {
-    if (!aktuelleRundenDaten || aktuelleRundenDaten.phase === 'beendet') return;
-    if (aktuelleRundenNummer === 4) return; // kein Stapel-Tor-Konzept in Runde 4
-    await window.FlowGame.pruefeUndSetzeStationVerfuegbarkeit({
-      code,
-      rundenNummer: aktuelleRundenNummer,
-      karten: aktuelleKartenListe,
-      stationVerfuegbarAb: aktuelleRundenDaten.stationVerfuegbarAb,
-    }, db);
   }
 
   // ---- FEATURE-004: Runde 4 (Kontextwechsel) - "Fokus + Warteschlange" ----
@@ -2644,7 +2618,7 @@
       // FEATURE-010: zwei zusätzliche, additive Zeilen - ersetzen die
       // bestehende Beteiligungsspanne-Zeile NICHT (AK8, Regressionsschutz).
       // Fehlt eine der beiden Kennzahlen bei einer alten, vor FEATURE-010
-      // gespielten Runde (kein stationVerfuegbarAb im Dokument), bleibt die
+      // gespielten Runde (Felder noch nicht im Dokument), bleibt die
       // Zeile bei '—' statt eines irreführenden 00:00.
       zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.wartezeitVorher'), function (r) {
         const eintrag = r.proStation && r.proStation[station];
