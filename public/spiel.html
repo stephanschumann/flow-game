@@ -51,6 +51,15 @@
   .field input,.field select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:12px 14px;font-size:16px;font-family:inherit}
   .field input:focus,.field select:focus{outline:2px solid var(--blue);outline-offset:1px}
   .code-display{font-size:40px;letter-spacing:.16em;font-weight:900;color:var(--amber);text-align:center;padding:18px 0}
+  /* FEATURE-015 (AK5, Rueckfallweg): der Beitritts-Code bleibt auch dann
+     verwendbar, wenn das Kopieren ueber den Knopf scheitert oder der Browser
+     die Zwischenablage verweigert - ein einziger Doppelklick markiert den
+     kompletten Code. Gleiches Muster wie im bereits bestehenden Kopierbereich
+     aus FEATURE-011 (user-select:all, siehe Markup weiter unten). Der
+     Bezeichner des dortigen Bereichs steht hier bewusst NICHT ausgeschrieben:
+     eine bestehende FEATURE-011-Pruefung sucht die ERSTE Fundstelle dieses
+     Begriffs im Quelltext und untersucht ein festes Fenster dahinter. */
+  #lobby-code{-webkit-user-select:all;user-select:all}
   .teilnehmer-liste{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
   .teilnehmer-liste li{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
   .badge{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:4px 9px;border-radius:999px}
@@ -320,6 +329,13 @@
     <div class="panel center" id="lobby-panel" hidden>
       <div id="lobby-rolle-hinweis" class="muted"></div>
       <div class="code-display" id="lobby-code"></div>
+      <!-- FEATURE-015 (AK1/AK3/AK8/AK9): Kopier-Knopf plus eigene Bestaetigung
+           direkt an der Code-Anzeige. Bewusst AUSSERHALB von #teilnehmer-liste
+           (Pre-Mortem 4) und OBERHALB von #host-kennzeichen-bereich (AK8). -->
+      <div class="row">
+        <button type="button" class="btn" id="knopf-lobby-code-kopieren">Code kopieren</button>
+      </div>
+      <p class="muted" id="lobby-code-kopiert-hinweis" hidden></p>
       <div class="muted" id="lobby-eigene-station"></div>
       <!-- BUGFIX-003 (a): Erläuterung der Startbedingung (Host löst aus,
            Mindestbesetzung 5 Spielende + 1 Host) plus automatisch
@@ -554,6 +570,9 @@
   const rollenFeld = document.getElementById('rollen-feld');
   const beitrittCodeInput = document.getElementById('beitritt-code');
   const lobbyCode = document.getElementById('lobby-code');
+  // FEATURE-015: Kopier-Knopf und Bestaetigung fuer den Beitritts-Code.
+  const knopfLobbyCodeKopieren = document.getElementById('knopf-lobby-code-kopieren');
+  const lobbyCodeKopiertHinweis = document.getElementById('lobby-code-kopiert-hinweis');
   const lobbyRolleHinweis = document.getElementById('lobby-rolle-hinweis');
   // FEATURE-016 (AK1/AK2): durchgängige Anzeige der eigenen Identität
   // (Name + Rolle) in der sitzenden HUD-Leiste, siehe Markup oben und
@@ -743,6 +762,12 @@
     }
     setText('host-kennzeichen-oeffner', t('lobby.hostKennzeichenAnzeigenUeberschrift'));
     setText('knopf-host-kennzeichen-kopieren', t('lobby.hostKennzeichenKopierenKnopf'));
+
+    // FEATURE-015 (AK6): Beschriftung des Kopier-Knopfes fuer den
+    // Beitritts-Code - rein statischer Text, deshalb hier. Die Bestaetigung
+    // dagegen haengt an einem Zustand (wurde bereits geklickt?) und wird in
+    // wendeSpracheAufSichtbareAnsichtenAn() erneut berechnet.
+    setText('knopf-lobby-code-kopieren', t('lobby.codeKopierenKnopf'));
 
     // Absenden-Buttons: nur neu setzen, solange kein Wartezustand
     // (BUGFIX-002, aria-busy) aktiv ist - sonst würde ein Sprachwechsel
@@ -951,6 +976,13 @@
     // besteht (teilnehmendeCache/eigeneRolle dann noch leer, Anzeige bleibt
     // in diesem Fall einfach verborgen).
     aktualisiereEigeneIdentitaetAnzeige();
+    // FEATURE-015 (AK6, zweiter Halbsatz): Die Bestaetigung nach dem Kopieren
+    // des Beitritts-Codes nimmt am Sprachwechsel teil - der Text wird hier
+    // komplett neu berechnet statt den zuletzt uebersetzten String stehen zu
+    // lassen. Damit wird die im Bestand nachgewiesene Luecke beim
+    // Host-Kennzeichen hier NICHT wiederholt. Die Sichtbarkeit bleibt dabei
+    // unangetastet: ein Sprachwechsel allein blendet nichts ein.
+    if (lobbyCodeKopiertHinweis) lobbyCodeKopiertHinweis.textContent = t('lobby.codeKopiertHinweis');
   }
 
   function zeigeFehler(nachricht) {
@@ -3336,6 +3368,37 @@
         // bereits vorhandene i18n-Übersetzung angewendet - kein neuer
         // Fehlercode nötig.
         zeigeFehler(err.code ? window.FlowGame.uebersetzeFehlercode(err.code, aktuelleSprache, err.message) : err.message);
+      }
+    });
+
+    // FEATURE-015 (AK2/AK3/AK4/AK7): Kopier-Knopf für den Beitritts-Code.
+    // Kopiert wird ausschliesslich der bereits im Browser vorliegende Wert der
+    // Code-Anzeige (kein erneuter Serverzugriff, kein Begleitsatz, keine
+    // Verkettung). Die Bestaetigung wird NUR im Erfolgsfall eingeblendet;
+    // scheitert das Kopieren oder verweigert der Browser die Zwischenablage,
+    // bleibt sie aus und der Fehlschlag landet in der Browser-Konsole, statt
+    // ersatzlos verschluckt zu werden (Pre-Mortem-Punkt 9). Rueckfallweg:
+    // #lobby-code ist per user-select:all mit einem Doppelklick als Ganzes
+    // markierbar (AK5). Bewusst OBERHALB des FEATURE-011-Handlers, damit der
+    // bestehende Host-Kennzeichen-Pfad unveraendert bleibt (AK8).
+    knopfLobbyCodeKopieren.addEventListener('click', async function () {
+      const wert = lobbyCode.textContent;
+      let erfolgreich = false;
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(wert);
+          erfolgreich = true;
+        } else {
+          console.warn('FEATURE-015: Zwischenablage im Browser nicht verfuegbar - Beitritts-Code wurde nicht kopiert.');
+        }
+      } catch (fehler) {
+        console.warn('FEATURE-015: Kopieren des Beitritts-Codes fehlgeschlagen -', fehler);
+      }
+      if (erfolgreich) {
+        lobbyCodeKopiertHinweis.textContent = t('lobby.codeKopiertHinweis');
+        lobbyCodeKopiertHinweis.hidden = false;
+      } else {
+        lobbyCodeKopiertHinweis.hidden = true;
       }
     });
 

@@ -1872,12 +1872,36 @@ Zustands-Check:
 |------|------|
 | **Typ** | Bug |
 | **Priorität** | Mittel |
-| **Status** | In Progress – Bereit zur Veröffentlichung |
+| **Status** | Done |
 | **Erstellt** | 2026-08-14 |
 | **Analyse am** | 2026-08-14 |
 | **Spec freigegeben am** | 2026-08-14 17:14 (Stephan) |
 | **In Progress seit** | 2026-08-14 17:14 |
 | **Test-Gate** | 2026-08-15 erfüllt (39 statische Tests grün, 35 Regeltests im Emulator grün, Regressionslauf 530 grün; gate-auditor Modus A dritte Runde: Bestätigt) |
+| **Veröffentlicht am** | 2026-08-16, Commit `17929cb` (Regeln zuerst deployt, danach Client per Push) |
+| **Done am** | 2026-08-16 08:02 |
+
+#### Abschluss (2026-08-16 08:02) — Mehrpersonen-Test von Stephan ausdrücklich erlassen
+
+**Wichtig für spätere Leser: der echte Mehrpersonen-Test hat NICHT stattgefunden.** Stephan hat das Ticket mit den Worten „BUGFIX-016 done, ich akzeptiere ungetestet" abgenommen und damit von dem sonst verbindlichen Test freigestellt (nur er darf das). Das ist bewusst dokumentiert und nicht als bestandener Test dargestellt.
+
+**Was tatsächlich belegt ist:** 39 automatisierte Verhaltenstests grün, 35 Sicherheitsregel-Tests im Emulator grün, Regressionslauf über 42 Suiten mit 530 grün und 0 rot, drei unabhängige Prüfrunden (`gate-auditor` Modus A) mit dem Endurteil „Bestätigt", die drei ausgelieferten Dateien direkt vom Server gegengelesen, und ein funktionaler Live-Durchlauf im echten Browser (Karte bewegt, Zug überlebt Neuladen, keine Berechtigungsfehler in der Konsole).
+
+**Was dadurch offen bleibt (Restrisiko, benannt statt verschwiegen):** Genau das Szenario, das dieses Ticket behebt — mehrere Stationen gleichzeitig aktiv, eine davon lädt mitten in der Runde neu, und ausgerechnet sie schreibt das Rundenende — wurde nie mit echten, unabhängigen Identitäten durchgespielt. Ebenso ungetestet im echten Betrieb: die sichtbare Kennzeichnung unvollständiger Werte als „—" und die Übereinstimmung der Auswertung zwischen zwei Beteiligten. Sollte in einem Workshop eine Beteiligungsspanne auffällig aussehen, ist das hier der erste Ort zum Nachschauen.
+
+#### Veröffentlichung und Live-Verifikation (2026-08-16)
+
+**Reihenfolge eingehalten:** Zuerst `firebase deploy --only firestore:rules` (Protokoll `outputs/firestore-rules-deploy-bugfix-016.log`: „released rules firestore.rules to cloud.firestore", „Deploy complete!"), erst danach der Push. Grund: Kartenänderung und Historieneintrag werden gemeinsam gültig — bei fehlender Regel wäre der gesamte Vorgang abgewiesen worden und keine Karte mehr bewegbar.
+
+**Commit `17929cb`:** 11 Dateien, 2719 Zeilen ergänzt, 74 entfernt. Enthält auf Stephans ausdrückliche Entscheidung zusätzlich `tests/game-task-004-kennzahlen-browser.integration.test.js` (gehört fachlich zu TASK-004, wird aber vom neuen Testskript aufgerufen). `Backlog.md` wurde für den Commit auf den BUGFIX-016-Abschnitt eingegrenzt (Isolations-Check: alle drei Diff-Stellen lagen innerhalb Zeile 1869–2286), die lokalen Änderungen zu FEATURE-010 und FEATURE-015 blieben unversioniert erhalten und wurden danach vollständig wiederhergestellt.
+
+**Live-Verifikation der Auslieferung (drei Dateien direkt vom Server gelesen):** `kennzahlen.js` exportiert `alsMillis`; `rundenEnde.js` liest die Sammlung `bewegungen` und enthält `ladeBewegungsHistorie`, `erwarteteBewegungenProStation`, `kennzeichneUnvollstaendigeStationen` sowie das Schreiben von `kennzahlenVollstaendig`; `rundeVier.js` enthält `art: 'wuerfelversuch'` im gemeinsamen Batch.
+
+**Funktionale Live-Verifikation im echten Browser (Chrome-Subagent, 2026-08-16):** Spiel erstellt (Host spielt mit, Code `VSPHXYMP`), Runde 1 gestartet, Karte 1 per Ziehen vom Auftragseingang auf Station 1 bewegt — Bewegung fand statt, Gate sprang von 0/6 auf 1/6, und nach vollständigem Neuladen lag die Karte weiterhin dort (also wirklich in der Datenbank angekommen, nicht nur optimistisch angezeigt). Browser-Konsole gezielt auf `permission|insufficient|PERMISSION_DENIED|denied` durchsucht: **keine Berechtigungsfehler**, nur zwei projektfremde Meldungen aus einer Chrome-Erweiterung. Damit ist belegt, dass Regeln und Client live zusammenpassen.
+
+**Noch offen vor Done — nur Stephan (echter Mehrpersonen-Test, `chrome-multi-identity-testing-conventions`):** Mehrere Tabs im selben Profil liefern keine unabhängigen Identitäten; der Chrome-Subagent hat deshalb nach dem Kartenzug sauber abgebrochen und die Auswertung „Beteiligung je Station" nicht erreicht. Erforderlich ist ein Durchlauf über die sieben getrennten Profile aus TASK-003, bei dem eine Station **gezielt mitten in der Runde die Seite neu lädt**, und anschließend die Prüfung, ob die Beteiligung je Station für alle sichtbar identisch und plausibel ist (statt für die neu geladene Station zu niedrig). Erst danach geht das Ticket auf Done.
+
+**Nebenbefund ohne Bezug zu diesem Ticket (eigenes Ticket empfohlen):** Karten reagieren ausschließlich auf Ziehen; ein Klick bewirkt nichts, obwohl die Beschriftung „Karte 1 weiterbewegen von … zu …" einen Klick nahelegt. Vermutlich ein Rest aus FEATURE-008 (Umstellung Klick → Ziehen).
 
 #### Stephans Entscheidung zur Spec (2026-08-14 17:14)
 
@@ -3904,14 +3928,285 @@ Bei Bestätigung von Option C: kein Testplan nötig, nur Status-/Verweis-Update 
 |------|------|
 | **Typ** | Feature |
 | **Priorität** | Niedrig |
-| **Status** | ToDo |
+| **Status** | In Progress |
 | **Erstellt** | 2026-07-23 |
+| **Spec freigegeben am** | 2026-08-14 17:14 (Stephan) |
+| **In Progress seit** | 2026-08-16 07:51 |
+
+#### Stephans Entscheidung zur Spec (2026-08-14 17:14)
+
+- **Umfang:** Nur der Kopier-Knopf für den Beitritts-Code (empfohlene Option A). Der fertige Beitritts-Link ist **ausdrücklich nicht** Teil dieses Tickets und wird als eigenes Ticket vorgeschlagen — einschließlich des in `Product.md` § 3 bereits zugesagten, heute aber nicht eingelösten Beitritts-Links.
+- **Übernommene Annahmen (vom Orchestrator gesetzt, nicht einzeln rückgefragt — Widerspruch jederzeit möglich):** Der Knopf ist für alle Wartenden sichtbar, nicht nur für die gastgebende Person (der Code steht dort ohnehin für alle); die Bestätigung bleibt stehen statt von selbst zu verschwinden (wie beim bestehenden Kopier-Knopf); kopiert wird ausschließlich der reine Code ohne Begleitsatz.
+- **Reihenfolge:** Wartet, weil BUGFIX-016 gerade aktiv in Arbeit ist (Kollisionsregel „immer nacheinander“). Rückt automatisch nach, sobald BUGFIX-016 seine Arbeits-Lane verlässt.
 
 **Beschreibung:** Der Beitritts-Code muss aktuell von Hand abgetippt oder mündlich durchgesagt werden. Bei einer Gruppe mit fünf Stationen führt das leicht zu Tippfehlern beim Weitergeben. Einen Knopf zum Kopieren des Codes ergänzen (optional zusätzlich ein fertiger Beitritts-Link).
 
 **User Story:** Als Gastgeber(in), möchte ich den Beitritts-Code mit einem Klick kopieren können, sodass ich ihn fehlerfrei weitergeben kann.
 
 **Kontext/Verweise:** Quelle: Erstnutzer-Test-Bericht 2026-07-23, Live-Test auf https://flow-game-19f01.web.app.
+---
+
+#### Analyse-Spec (2026-08-14, flow-game-analyze)
+
+**Kontext gelesen (Schritt 1):** `Backlog.md` (Cloud-Stand, dieses Ticket sowie die für den Lobby-Bereich einschlägigen, bereits abgeschlossenen Tickets `FEATURE-011`, `FEATURE-014`, `BUGFIX-003`, `FEATURE-016`, `FEATURE-006`, `BUGFIX-006`), `Product.md` (§ 2 Zielgruppe/Parallelität, § 3 Rollen, § 8 „Mehrfach-Spiele, Host und Code", § 9 Nicht-fachliche Anforderungen, § 11 Bewusst außerhalb des Scopes, § 12 Offene Punkte), `Flow-Game-Entscheidungen.md` (durchsucht nach „kopier"/„link"/„clipboard" — 1 Treffer, inhaltlich unbeteiligt: Spielfeld-Beschreibung; keine dort verankerte Festlegung zu diesem Ticket) sowie der Original-`Erstnutzer-Test-Bericht-2026-07-23.md` als Quelle des O-Tons (Abschnitt „Spiel erstellen als Gastgeber(in)" und Priorität 7).
+
+##### Ausgangslage / Pflicht-Code-Verifikation (Schritt 2b)
+
+Gegen das echte, git-versionierte Repo über die Geräte-Brücke geprüft (Stand `0234ca3`), nicht aus Erinnerung behauptet, nicht aus GitHub geklont, keine hochgeladene Kopie:
+
+1. **Wo der Beitritts-Code heute angezeigt wird — genau eine Stelle, genau einmal.** `public/spiel.html:322` enthält `<div class="code-display" id="lobby-code"></div>` im Warte-/Lobby-Bereich; befüllt wird es ausschließlich in `zeigeLobby()`, `public/spiel.html:1115` (`lobbyCode.textContent = code`). Es gibt **keine** zweite Anzeige des Codes — weder auf dem Spielbrett noch in der Auswertung noch auf der Startseite (`public/index.html`: 0 Treffer für „code"). Die Warteansicht wird beim Rundenstart ausgeblendet (`lobbyPanel.hidden = true`, `public/spiel.html:1524` und `:2715`), der Code ist danach also nirgends mehr sichtbar. `zeigeLobby()` hat fünf Aufrufstellen (`:3060`, `:3100`, `:3153`, `:3280`, `:3332` — Host nach Erstellen, Host nach Wiederbetreten, Host-Rolle zurückerlangen, Beitritt, automatisches Wiederbetreten); der Code erscheint dadurch für **alle** Rollen in der Warteansicht, nicht nur für die gastgebende Person.
+2. **Es gibt bereits einen live erprobten Kopier-Knopf im selben Bildschirm.** `FEATURE-011` (Done) hat in `public/spiel.html:336-343` den Bereich `#host-kennzeichen-bereich` mit Wertanzeige, Knopf `#knopf-host-kennzeichen-kopieren` und Hinweis `#host-kennzeichen-kopiert-hinweis` eingeführt; der Klick-Handler steht in `public/spiel.html:3352-3370` und nutzt `navigator.clipboard.writeText(...)` innerhalb eines echten Klick-Ereignisses, mit Verfügbarkeitsprüfung und `try/catch`. Das ist die einzige Kopier-/Zwischenablage-Nutzung im gesamten Projekt (4 Treffer auf `navigator.clipboard`, alle in `public/spiel.html`, davon 2 Kommentarzeilen; 0 Treffer in `public/js/**` und `src/**`).
+3. **Ein Aufruf mit Code in der Adresse wird heute nirgends ausgewertet.** Suche nach `URLSearchParams`, `location.search`, `searchParams`, `location.hash` über `public/` und `src/`: **0 Treffer**. Ein fertiger Beitritts-Link ist also technisch **nicht** vorbereitet. Gleichzeitig sagt `Product.md` § 3 der gastgebenden Person ausdrücklich zu: „erstellt ein Spiel, **erhält Code und Beitritts-Link**" — eine dokumentierte Zusage, die der Code heute nachweislich nicht einlöst. § 11 („Bewusst außerhalb des Scopes") schließt den Link nicht aus.
+4. **Auslieferung und sicherer Kontext.** `firebase.json` liefert `public/` über Firebase Hosting aus; `.github/workflows/firebase-hosting-merge.yml` deployt bei jedem Push auf `main` mit `channelId: live` auf Projekt `flow-game-19f01`. Die im Ticket genannte Live-Adresse ist `https://flow-game-19f01.web.app`. Firebase Hosting liefert ausschließlich über HTTPS aus — die Live-Auslieferung ist damit ein sicherer Kontext, in dem die moderne Zwischenablage-Schnittstelle grundsätzlich zur Verfügung steht, und das bestehende `FEATURE-011`-Kopieren läuft dort seit dem 2026-08-08 produktiv. ⚠️ **Annahme:** Es ist im Repo **keine** lokale Entwicklungs-Auslieferung dokumentiert (0 Treffer auf `localhost`/`127.0.0.1`/`file://` in `docs/` und den Projektdateien) — falls jemand `public/spiel.html` direkt als Datei im Browser öffnet, wäre das kein sicherer Kontext und das Kopieren würde dort scheitern. Genau deshalb bleibt ein Rückfallweg Pflicht (siehe AK5).
+5. **Mehrsprachigkeit.** `FEATURE-006` ist Done. Statische Beschriftungen laufen über `wendeSpracheAufStatischeTexteAn()` (`setText('knopf-host-kennzeichen-kopieren', t('lobby.hostKennzeichenKopierenKnopf'))`), datengetriebene Texte über `wendeSpracheAufSichtbareAnsichtenAn()` (`public/spiel.html:927`). Die Schlüssel `lobby.hostKennzeichenKopierenKnopf` („Kopieren"/„Copy") und `lobby.hostKennzeichenKopiertHinweis` („Kopiert!"/„Copied!") existieren in beiden Übersetzungstabellen. **Verifizierte Schwachstelle im Bestand:** `hostKennzeichenKopiertHinweis` wird ausschließlich im Klick-Handler gesetzt (`public/spiel.html:3364`) und in **keiner** der beiden Sprachfunktionen erneut berechnet — eine bereits eingeblendete „Kopiert!"-Bestätigung bleibt heute nach einem Sprachwechsel in der alten Sprache stehen. Dieses Muster darf nicht ungeprüft übernommen werden.
+6. **Grenzwerte des Codes.** `CODE_LAENGE = 8`, Alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (`src/game/createGame.js:63-69`, identisch in `public/js/game/createGame.js:52-58`). Das Eingabefeld beim Beitreten hat `maxlength="8"` (`public/spiel.html:269`). Es gibt keine variable Codelänge und keinen leeren Code im Warte-Zustand.
+7. **`firestore.rules` unberührt.** Der Code liegt zum Kopierzeitpunkt bereits als lokaler Wert im Browser (`aktuellerSpielCode` / Parameter von `zeigeLobby()`); ein Kopieren erzeugt keinen zusätzlichen Lese- oder Schreibzugriff auf Firestore.
+
+##### Brainstorming / Example Mapping (Schritt 2)
+
+- **Regel (Product.md § 8):** Jedes Spiel hat genau einen eindeutigen Beitritts-Code; er ist der einzige Weg in das richtige Spiel. Beispiel: Die gastgebende Person liest den Code laut vor, eine Station hört „B" statt „8" — der Beitritt schlägt fehl, und weil die Fehlermeldung bewusst nicht unterscheidet (siehe `FEATURE-011`, AK3), ist unklar, ob der Code oder der Name das Problem war. Genau diese Reibung ist der Ticket-Anlass.
+- **Regel (Product.md § 3):** Der Host „erhält Code und Beitritts-Link". Beispiel: Eine gastgebende Person, die das Produktdokument gelesen hat, sucht nach einem Link und findet keinen — der Widerspruch ist real und muss entschieden, nicht stillschweigend weginterpretiert werden.
+- **Regel (Product.md § 9, Geräte):** „Handy zum Beitreten/Zuschauen genügt." Beispiel: Die gastgebende Person kopiert den Code am Rechner und schickt ihn per Chat an fünf Handys — das ist der wahrscheinlichste reale Ablauf und funktioniert nur, wenn ausschließlich die acht Zeichen in der Zwischenablage landen.
+- **Regel (Product.md § 9, Mehrsprachigkeit):** Jeder neue sichtbare Text muss über denselben Sprachwechsel-Mechanismus laufen. Beispiel: Host stellt während des Wartens auf Englisch um — Knopf und Bestätigung müssen sofort mitwechseln.
+- **Beispiel (Mehrspieler):** Host klickt „Kopieren", im selben Moment tritt eine fünfte Person bei und die Teilnehmendenliste wird neu gezeichnet. Verschwindet die gerade erschienene Bestätigung dadurch wieder? Nur dann, wenn der neue Hinweis innerhalb des neu gezeichneten Listenbereichs sitzt — siehe Schritt 4a.
+- **Offene Frage:** Beitritts-Link ja/nein (siehe Annahmen-Protokoll, 🔴 Frage 1).
+
+##### Annahmen-Protokoll (Schritt 2a)
+
+- 🔴 **Frage 1 (funktional kritisch, Scope):** Umfasst dieses Ticket nur den Kopier-Knopf für den Code, oder zusätzlich einen fertigen Beitritts-Link? Das Ticket nennt den Link „optional", `Product.md` § 3 sagt ihn dagegen bereits zu, und im Code ist er nachweislich nicht vorbereitet (0 Treffer, siehe Verifikation Punkt 3). Diese Frage verändert den Zuschnitt des Tickets erheblich und wird **nicht** vom Skill entschieden.
+- ⚪ **Annahme A1:** Der Kopier-Knopf erscheint für **alle** Personen in der Warteansicht, nicht nur für die gastgebende Person — der Code selbst ist dort ohnehin schon für alle sichtbar (verifiziert, Punkt 1), eine Rollen-Einschränkung wäre also eine neue, zusätzliche Regel. Bitte bestätigen.
+- ⚪ **Annahme A2:** Die Bestätigung „Kopiert!" bleibt stehen und verschwindet nicht nach einer Weile von selbst — so verhält sich der bestehende Kopier-Knopf beim Host-Kennzeichen heute. Bitte bestätigen.
+- ⚪ **Annahme A3:** Kopiert wird ausschließlich der reine Code (acht Zeichen), ohne Begleitsatz wie „Tritt meinem Spiel bei mit Code …". Bitte bestätigen.
+- ✅ **Klar ableitbar:** Neuer sichtbarer Text läuft über den bestehenden Sprachwechsel-Mechanismus (`Product.md` § 9 Mehrsprachigkeit, `FEATURE-006` Done) — keine Rückfrage nötig.
+- ✅ **Klar ableitbar:** Keine Änderung an den Sicherheitsregeln, kein zusätzlicher Serverzugriff (Verifikation Punkt 7).
+
+##### Prototyp-Regel bei wiederholter Umformulierung (Schritt 2c)
+
+Auslöser **nicht eingetreten**: In dieser Analyse wurde keine Mechanik ein zweites Mal grundlegend umformuliert; das Bedienkonzept lag von Anfang an fest (Wert + Knopf + Rückmeldung).
+
+##### Fundstellen-Sweep (Schritt 2d)
+
+„An welchen Stellen der App zeigt sich dieses Verhalten noch?" — real durchsucht (Grep über `public/`, `src/`, `tests/`, ohne `node_modules`), nicht aus dem Gedächtnis:
+
+| Suchmuster | Treffer | Bewertung |
+|---|---|---|
+| `lobby-code\|lobbyCode` | 3 (alle `public/spiel.html`: :322 Markup, :556 Element-Referenz, :1115 Zuweisung) | **Im Scope** — das ist die einzige Anzeige des Beitritts-Codes in der ganzen App. |
+| `code-display` (CSS-Klasse) | 4 (`public/spiel.html`:53 Stil, :322 Code-Anzeige, :339 Host-Kennzeichen-Anzeige; 1 Kommentar in `tests/game-feature-011-…static.test.js`:111) | Die zweite Fundstelle (:339) ist das Host-Kennzeichen aus `FEATURE-011` — **bewusst ausgeschlossen**: hat bereits einen eigenen Kopier-Knopf, ist ein anderer Wert und ein abgeschlossenes Ticket. |
+| `navigator.clipboard` | 4 in `public/spiel.html` (2 Kommentar, 2 Code, :3356/:3357); 0 in `public/js/**` und `src/**` | Bestehendes Muster — **wird wiederverwendet**, nicht neu erfunden. |
+| `URLSearchParams\|location.search\|searchParams\|location.hash` | **0** | Belegt: Beitritts-Link ist heute nicht unterstützt → Grundlage für 🔴 Frage 1. |
+| „code" in `public/index.html` | **0** | Startseite zeigt keinen Code — **außerhalb des Scopes**. |
+| `aktuellerSpielCode` in `public/spiel.html` | 15 | Alle 15 sind Datenzugriffe (Firestore-Pfade, Sprachumschaltung), **keine** davon eine Anzeige des Codes für Menschen — **außerhalb des Scopes**. |
+
+**Ergebnis:** Genau eine Fundstelle im Scope. Keine weitere Ansicht zeigt den Beitritts-Code.
+
+##### Zustands-Check (Schritt 2d)
+
+- **Wartezustand:** Das Kopieren ist eine rein lokale Browser-Aktion ohne Serveraufruf und für Menschen nicht wahrnehmbar verzögert — **keine** Ladeanzeige nötig, keine eigene Anzeige. Kein eigenes Akzeptanzkriterium.
+- **Leerzustand:** Kann strukturell nicht auftreten: Die Warteansicht wird erst eingeblendet, nachdem `zeigeLobby()` den Code bereits gesetzt hat (verifiziert, `public/spiel.html:1113-1115`). Es gibt keinen Zustand „Knopf sichtbar, aber kein Code da" — solange der Knopf innerhalb der Warteansicht bleibt. Fließt als AK9 (Sichtbarkeitsgrenze) ein.
+- **Fehlerfall:** Zwischenablage nicht verfügbar oder vom Browser verweigert. Heute wird das vollständig verschluckt (kein Text, kein Protokolleintrag). → zwei eigene Akzeptanzkriterien (AK4 Polarität, AK5 Rückfallweg) plus Pre-Mortem-Punkt „Beobachtbarkeit im Fehlerfall".
+
+##### Akzeptanzkriterien (beobachtbares Verhalten, Alltagssprache)
+
+1. **AK1 — Knopf vorhanden:** In der Warteansicht, in der der Beitritts-Code groß angezeigt wird, gibt es unmittelbar beim Code einen Knopf zum Kopieren. *(Herkunft: Kernwunsch des Tickets und Punkt 7 der priorisierten Mängelliste im Erstnutzer-Test-Bericht vom 23.07.2026.)*
+2. **AK2 — Was in der Zwischenablage landet:** Ein Klick auf diesen Knopf legt genau den angezeigten Beitritts-Code in die Zwischenablage — die acht Zeichen, ohne Begleittext, ohne führende oder nachfolgende Leerzeichen und ohne Zeilenumbruch. *(Herkunft: Das Eingabefeld beim Beitreten nimmt genau acht Zeichen an; jedes Zusatzzeichen macht das Einfügen unbrauchbar — am echten Code geprüft.)*
+3. **AK3 — Rückmeldung im Erfolgsfall:** Nach einem erfolgreichen Kopieren erscheint eine sichtbare Bestätigung, dass kopiert wurde. *(Herkunft: Zustands-Check, Erfolgsfall; entspricht dem bereits freigegebenen Verhalten beim Host-Kennzeichen.)*
+4. **AK4 — Keine falsche Erfolgsmeldung (Polarität zu AK3):** Wenn das Kopieren fehlschlägt oder der Browser es nicht zulässt, erscheint **keine** Bestätigung, die ein erfolgreiches Kopieren behauptet. *(Herkunft: Zustands-Check, Fehlerfall.)*
+5. **AK5 — Rückfallweg im Fehlerfall:** Auch wenn das Kopieren fehlschlägt, bleibt der Beitritts-Code weiterhin sichtbar und lässt sich mit einem einzigen Doppelklick als Ganzes markieren, sodass er von Hand kopiert werden kann. *(Herkunft: Pre-Mortem — ohne diesen Weg hätte eine gastgebende Person im Fehlerfall gar keine Möglichkeit mehr, verlässlich an den Wert zu kommen; heute fehlt dem Code-Feld diese Markierbarkeit, dem Host-Kennzeichen-Feld nicht.)*
+6. **AK6 — Sprache:** Knopfbeschriftung und Bestätigung erscheinen in derselben Sprache wie die übrige Oberfläche und wechseln sofort mit, wenn während des Wartens die Sprache umgestellt wird — auch dann, wenn die Bestätigung zu diesem Zeitpunkt bereits sichtbar ist, und ohne die Seite neu zu laden. *(Herkunft: FEATURE-006 ist abgeschlossen und verlangt, dass jeder sichtbare Text über denselben Sprachwechsel läuft; die zweite Hälfte des Satzes schließt eine im Bestand nachgewiesene Lücke, die sonst kopiert würde.)*
+7. **AK7 — Wiederholbarkeit:** Ein wiederholtes Klicken auf den Knopf liefert jedes Mal dasselbe Ergebnis: der Code liegt danach wieder unverändert in der Zwischenablage und die Bestätigung ist erneut sichtbar. *(Herkunft: Pre-Mortem, Rollback-/Wiederanlauffähigkeit.)*
+8. **AK8 — Bestehendes Kopieren bleibt unberührt:** Der bereits vorhandene Knopf zum Kopieren des Host-Kennzeichens bleibt unverändert vorhanden und funktioniert weiter wie bisher. *(Herkunft: Regressionsschutz gegenüber dem abgeschlossenen Ticket FEATURE-011, das im selben Bildschirmbereich sitzt.)*
+9. **AK9 — Sichtbarkeitsgrenze:** Der Knopf ist genau dort und nur dort sichtbar, wo auch der Beitritts-Code angezeigt wird; sobald die erste Runde gestartet ist und die Warteansicht verschwindet, ist auch der Knopf nicht mehr zu sehen. *(Herkunft: entspricht dem am echten Code verifizierten heutigen Verhalten; verhindert außerdem den sonst denkbaren Fall „Knopf ohne Code".)*
+
+**Granularitäts-Prüfung (Pflicht-Hinweis aus TASK-007):** Jedes der neun Kriterien wurde daraufhin geprüft, ob sich dahinter mehrere unabhängig prüfbare Verhalten verstecken. Ein ursprünglich zusammengefasstes Kriterium „Knopf kopiert den Code und zeigt eine Bestätigung" wurde bewusst in AK2 (was in der Zwischenablage landet) und AK3 (sichtbare Rückmeldung) aufgeteilt, weil sonst ein einzelner Test grün werden könnte, obwohl nur die Bestätigung erscheint und der kopierte Wert falsch ist. Ebenso wurde der Fehlerfall in AK4 (keine falsche Erfolgsmeldung) und AK5 (Rückfallweg) getrennt, weil beide unabhängig voneinander scheitern können. AK6 bündelt bewusst nur ein Verhalten — „Text ist in der aktuellen Sprache und bleibt es nach einem Wechsel" —, weil der zweite Halbsatz nur der Grenzfall desselben Verhaltens ist und nicht getrennt implementierbar wäre.
+
+**Zusätzliche Kriterien bei Entscheidung „Beitritts-Link im Scope" (🔴 Frage 1, Option B):** Falls Stephan den Link einschließt, kommen mindestens hinzu: der Link enthält den Code; ein Aufruf über den Link öffnet direkt das Beitreten-Formular mit bereits eingetragenem Code; ein Aufruf mit unbekanntem oder abgelaufenem Code führt zu derselben verständlichen Fehlermeldung wie ein von Hand eingetippter falscher Code. Diese Kriterien sind bewusst **nicht** in die Liste oben aufgenommen, solange die Scope-Frage offen ist.
+
+##### Pre-Mortem (Schritt 4)
+
+1. **Kopieren scheitert still.** Die Zwischenablage ist nicht verfügbar (kein sicherer Kontext, z. B. Datei-Aufruf statt Live-Adresse) oder der Browser verweigert sie. Die gastgebende Person klickt, nichts passiert, sie hält den Code für kopiert und gibt eine leere Zwischenablage weiter. **Gegenmaßnahme:** AK4 (keine falsche Erfolgsmeldung) + AK5 (Code bleibt sichtbar und mit einem Doppelklick markierbar).
+2. **Falscher Inhalt in der Zwischenablage.** Wird der Wert nicht aus der Anzeige, sondern samt umgebendem Markup übernommen, landen Leerzeichen oder Zeilenumbrüche mit — das Einfügen in ein Feld mit genau acht Zeichen schlägt dann fehl, und die Fehlermeldung beim Beitreten unterscheidet bewusst nicht zwischen „Code unbekannt" und anderen Ursachen, was die Suche erschwert. **Gegenmaßnahme:** AK2 plus ein Test, der den kopierten Wert zeichengenau prüft.
+3. **Bestätigung bleibt nach Sprachwechsel in der alten Sprache stehen.** Diese Lücke existiert heute nachweislich beim Host-Kennzeichen: Der Bestätigungstext wird nur im Klick-Moment gesetzt und in keiner der beiden Sprachfunktionen erneut berechnet. Wird das Muster unbesehen kopiert, entsteht dieselbe Lücke ein zweites Mal — ausgerechnet in dem Bereich, den ein abgeschlossenes Mehrsprachigkeits-Ticket abdecken soll. **Gegenmaßnahme:** AK6 zweiter Halbsatz; die Bestätigung muss am bestehenden Sprachwechsel teilnehmen.
+4. **Bestätigung wird durch einen fremden Beitritt weggewischt.** Tritt im Moment des Kopierens eine weitere Person bei, wird die Teilnehmendenliste neu gezeichnet. Sitzt die neue Bestätigung innerhalb dieses neu gezeichneten Bereichs, verschwindet sie sofort wieder — ein echter Mehrspieler-Effekt, der beim Alleintest nie auftritt. **Gegenmaßnahme:** Bestätigung und Knopf außerhalb der Teilnehmendenliste platzieren, so wie die Code-Anzeige selbst; im Testplan gezielt prüfen.
+5. **Regression an bestehenden Prüfungen des Wartebereichs.** Der Wartebereich ist durch mehrere abgeschlossene Tickets eng vermessen: Eine bestehende Prüfung erwartet **exakt fünf** Einstiegsaufrufe in die Warteansicht, eine andere prüft ein festes Textfenster rund um den Host-Kennzeichen-Bereich auf das Vorhandensein eines Kopier-Knopfes, eine dritte scannt automatisch den gesamten Quelltext auf fest einprogrammierte deutsche Texte. Neues Markup an der falschen Stelle oder ein zusätzlicher Einstiegsaufruf bricht diese Prüfungen, obwohl das neue Verhalten selbst korrekt wäre. **Gegenmaßnahme:** additive Platzierung direkt beim Code (oberhalb des Host-Kennzeichen-Bereichs), kein neuer Einstiegsaufruf, alle neuen Texte über die Übersetzungstabellen.
+6. **Grenzwerte.** Der Code ist per Verifikation immer genau acht Zeichen aus einem festen Alphabet ohne verwechselbare Zeichen — es gibt weder eine minimale noch eine maximale Variante, weder einen leeren noch einen überlangen Code. Der einzige Grenzfall wäre „Knopf sichtbar, bevor ein Code gesetzt ist"; er kann heute nicht auftreten, weil die Warteansicht erst nach dem Setzen des Codes eingeblendet wird, und wird durch AK9 auch für die Zukunft ausgeschlossen. **Restrisiko:** Würde der Knopf später an eine andere Stelle wandern, entstünde dieser Grenzfall neu.
+7. **Lastgrenzen.** Das Kopieren ist eine rein lokale Aktion im Browser ohne Lese- oder Schreibvorgang in der Datenbank; auch bei den in `Product.md` § 2 anvisierten rund 20 gleichzeitig laufenden Spielen entsteht dadurch keinerlei zusätzliche Serverlast und kein zusätzlicher Verbrauch der kostenlosen Tageskontingente. **Risiko nur bei falscher Umsetzung:** Würde der Code vor dem Kopieren erneut vom Server geholt, entstünde pro Klick ein zusätzlicher Lesevorgang und im schlimmsten Fall eine spürbare Verzögerung. **Gegenmaßnahme:** ausdrücklich den bereits im Browser vorliegenden Wert verwenden.
+8. **Rollback-/Wiederanlauffähigkeit.** Die Änderung ist rein ergänzend und betrifft ausschließlich Anzeige und Klickverhalten im Browser; es werden keine Spieldaten geschrieben, kein Datenmodell geändert und keine Sicherheitsregel angefasst. Ein Zurücknehmen der Änderung stellt den vorherigen Zustand vollständig her, ohne Datenverlust und ohne Umstellungsschritt. Ein Abbruch mitten in der Aktion (Tab-Wechsel, Verbindungsverlust, Neuladen direkt nach dem Klick) hinterlässt keinen halben Zustand, weil nichts gespeichert wird; nach einem Neuladen steht die Warteansicht wieder wie zuvor da, inklusive Code und Knopf. **Gegenmaßnahme:** AK7 hält die beliebige Wiederholbarkeit ausdrücklich fest.
+9. **Beobachtbarkeit im Fehlerfall — auch für Entwickelnde, nicht nur für Spielende.** Das ist heute die größte blinde Stelle: Der bestehende Kopier-Pfad fängt jeden Fehler ab und verwirft ihn ersatzlos — es gibt weder eine Anzeige noch einen Protokolleintrag. Schlägt das Kopieren bei einer gastgebenden Person im echten Workshop fehl, ist das anschließend **nirgends** nachvollziehbar: kein Eintrag in der Browser-Konsole, keine Spur in der Datenbank, keine Meldung. Eine Fehlermeldung „bei mir hat der Knopf nichts gemacht" wäre damit praktisch nicht untersuchbar. **Gegenmaßnahme:** Den Fehlerfall mindestens in der Browser-Konsole protokollieren (samt Grund, soweit der Browser ihn liefert), zusätzlich zu AK4/AK5, die dafür sorgen, dass die spielende Person den Fehlschlag überhaupt bemerkt. Bewusst **keine** Protokollierung in der Datenbank — das wäre ein zusätzlicher Schreibvorgang und würde ohne Not die Sicherheitsregeln berühren.
+10. **Neue Texte nur in einer der beiden Übersetzungstabellen.** Die Übersetzungstabelle wird doppelt gepflegt (siehe Schritt 4b). Wird ein neuer Schlüssel nur in einer der beiden Dateien ergänzt, fällt das im Browser zunächst nicht auf, bricht aber bestehende Prüfungen, die ausdrücklich „existiert in BEIDEN Kopien" verlangen. **Gegenmaßnahme:** beide Dateien im selben Arbeitsschritt ändern; Testplan enthält eine entsprechende Prüfung.
+
+##### Zusammenspiel bestehender Bausteine (Schritt 4a)
+
+- **Berührte Bausteine:** das Markup des Wartebereichs (`public/spiel.html`, Zeilen 320-361) mit der Code-Anzeige `#lobby-code`; die Funktion `zeigeLobby()` (`:1111`), die den Code setzt; die Neuzeichnung der Teilnehmendenliste `renderTeilnehmerListe()`, die bei jeder Änderung der Teilnehmenden erneut läuft; die beiden Sprachfunktionen `wendeSpracheAufStatischeTexteAn()` und `wendeSpracheAufSichtbareAnsichtenAn()` (`:927`); die beiden Übersetzungstabellen; der bestehende Kopier-Pfad aus `FEATURE-011` (`:3352-3370`); die Zwischenablage des Browsers. **Nicht berührt:** Firestore-Datenmodell, `firestore.rules`, Zeitmessung, Rundenlogik, Cloud Functions (existieren im Projekt ohnehin nicht).
+- **Reihenfolge des Zusammenwirkens:** Spiel erstellen bzw. beitreten → `zeigeLobby(db, code, …)` blendet den Wartebereich ein und schreibt den Code in `#lobby-code` → laufende Firestore-Beobachter melden jede Änderung der Teilnehmenden und lösen `renderTeilnehmerListe()` aus → die Person klickt den neuen Knopf → der Wert wird aus der bereits vorhandenen Anzeige an die Zwischenablage übergeben → Bestätigung wird eingeblendet → optionaler Sprachwechsel lässt beide Sprachfunktionen erneut laufen → Start von Runde 1 blendet den gesamten Wartebereich aus (`:1524`).
+- **Kritische Zustandskombinationen über mehrere Clients hinweg:** Der Beitritts-Code ist für alle Beteiligten derselbe, unveränderliche Wert — es gibt hier **keinen** Wettlauf zwischen zwei schreibenden Clients und keine serverautoritative Regel, die umgangen werden könnte. Die einzige echte Mehrspieler-Kombination ist zeitlicher Natur: Client A (Host) klickt „Kopieren", während Client B im selben Moment beitritt; der Beitritt von B löst bei A eine Neuzeichnung der Teilnehmendenliste aus. Liegen Knopf oder Bestätigung im neu gezeichneten Bereich, überschreibt die durch B ausgelöste Aktualisierung die gerade durch A erzeugte Bestätigung — A sieht dann trotz erfolgreichem Kopieren keine Rückmeldung mehr. Zweite Kombination: A klickt „Kopieren" und stellt unmittelbar danach die Sprache um; die Sprachumstellung wirkt über die Datenbank für alle Rollen gleichzeitig, sodass auch bei B alle sichtbaren Texte neu berechnet werden — die Bestätigung bei A muss in diesem Durchlauf mitgenommen werden, sonst bleibt sie als einzige Stelle in der alten Sprache stehen.
+
+##### Node-Referenz/Browser-Sync-Check (Schritt 4b)
+
+- **Die berührte Anzeige- und Kopierlogik existiert nur einmal.** Sie steckt vollständig in `public/spiel.html`; unter `src/game/…` gibt es keine Entsprechung. Geprüft per Verzeichnisdurchsicht (`src/game`, `src/game/rundeVier` — 16 bzw. 8 Dateien, alle Spiellogik, keine Oberflächen-Datei) und per Grep nach `lobby-code|lobbyCode` sowie `navigator.clipboard` in `src/` — jeweils **0 Treffer**. Für diesen Teil des Tickets besteht also **kein** Node/Browser-Duplikat.
+- **Sehr wohl doppelt gepflegt: die Übersetzungstabelle.** `src/i18n/uebersetzungen.js` (584 Zeilen, Node-Referenz) und `public/js/i18n/uebersetzungen.js` (504 Zeilen, produktiv ausgelieferte Browser-Fassung). Inhaltlicher Vergleich der für dieses Ticket einschlägigen Schlüssel, beide Fassungen tatsächlich gelesen:
+
+| Schlüssel | Node-Referenz | Browser-Fassung | Vergleich |
+|---|---|---|---|
+| `lobby.hostKennzeichenKopierenKnopf` | `src/i18n/uebersetzungen.js:132` | `public/js/i18n/uebersetzungen.js:104` | identisch („Kopieren" / „Copy") |
+| `lobby.hostKennzeichenKopiertHinweis` | `src/i18n/uebersetzungen.js:133` | `public/js/i18n/uebersetzungen.js:105` | identisch („Kopiert!" / „Copied!") |
+| `lobby.duBistHostMitTeilen` | `src/i18n/uebersetzungen.js:107` | `public/js/i18n/uebersetzungen.js:82` | identisch |
+
+- **Ergebnis:** **Keine** Abweichung zwischen Node-Referenz und Browser-Fassung bei den berührten Schlüsseln. Der Zeilenunterschied der beiden Dateien (584 gegenüber 504) erklärt sich durch Kommentar- und Formatierungsumfang, nicht durch fehlende Schlüssel dieses Bereichs. Das verbleibende Risiko liegt nicht im Ist-Zustand, sondern in der Umsetzung — neue Schlüssel müssen in beide Dateien; als Pre-Mortem-Punkt 10 aufgenommen.
+
+##### Gruppierungs-/Stichproben-/Cache-Prüfung (Schritt 4c)
+
+**Nicht einschlägig** — und das ausdrücklich vermerkt statt stillschweigend weggelassen. Auslöser-Prüfung: Dieses Ticket nimmt keine Prüfung, Zuweisung, Filterung, Gruppierung, Stichprobenprüfung oder Zwischenspeicherung über eine Menge von Kandidaten vor. Es gibt genau einen Wert (den Beitritts-Code des laufenden Spiels), genau eine Aktion (Kopieren) und keine Kandidatenmenge, innerhalb derer zwei Elemente fälschlich als gleichwertig behandelt werden könnten. Die Bug-Klasse „Optimierungsleck durch falsche Äquivalenzannahme" kann hier strukturell nicht auftreten. Die Planungsfrage wurde trotzdem gestellt und mit „nein" beantwortet; ein zusätzliches Akzeptanzkriterium nach der Vorlage entfällt daher bewusst.
+
+##### Betroffene Architektur (Schritt 5)
+
+- `public/spiel.html`: Ergänzung im Markup des Wartebereichs direkt bei der Code-Anzeige, ein zusätzlicher Klick-Handler, Teilnahme am bestehenden Sprachwechsel, ein Stilzusatz für die Markierbarkeit des Codes von Hand.
+- `public/js/i18n/uebersetzungen.js` **und** `src/i18n/uebersetzungen.js`: neue Übersetzungsschlüssel für Knopfbeschriftung und Bestätigung — in **beiden** Dateien.
+- `tests/`: eine neue Testdatei nach dem etablierten Muster der statischen Quelltextprüfungen.
+- **Firestore-Datenmodell: unverändert. `firestore.rules`: nicht berührt.** Es entsteht kein zusätzlicher Lese- oder Schreibzugriff.
+- Auslieferung unverändert (Firebase Hosting, automatischer Deploy bei Push auf `main`); kein zusätzlicher Deploy-Schritt für Sicherheitsregeln nötig.
+
+##### Reichweite von „Implementierungsdetail"-Festlegungen (Schritt 5a)
+
+Zwei Punkte hätten sich als „entscheiden wir beim Coden" abtun lassen; beide werden hier bewusst mit einer Häufigkeitseinschätzung versehen statt durchgewunken:
+
+1. **Ob die Bestätigung „Kopiert!" von selbst wieder verschwindet.** Eintrittshäufigkeit: **praktisch bei jedem Spiel** — jede gastgebende Person klickt den Knopf mindestens einmal, und die Bestätigung ist damit in nahezu 100 % aller Spielrunden sichtbar. Das ist kein Randfall, sondern Regelverhalten, und gehört deshalb in die Spec: Festlegung als ⚪ Annahme A2 (bleibt stehen, verschwindet nicht von selbst), passend zum heutigen Verhalten beim Host-Kennzeichen.
+2. **Ob eigene neue Übersetzungsschlüssel angelegt oder die bestehenden Kopier-Schlüssel des Host-Kennzeichens mitbenutzt werden.** Eintrittshäufigkeit der Auswirkung: ebenfalls **bei jedem Spiel** sichtbar, aber rein sprachlich. Empfehlung: eigene Schlüssel, weil eine gemeinsame Nutzung eine stille Kopplung zwischen zwei fachlich unabhängigen Bereichen erzeugen würde — eine spätere Umformulierung beim einen änderte unbemerkt auch den anderen. Diese Einschätzung ist fachliche Empfehlung, keine Vorgabe aus den Dokumenten.
+
+##### Regressionsrisiko (Schritt 6)
+
+Berührte, bereits abgenommene Tickets — alle im selben Wartebereich:
+
+| Ticket | Berührungspunkt | Risiko / Absicherung |
+|---|---|---|
+| `FEATURE-011` (Done) | Kopier-Knopf für das Host-Kennzeichen, direkt unterhalb der Code-Anzeige | Bestehende Prüfung untersucht ein festes Textfenster ab der ersten Host-Kennzeichen-Fundstelle auf Kopier-Bezug und einen Knopf. Neues Markup **oberhalb** der Code-Anzeige platzieren, nicht zwischen Host-Kennzeichen und dessen Knopf. AK8 sichert das Verhalten ab. |
+| `BUGFIX-003` (Done) | Erläuterung zur Startbedingung und Live-Zähler im Wartebereich | Bestehende Prüfung erwartet **exakt fünf** Einstiegsaufrufe in die Warteansicht und genau eine zentrale Zuweisung des Erläuterungstextes. Kein zusätzlicher Einstiegsaufruf, keine Duplizierung. |
+| `FEATURE-014` (Done) | Warte- und Fertig-Hinweise, deren Platzierung ausdrücklich mit Rücksicht auf die Prüfung von `FEATURE-011` gewählt wurde | Dieselbe Rücksicht gilt jetzt erneut; Reihenfolge der Elemente im Wartebereich nicht umstellen. |
+| `FEATURE-006` (Done) | Sprachwechsel-Mechanismus, beide Übersetzungstabellen | AK6 plus Prüfung „Schlüssel existiert in beiden Kopien". |
+| `BUGFIX-006` (Done) | Automatischer Quelltext-Scan gegen fest einprogrammierte deutsche Texte | Greift bei jedem neuen sichtbaren Text; alle neuen Beschriftungen ausschließlich über Übersetzungsschlüssel. |
+| `FEATURE-016` (Done) | Dauerhaft sichtbare Anzeige von Name und Rolle, die am selben Sprachwechsel teilnimmt | Keine Umstellung der Sprachfunktionen, nur Ergänzung. |
+
+##### Implementierungsoptionen mit Empfehlung (Schritt 7)
+
+**Option A — nur Kopier-Knopf für den Code, nach dem bereits live erprobten Muster.** Ergänzt beim Code einen Knopf mit Bestätigung, macht den Code zusätzlich von Hand markierbar und protokolliert den Fehlerfall in der Browser-Konsole. Beitritts-Link wird ausdrücklich abgegrenzt und als eigenes Ticket vorgeschlagen.
+*Vorteile:* kleinster Eingriff; das Bedienmuster ist im selben Bildschirm bereits freigegeben und produktiv; kein zusätzlicher Serverzugriff; keine Änderung an Datenmodell oder Sicherheitsregeln; deckt den im Testbericht genannten Kern (Tippfehler beim mündlichen Weitergeben) vollständig ab; leicht zurückzunehmen.
+*Nachteile:* Löst die in `Product.md` § 3 zugesagte Link-Funktion nicht ein — der dokumentierte Widerspruch bleibt bestehen, nur eben sichtbar statt versteckt.
+
+**Option B — Kopier-Knopf plus fertiger Beitritts-Link.** Zusätzlich zu A ein zweiter Knopf, der eine vollständige Adresse mit enthaltenem Code kopiert, und die dafür nötige Auswertung beim Seitenaufruf.
+*Vorteile:* Löst die Zusage aus `Product.md` § 3 tatsächlich ein; für die Empfangenden der bequemste Weg (ein Klick statt Tippen); passt zum in `Product.md` § 9 genannten Handy-Beitritt.
+*Nachteile:* Deutlich größerer Zuschnitt — es existiert heute **keinerlei** Auswertung von Adress-Zusätzen (nachgewiesen: 0 Treffer). Neu zu klären wären mindestens: das Adress-Schema, das automatische Öffnen des richtigen Formulars, das Vorbefüllen, das Verhalten bei unbekanntem oder bereits gestartetem Spiel, und die Frage, ob ein Link mit enthaltenem Code als Weitergabeform überhaupt gewünscht ist. Damit auch mehr Regressionsfläche im Beitritts-Pfad, der bereits mehrere abgeschlossene Fehlerkorrekturen trägt.
+
+**Option C — gemeinsame, wiederverwendbare Kopier-Funktion für beide Stellen.** Zieht das Kopieren einmal heraus und nutzt es für Code und Host-Kennzeichen.
+*Vorteile:* technisch sauberer, eine Stelle für Fehlerbehandlung und Protokollierung.
+*Nachteile:* Fasst abgeschlossenen Code eines Done-Tickets an und riskiert dessen bestehende Prüfungen, ohne dass ein spielbares Verhalten besser würde — ein Aufräumschritt, der besser als eigenes Ticket steht.
+
+**Empfehlung: Option A.** Begründung: kleinster Eingriff bei vollständiger Abdeckung des Ticket-Kerns, erprobtes Bedienmuster im selben Bildschirm, keine Berührung von Datenmodell oder Sicherheitsregeln, geringe Regressionsfläche. **Ausdrücklicher Hinweis:** Diese Empfehlung ist eine fachliche Einschätzung und **nicht** aus den Dokumenten ableitbar — im Gegenteil, `Product.md` § 3 spricht eher für Option B. Die Entscheidung liegt bei Stephan (🔴 Frage 1).
+
+##### Prototyp-Prüfung (Schritt 8)
+
+**Kein Prototyp nötig.** Begründung: In genau derselben Warteansicht existiert seit `FEATURE-011` ein von Stephan freigegebenes, live laufendes Bedienmuster — Wert groß anzeigen, Knopf „Kopieren" direkt darunter, kurze Bestätigung darunter. Die Platzierung des neuen Knopfes ergibt sich daraus zwangsläufig, und es stehen keine zwei Varianten zur Debatte, die sich in Worten ähnlich anhören, sich in der Bedienung aber unterschiedlich anfühlen würden. Die verbleibende offene Frage (Beitritts-Link ja/nein) ist eine **Scope-Frage**, keine Frage des Bedienempfindens — ein Klick-Dummy würde sie nicht beantworten. Auslöser aus Schritt 2c ebenfalls nicht eingetreten.
+
+##### 🚦 Ampel-Prüfung (Schritt 8a)
+
+1. **Klarer Abstand?** **Nein.** Optionen A und B unterscheiden sich nicht in der technischen Qualität, sondern im Zuschnitt — und der Zuschnitt ist widersprüchlich vorgegeben: Das Ticket nennt den Beitritts-Link „optional", `Product.md` § 3 sagt ihn der gastgebenden Person dagegen bereits zu, und im Code ist er nachweislich gar nicht vorbereitet.
+2. **Eingriff bleibt im Ticket?** Ja. `firestore.rules` wird **nicht** berührt, das Datenmodell bleibt unverändert.
+3. **Ohne Datenverlust rückgängig?** Ja. Rein ergänzende Anzeige-/Klickänderung, keine gespeicherten Daten betroffen.
+4. **Pre-Mortem ohne hohes Risiko?** Ja. Alle zehn Punkte sind mittel oder niedrig eingestuft und mit einer Gegenmaßnahme versehen.
+5. **Keine reine Geschmacks-/Optikfrage?** Ja — es geht um eine Funktion, und es besteht keine offene UI/UX-Unsicherheit, die laut Schritt 8 einen Prototyp verlangen würde.
+
+**Ergebnis: 🔴 Rot — braucht Stephans Entscheidung: Scope-Frage „fertiger Beitritts-Link" ungeklärt (Ticket sagt „optional", `Product.md` § 3 sagt ihn zu, im Code 0 Treffer für eine Auswertung des Codes in der Adresse) — Optionen A und B liegen ohne Stephans Vorgabe gleichauf, kein klarer Abstand.**
+
+##### Testplan-Grundgerüst (Übergabe an `flow-game-bdd`)
+
+Statische Quelltextprüfung nach dem im Projekt etablierten Muster (Jest + Node `fs`, kein DOM im Projekt vorhanden), ergänzt um eine dokumentierte Browser-Prüfung für das, was statisch nicht belegbar ist:
+
+- **AK1:** Im Markup des Wartebereichs existiert unmittelbar bei der Code-Anzeige ein Knopf mit Kopier-Bezug.
+- **AK2:** Der Klick-Handler übergibt genau den Wert der Code-Anzeige an die Zwischenablage, ohne Verkettung mit weiterem Text; ergänzend Browser-Prüfung, dass der eingefügte Wert genau acht Zeichen hat.
+- **AK3/AK4:** Die Bestätigung wird ausschließlich im Erfolgszweig eingeblendet; im Fehlerzweig gibt es keine Zuweisung, die Erfolg behauptet.
+- **AK5:** Die Code-Anzeige trägt die Eigenschaft, mit einem Doppelklick als Ganzes markierbar zu sein.
+- **AK6:** Knopfbeschriftung wird über einen echten Übersetzungsschlüssel gesetzt; die Bestätigung wird zusätzlich in der Sprachwechsel-Funktion für sichtbare Ansichten erneut berechnet; beide neuen Schlüssel existieren mit nicht-leerem Text in **beiden** Übersetzungstabellen.
+- **AK7:** Der Klick-Handler enthält keine Sperre, die ein zweites Klicken verhindert.
+- **AK8 (Regression):** Der bestehende Kopier-Knopf des Host-Kennzeichens und dessen Handler sind unverändert vorhanden; die bestehende Prüfung von `FEATURE-011` läuft weiter grün.
+- **AK9:** Knopf und Bestätigung liegen innerhalb des Wartebereich-Markups und nicht innerhalb des bei jedem Beitritt neu gezeichneten Teilnehmenden-Listenbereichs (deckt zugleich Pre-Mortem-Punkt 4 ab).
+- **Regression Gesamtbestand:** Bestehende Prüfung „exakt fünf Einstiegsaufrufe in die Warteansicht" bleibt grün; automatischer Quelltext-Scan gegen fest einprogrammierte deutsche Texte bleibt grün.
+- **Browser-Prüfung (dokumentiert, per Chrome-Subagent):** Auf der Live-Adresse ein Spiel erstellen, Knopf klicken, Bestätigung sehen, den Wert in das Beitritts-Feld einfügen und damit tatsächlich beitreten; anschließend Sprache umstellen und prüfen, dass Knopf **und** bereits sichtbare Bestätigung mitwechseln.
+
+##### Offene Punkte für Stephan
+
+1. 🔴 **Beitritts-Link:** nur Kopier-Knopf (Option A) oder zusätzlich ein fertiger Beitritts-Link (Option B)?
+2. ⚪ Kopier-Knopf für alle in der Warteansicht sichtbar (nicht nur für die gastgebende Person)? — Vorschlag: ja.
+3. ⚪ Bestätigung bleibt stehen und verschwindet nicht von selbst? — Vorschlag: ja.
+4. ⚪ Es wird ausschließlich der reine Code kopiert, kein Begleitsatz? — Vorschlag: ja.
+
+**Status:** bleibt **ToDo** — Freigabe durch Stephan steht aus (Ampel 🔴 Rot).
+
+##### Testplan / BDD-Tests (flow-game-bdd, 2026-08-16)
+
+Umfang gemäß Stephans Entscheidung: **nur** der Kopier-Knopf (Option A). Der Beitritts-Link wird bewusst nicht mitgetestet und nicht vorbereitet.
+
+**Neue Dateien:** `tests/game-feature-015-code-kopieren.static.test.js` (statische Quelltextprüfung gegen die echte, ausgelieferte Browser-Fassung `public/spiel.html` und beide Übersetzungstabellen), `tests/game-feature-015-manual-checks.test.js` (dokumentierte, bewusst nicht automatisierte Restliste). Neues Skript in `package.json`: `npm run test:static:feature-015`.
+
+**BDD-Annahme zur Benennung (keine Entscheidung Stephans, bei der Implementierung bestätigen oder umbenennen):** Knopf `#knopf-lobby-code-kopieren`, Bestätigung `#lobby-code-kopiert-hinweis`, neue Übersetzungsschlüssel `lobby.codeKopierenKnopf` und `lobby.codeKopiertHinweis` (eigene Schlüssel statt Mitbenutzung der Host-Kennzeichen-Schlüssel, siehe Schritt 5a).
+
+Szenarien (Given/When/Then, Namen gekürzt) und abgedecktes Akzeptanzkriterium:
+
+| Szenario | AK |
+|---|---|
+| „Knopf steht beim Code" | AK1 |
+| „Kein Doppelgriff auf den fremden Knopf" (Polarität) | AK1 |
+| „Nur der reine Code" | AK2 |
+| „Kein Begleitsatz, keine Verkettung" (Polarität) | AK2 |
+| „Kopiert!" | AK3 |
+| „Eigene Bestätigung, nicht die des Host-Kennzeichens" | AK3 |
+| „Kopieren scheitert" (Polarität) | AK4 |
+| „Fehlschlag ist überhaupt nachvollziehbar" (Pre-Mortem 9) | AK4 |
+| „Von Hand kopieren" | AK5 |
+| „Markierbarkeit wird nicht anderswo wieder abgeschaltet" (Polarität, Regressionsschutz BUGFIX-013) | AK5 |
+| „Beschriftung in der Oberflächensprache" | AK6 |
+| „Sichtbare Bestätigung wechselt mit" (schließt die im Bestand nachgewiesene Lücke) | AK6 |
+| „Der Sprachwechsel blendet die Bestätigung nicht ungefragt ein" (Polarität) | AK6 |
+| „Schlüssel … in der Node-Referenz" / „… auch in der ausgelieferten Browser-Fassung" (je 2 Schlüssel, Pre-Mortem 10) | AK6 |
+| „Zweimal klicken" | AK7 |
+| „Host-Kennzeichen weiterhin kopierbar" (Regression FEATURE-011) | AK8 |
+| „Reihenfolge im Wartebereich bleibt" (Regression FEATURE-011/FEATURE-014) | AK8 |
+| „Nach Rundenstart weg" | AK9 |
+| „Kein Knopf ohne Code" (Polarität) | AK9 |
+| „Beitritt einer weiteren Person wischt die Bestätigung nicht weg" (Pre-Mortem 4) | AK9 |
+| „Kein neuer Einstiegsaufruf" (Regressionsrisiko: exakt fünf `zeigeLobby(`-Fundstellen) | Regression |
+| „Beitritts-Link bleibt außen vor" (Scope-Wächter zu Option A) | Scope |
+
+**Nur statisch (Quelltextmuster) prüfbar, weil das Projekt kein DOM/jsdom hat:** sämtliche Szenarien oben prüfen den Quelltext, nicht das gerenderte Bild — belegt wird also jeweils die Voraussetzung im Code, nicht das sichtbare Ergebnis.
+
+**Nicht automatisierbar (manuelle Restliste, `tests/game-feature-015-manual-checks.test.js`, Platzhalter-Assertions):** echter Zwischenablage-Inhalt und erfolgreicher Beitritt damit (AK2); tatsächliche Sichtbarkeit und Stehenbleiben der Bestätigung (AK3); echter Fehlerfall in unsicherem Kontext (AK4); Doppelklick-Markierung des Codes (AK5); Sprachwechsel bei bereits sichtbarer Bestätigung (AK6); Bestätigung bleibt stehen, während eine weitere Person beitritt (Pre-Mortem 4, braucht zwei echte Geräte); tatsächliches Verschwinden nach Rundenstart (AK9).
+
+**Tatsächlich ausgeführter Testlauf (2026-08-16, Rot/Grün-Phase „Rot", erwartet):** `npx jest tests/game-feature-015-*` → 32 Tests, **20 rot**, 12 grün. Alle 20 Fehlschläge sind echte inhaltliche Assertion-Fehlschläge (0 Modul-/Syntaxfehler). Die 12 grünen sind die 7 Platzhalter der manuellen Restliste plus 5 Regressions-/Scope-Wächter, die bereits vor der Implementierung gelten müssen.
+
+**Regressionslauf über die emulatorfreien Suiten (ohne die 15 Emulator- und die 2 Deploy-Suiten):** 44 Suiten, 563 Tests, 542 grün, 1 übersprungen, 20 rot — ausschließlich die neuen FEATURE-015-Szenarien. Keine bestehende Prüfung ist durch die neuen Dateien rot geworden (Basis vor diesem Ticket: 42 Suiten, 531 Tests, 530 grün, 1 übersprungen). Emulator-Suiten wurden nicht ausgeführt (Emulator-Download in dieser Umgebung gesperrt) — für dieses Ticket auch nicht nötig, `firestore.rules` bleibt unberührt.
+
+**Nebenbefund (kein Blocker, Regressionsrisiko der Spec bestätigt):** Die bestehende FEATURE-011-Prüfung „festes Textfenster ab der ersten Host-Kennzeichen-Fundstelle enthält Kopier-Bezug und einen Knopf" trifft heute schon **nicht** mehr den Host-Kopier-Knopf: das 1700-Zeichen-Fenster beginnt bereits beim Formularfeld `host-zurueckerlangen-kennzeichen` und endet 405 Zeichen vor `#knopf-host-kennzeichen-kopieren`; grün wird sie derzeit durch den Absende-Knopf des Zurückerlangen-Formulars. Die Prüfung ist also bereits vor diesem Ticket abgestumpft — nicht lockern, sondern separat schärfen.
+
+##### Implementierungs-Ergebnis (flow-game-impl, 2026-08-16)
+
+Umgesetzt wurde ausschließlich Option A gemäß Stephans Entscheidung vom 2026-08-14. **Kein Test wurde geändert, gelockert, übersprungen oder umgangen.** Die von der BDD-Phase vorgeschlagenen Namen wurden unverändert übernommen: `#knopf-lobby-code-kopieren`, `#lobby-code-kopiert-hinweis`, `lobby.codeKopierenKnopf`, `lobby.codeKopiertHinweis`.
+
+**Geänderte Dateien (drei, alle im Ticket-Scope — keine neue Datei angelegt):**
+
+| Datei | Änderung |
+|---|---|
+| `public/spiel.html` | CSS-Regel `#lobby-code{-webkit-user-select:all;user-select:all}` (AK5); Markup im Wartebereich direkt unter der Code-Anzeige: Knopf `#knopf-lobby-code-kopieren` plus Bestätigung `#lobby-code-kopiert-hinweis`, oberhalb von `#host-kennzeichen-bereich` und außerhalb von `#teilnehmer-liste` (AK1/AK8/AK9, Pre-Mortem 4); zwei neue Element-Referenzen; `setText('knopf-lobby-code-kopieren', t('lobby.codeKopierenKnopf'))` in `wendeSpracheAufStatischeTexteAn()` (AK6); Neuberechnung des Bestätigungstextes in `wendeSpracheAufSichtbareAnsichtenAn()` ohne Sichtbarkeitsänderung (AK6, schließt die im Bestand nachgewiesene Lücke); neuer Klick-Handler oberhalb des FEATURE-011-Handlers (AK2/AK3/AK4/AK7, `console.warn` im Fehler- und im „Zwischenablage nicht verfügbar"-Zweig, Pre-Mortem 9). |
+| `src/i18n/uebersetzungen.js` | Zwei neue Schlüssel `lobby.codeKopierenKnopf` (Code kopieren / Copy code) und `lobby.codeKopiertHinweis` (Code kopiert! / Code copied!). |
+| `public/js/i18n/uebersetzungen.js` | Dieselben zwei Schlüssel identisch in der ausgelieferten Browser-Fassung (Pre-Mortem 10). |
+
+**Node/Browser-Sync-Check (Schritt 3a) durchgeführt:** Die geänderte Anzeige-/Kopierlogik existiert nur einmal (`public/spiel.html`); Grep über `src/` nach `lobby-code`/`navigator.clipboard` → weiterhin 0 Treffer außerhalb der Übersetzungstabelle. Die doppelt gepflegte Übersetzungstabelle wurde in beiden Fassungen im selben Arbeitsschritt geändert. **`firestore.rules` wurde nicht berührt**, kein zusätzlicher Firestore-Zugriff, kein Datenmodell-Eingriff.
+
+**Ticketlauf `npm run test:static:feature-015` (tatsächlich ausgeführt, 2026-08-16):** 2 Suiten, **32 Tests, 32 grün, 0 rot** (vorher: 20 rot). Beim ersten Lauf nach der Implementierung waren sofort alle 32 grün.
+
+**Pflicht-Regressionslauf über die emulatorfreien Suiten (tatsächlich ausgeführt, dieselbe Auswahl wie in der BDD-Phase — ohne die 15 per Grep bestätigten Emulator-Suiten und die 2 Deploy-Suiten):** 44 Suiten, 563 Tests, **562 grün, 1 übersprungen, 0 rot**. Basis vor der Implementierung war 542 grün / 20 rot; die 20 vormals roten Szenarien sind genau die FEATURE-015-Szenarien. Geprüfte Done-Tickets mit gemeinsamem Code/Bereich: FEATURE-011, FEATURE-014, FEATURE-016, BUGFIX-003, BUGFIX-006, BUGFIX-013, FEATURE-006 (statischer Teil) — alle weiterhin grün. Emulator-Suiten wurden nicht ausgeführt (Netzsperre in dieser Umgebung, dokumentierte Einschränkung) und sind für dieses Ticket nicht nötig, da `firestore.rules` unberührt bleibt.
+
+**Echter Regressionsbefund während der Umsetzung (behoben im Produktivcode, nicht im Test):** Der erste Regressionslauf machte `tests/game-feature-011-host-zurueckerlangen.static.test.js` rot (1 von 563 Tests). Ursache: Diese Prüfung sucht die **erste** Fundstelle von `host-?kennzeichen` im Quelltext und untersucht ein festes 1500-Zeichen-Fenster dahinter. Ein erläuternder CSS-Kommentar der neuen Regel enthielt das Wort „Host-Kennzeichen" und verschob damit den Fensteranfang aus dem Wartebereich-Markup in den Stilbereich, wo kein `<button>` steht. Behoben durch Umformulieren des eigenen Kommentars (der Begriff steht dort jetzt bewusst nicht mehr ausgeschrieben) — der Test selbst wurde **nicht** angefasst. Das bestätigt den Nebenbefund der BDD-Phase: diese Prüfung ist überempfindlich gegenüber der Wortwahl und sollte separat geschärft werden.
+
+**Ehrliche Abgrenzung, was NICHT geprüft wurde:** Alle 25 automatisierten Szenarien sind statische Quelltextprüfungen — sie belegen die Voraussetzung im Code, nicht das sichtbare Ergebnis im Browser. Der echte Zwischenablage-Inhalt, das tatsächliche Stehenbleiben der Bestätigung, der Sprachwechsel bei bereits sichtbarer Bestätigung, die Doppelklick-Markierung und das Verhalten beim Beitritt einer weiteren Person stehen weiterhin als bewusst manuelle Restliste in `tests/game-feature-015-manual-checks.test.js` und sind noch offen. Ein Live-/Browser-Test wurde in dieser Phase **nicht** durchgeführt.
+
+**Status bleibt `In Progress`** — Release-vor-Done-Gate: Release und Live-Verifikation stehen noch aus, deshalb wird das Ticket hier ausdrücklich **nicht** auf Done gesetzt.
 
 ---
 

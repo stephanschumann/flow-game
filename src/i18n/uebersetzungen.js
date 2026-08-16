@@ -131,6 +131,11 @@ const UEBERSETZUNGEN = {
   },
   'lobby.hostKennzeichenKopierenKnopf': { de: 'Kopieren', en: 'Copy' },
   'lobby.hostKennzeichenKopiertHinweis': { de: 'Kopiert!', en: 'Copied!' },
+  // FEATURE-015: eigene Schluessel fuer den Kopier-Knopf am Beitritts-Code -
+  // bewusst NICHT die Host-Kennzeichen-Schluessel mitbenutzt (das waere eine
+  // stille Kopplung zweier fachlich unabhaengiger Stellen, Spec Schritt 5a).
+  'lobby.codeKopierenKnopf': { de: 'Code kopieren', en: 'Copy code' },
+  'lobby.codeKopiertHinweis': { de: 'Code kopiert!', en: 'Code copied!' },
   'lobby.hostKarteileicheHinweis': {
     de: 'Die Host-Rolle ist zurück. Deine vorherige Spielstation wurde NICHT automatisch übertragen – sie bleibt bis auf Weiteres wie zuvor belegt und muss ggf. anders geklärt werden.',
     en: 'The host role is back. Your previous playing station was NOT automatically transferred – it stays assigned as before and may need to be resolved separately.',

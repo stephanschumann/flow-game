@@ -29,6 +29,7 @@
     "test:emulator:feature-018": "firebase emulators:exec --only firestore \"jest tests/game-feature-018-host-mitspielen.security.rules.test.js\"",
     "test:emulator:feature-011": "firebase emulators:exec --only firestore \"jest tests/game-feature-011-host-zurueckerlangen.security.rules.test.js\"",
     "test:static:feature-011": "jest tests/game-feature-011-host-zurueckerlangen.logic.test.js tests/game-feature-011-host-zurueckerlangen.static.test.js",
+    "test:static:feature-015": "jest tests/game-feature-015-code-kopieren.static.test.js tests/game-feature-015-manual-checks.test.js",
     "test:deploy-regression": "jest tests/deploy-regression.test.js tests/feature-002-deploy-regression.test.js"
   },
   "devDependencies": {
