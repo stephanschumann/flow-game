@@ -874,7 +874,6 @@
   let aktuelleRundenNummer = null;
   let aktuelleRundenDaten = null;
   let aktuelleKartenListe = [];
-  let bewegungsLog = []; // siehe kennzahlen.js: live beobachtet, nicht serverseitige Historie
   // FEATURE-008: rein lokale (nie an Firestore geschriebene) Zieh-Zustände.
   // falschPlatzierteKarten: kartenId -> Anzeige-Position, solange eine Karte
   // absichtlich in eine falsche Spalte gezogen wurde und dort "hängen bleibt"
@@ -885,7 +884,6 @@
   let falschPlatzierteKarten = {};
   let ziehendeKartenBusy = {};
   let aktuelleElementeListe = []; // FEATURE-004: Runde 4, analog zu aktuelleKartenListe
-  let bewegungsLogRundeVier = []; // FEATURE-004: analog zu bewegungsLog
   let eigenerFortschrittTyp = null; // FEATURE-004: fortschritt/{eigeneUid}.letzterAbgeschlossenerTyp
   let wuerfelAnimationLaeuft = false; // FEATURE-004: verhindert Doppel-Klicks während der Wurf-Animation
   let wuerfelBestaetigungAusstehend = false; // BUGFIX-010: verhindert, dass ein durch irgendein Firestore-Update ausgeloester Re-Render die gehaltene Bestaetigungs-Ansicht (Option B) vorzeitig ueberschreibt
@@ -1508,11 +1506,9 @@
     aktualisiereUntertitel();
 
     aktuelleKartenListe = [];
-    bewegungsLog = [];
     falschPlatzierteKarten = {}; // FEATURE-008
     ziehendeKartenBusy = {}; // FEATURE-008
     aktuelleElementeListe = []; // FEATURE-004
-    bewegungsLogRundeVier = []; // FEATURE-004
     eigenerFortschrittTyp = null; // FEATURE-004
     wuerfelAnimationLaeuft = false; // FEATURE-004
     wuerfelBestaetigungAusstehend = false; // BUGFIX-010: neue Runde faengt nie mit haengendem Guard an
@@ -1587,21 +1583,22 @@
       // der Regel, es gibt kein unlesbares Dokument, das die Abfrage zum
       // Scheitern bringen koennte. Deshalb bewusst OHNE .where().
       unsubElementeCol = rundenRef.collection('elemente').onSnapshot(function (snapshot) {
-        // Nur ECHTE Kettenfortschritte mitschneiden (type 'modified') -
-        // analog zum karten-Listener oben, gleiche Begruendung (kennzahlen.js).
-        snapshot.docChanges().forEach(function (change) {
-          if (change.type === 'modified') {
-            const daten = change.doc.data();
-            if (daten.letzteBewegungVon) {
-              bewegungsLogRundeVier.push({
-                uid: daten.letzteBewegungVon,
-                elementId: change.doc.id,
-                wann: daten.letzteBewegungAm,
-                station: Math.max(daten.position - 1, 1),
-              });
-            }
-          }
-        });
+        // BUGFIX-016: Der frueher hier gefuehrte lokale Mitschnitt
+        // (bewegungsLogRundeVier) ist entfallen. Er begann bei einem Reload
+        // oder spaeten Beitritt mitten in der Runde zwangslaeufig bei null
+        // und verfaelschte dadurch die Pro-Station-Werte, sobald ausgerechnet
+        // dieser Client das Rundenende schrieb. Die Bewegungen werden jetzt
+        // in gibElementWeiter() als unveraenderliche Historie unter
+        // runden/{n}/bewegungen mitgeschrieben und beim Rundenende von dort
+        // gelesen - fuer alle Clients identisch.
+        //
+        // NACHARBEIT ZUR ZWEITPRUEFUNG (2026-08-14, Stephans Entscheidung
+        // "Alle Versuche muessen mitzaehlen"): Der alte Mitschnitt zaehlte
+        // JEDE Aenderung an einem Element als Bewegung - also auch den
+        // misslungenen Wuerfelversuch, der das Element gar nicht
+        // weiterreicht. Damit diese Taetigkeit nicht ersatzlos aus der
+        // Zaehlung faellt, legt auch schreibeWuerfelZwischenwurf() einen
+        // Historieneintrag an (art: 'wuerfelversuch').
         aktuelleElementeListe = snapshot.docs.map(function (docSnap) {
           return Object.assign({ id: docSnap.id }, docSnap.data());
         });
@@ -1627,35 +1624,17 @@
         });
     } else {
       unsubKartenCol = rundenRef.collection('karten').onSnapshot(function (snapshot) {
-        // Nur ECHTE Bewegungen mitschneiden (type 'modified') - der initiale
-        // Ladevorgang (type 'added', auch bei einem spaeten Beitritt/Reload
-        // mitten in der Runde) ist keine Bewegung, siehe kennzahlen.js.
-        snapshot.docChanges().forEach(function (change) {
-          if (change.type === 'modified') {
-            const daten = change.doc.data();
-            if (daten.letzteBewegungVon) {
-              // FEATURE-003: Station der Bewegung aus der NEUEN Position
-              // ableiten (daten.position ist bereits nachPosition, siehe
-              // kartenBewegung.js: position wird immer auf vonPosition+1
-              // gesetzt) - "die abgebende Station löst aus" (Ausnahme:
-              // Auftragseingang->Station 1, dort holt Station 1 aktiv ab,
-              // gleiche Zuordnungsregel wie in firestore.rules'
-              // bewegungErlaubt()). max(position-1, 1) bildet beide Fälle ab.
-              bewegungsLog.push({
-                uid: daten.letzteBewegungVon,
-                kartenId: change.doc.id,
-                wann: daten.letzteBewegungAm,
-                station: Math.max(daten.position - 1, 1),
-                // FEATURE-010: welcher Stapel bewegt wurde - wird gebraucht,
-                // um in Runde 2 "den eigenen Stapel" der ersten Bewegung
-                // einer Station zu bestimmen (siehe kennzahlen.js). In
-                // Runde 1/3 immer null (kein Stapel-Konzept, siehe
-                // stapelFuerKarte() in rundenStart.js).
-                stapel: daten.stapel || null,
-              });
-            }
-          }
-        });
+        // BUGFIX-016: Der frueher hier gefuehrte lokale Mitschnitt
+        // (bewegungsLog) ist entfallen - er war die Ursache dieses Tickets.
+        // Er begann nach einem Reload oder einem spaeten Beitritt mitten in
+        // der Runde zwangslaeufig bei null, weil der initiale Ladevorgang
+        // (type 'added') bewusst nicht als Bewegung zaehlt. Schrieb dann
+        // ausgerechnet dieser Client das Rundenende, fielen Bewegungsanzahl,
+        // Beteiligungsspanne und beide Wartezeiten je Station zu niedrig aus.
+        // Jede Bewegung legt jetzt in kartenBewegung.js im selben, atomaren
+        // Schreibvorgang einen unveraenderlichen Historieneintrag unter
+        // runden/{n}/bewegungen an; das Rundenende rechnet aus dieser fuer
+        // alle gleichen Historie.
         aktuelleKartenListe = snapshot.docs.map(function (docSnap) {
           return Object.assign({ id: docSnap.id }, docSnap.data());
         });
@@ -2028,6 +2007,9 @@
                 try {
                   await window.FlowGame.bewegeKarte({
                     code, rundenNummer, kartenId: karte.id, vonPosition: vonPosition, uid: eigeneUid,
+                    // BUGFIX-016: fuer den Historieneintrag (Runde 2:
+                    // getrennte Stapel A/B, sonst null).
+                    stapel: karte.stapel || null,
                   }, db);
                   if (!aktuelleRundenDaten.bearbeitungszeitStart) {
                     window.FlowGame.starteBearbeitungszeitFallsNoetig({
@@ -2077,7 +2059,6 @@
         rundenPhase: aktuelleRundenDaten.phase,
         durchlaufzeitStart: aktuelleRundenDaten.durchlaufzeitStart,
         bearbeitungszeitStart: aktuelleRundenDaten.bearbeitungszeitStart,
-        bewegungsLog,
         // FEATURE-010: fließen additiv in proStation[].wartezeitVorher/
         // .wartezeitNachher ein, siehe kennzahlen.js.
         dorAbgeschlossenAm: aktuelleRundenDaten.dorAbgeschlossenAm,
@@ -2194,6 +2175,12 @@
           elementId: element.id,
           wurfAnzahl: (element.wurfAnzahl || 0) + 1,
           letzterWurf: wert,
+          // BUGFIX-016 (Nacharbeit Zweitpruefung, 2026-08-14): Auch der
+          // misslungene Wurf wird als Taetigkeit dauerhaft festgehalten
+          // ("Alle Versuche muessen mitzaehlen") - dafuer braucht der
+          // Historieneintrag die eigene Position und die eigene Kennung.
+          position: element.position,
+          ausgefuehrtVon: eigeneUid,
         }, db);
       }
     } catch (err) {
@@ -2449,7 +2436,6 @@
         rundenPhase: aktuelleRundenDaten.phase,
         durchlaufzeitStart: aktuelleRundenDaten.durchlaufzeitStart,
         bearbeitungszeitStart: aktuelleRundenDaten.bearbeitungszeitStart,
-        bewegungsLog: bewegungsLogRundeVier,
       }, db);
     } finally {
       rundenEndeSchreibversuchLaeuftRundeVier = false;
@@ -2609,11 +2595,15 @@
       const station = index + 1;
       zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.bewegungen'), function (r) {
         const eintrag = r.proStation && r.proStation[station];
-        return eintrag ? String(eintrag.anzahlBewegungen) : '0';
+        // BUGFIX-016: Ein als unvollstaendig gekennzeichneter Wert (null)
+        // wird als '—' ausgegeben statt als '0' - sonst waere er von einer
+        // tatsaechlich untaetigen Station nicht zu unterscheiden. Gleiches
+        // bereits etabliertes Muster wie bei wartezeitVorher/-Nachher unten.
+        return eintrag && typeof eintrag.anzahlBewegungen === 'number' ? String(eintrag.anzahlBewegungen) : '—';
       });
       zeile('Station ' + station + ' (' + stationsLabel(stationName) + ') – ' + t('kennzahlen.beteiligungsspanne'), function (r) {
         const eintrag = r.proStation && r.proStation[station];
-        return eintrag ? formatiereZeit(eintrag.beteiligungsspanne) : '00:00';
+        return eintrag && typeof eintrag.beteiligungsspanne === 'number' ? formatiereZeit(eintrag.beteiligungsspanne) : '—';
       });
       // FEATURE-010: zwei zusätzliche, additive Zeilen - ersetzen die
       // bestehende Beteiligungsspanne-Zeile NICHT (AK8, Regressionsschutz).
@@ -2836,8 +2826,13 @@
         const name = document.createElement('span');
         name.textContent = 'Station ' + station + ' (' + stationsLabel(window.FlowGame.STATIONEN[station - 1]) + ')';
         const wert = document.createElement('span');
-        wert.textContent = eintrag.anzahlBewegungen + ' ' + t('kennzahlen.bewegungen') + ', '
-          + formatiereZeit(eintrag.beteiligungsspanne) + ' ' + t('kennzahlen.beteiligungsspanne');
+        // BUGFIX-016: dieselbe ehrliche Fehlanzeige wie in der
+        // Vergleichstabelle - '—' statt einer erfundenen Zahl, sobald der
+        // Wert als unvollstaendig gekennzeichnet ist (null).
+        const bewegungenText = eintrag && typeof eintrag.anzahlBewegungen === 'number' ? String(eintrag.anzahlBewegungen) : '—';
+        const spannenText = eintrag && typeof eintrag.beteiligungsspanne === 'number' ? formatiereZeit(eintrag.beteiligungsspanne) : '—';
+        wert.textContent = bewegungenText + ' ' + t('kennzahlen.bewegungen') + ', '
+          + spannenText + ' ' + t('kennzahlen.beteiligungsspanne');
         // FEATURE-010: zusätzlich, additiv - nur angezeigt, wenn die Runde
         // die neuen Felder tatsächlich mitbringt (Regressionsschutz für
         // ältere, vor FEATURE-010 gespielte Runden ohne diese Felder).

@@ -427,31 +427,88 @@
       throw fehler;
     }
 
+    // BUGFIX-016 (Pre-Mortem-Risiko 5): Der unveraenderliche Historieneintrag
+    // faehrt im BEREITS BESTEHENDEN Batch mit - Elementfortschritt,
+    // Fortschritts-Merker und Historie sind damit gemeinsam gueltig oder gar
+    // nicht. Runde 4 hat denselben Fehler wie die Runden 1-3 (eigenes,
+    // fluechtiges Log, host-vorbehaltloser Rundenende-Schreiber), deshalb
+    // hier dieselbe Behebung. Zustaendige Station = eigene Runde-4-Position,
+    // die per Math.max(nachPosition - 1, 1) mit vonPosition zusammenfaellt.
+    const bewegungRef = rundenRef.collection('bewegungen').doc();
+
     const batch = db.batch();
     batch.update(elementRef, update);
     batch.update(fortschrittRef, { letzterAbgeschlossenerTyp: typ });
+    batch.set(bewegungRef, {
+      art: 'weitergabe',
+      station: Math.max(nachPosition - 1, 1),
+      kartenId: elementId,
+      uid: ausgefuehrtVon,
+      wann: firebase.firestore.FieldValue.serverTimestamp(),
+      nachPosition: nachPosition,
+      stapel: null,
+    });
     await batch.commit();
   }
 
   // ---- Würfel-Zwischenwurf (Wurf ≤3, bleibt bei derselben Person stehen) ----
 
+  /**
+   * NACHARBEIT ZUR ZWEITPRÜFUNG (2026-08-14), Stephans Entscheidung wörtlich:
+   * "Alle Versuche müssen mitzählen". Ein misslungener Würfelversuch ist eine
+   * Tätigkeit und zählte bisher auch mit - allerdings nur zufällig und nur
+   * lokal: Jeder Zwischenwurf veränderte das Element-Dokument, und der
+   * inzwischen entfallene lokale Mitschnitt (bewegungsLogRundeVier in
+   * spiel.html) zählte jede Änderung als Bewegung. Mit BUGFIX-016 wäre diese
+   * Zählung ersatzlos weggefallen, die Tätigkeitszahl in Runde 4 also ab
+   * sofort niedriger ausgefallen als bisher.
+   *
+   * Deshalb legt der Zwischenwurf jetzt einen eigenen Historieneintrag an -
+   * mit `art: 'wuerfelversuch'` von einer Weitergabe unterscheidbar, im SELBEN
+   * atomaren Schreibvorgang wie die Zustandsänderung am Element (dieselbe
+   * Alles-oder-nichts-Regel wie überall in diesem Ticket) und mit
+   * servergesetztem Zeitpunkt (Product.md §9).
+   *
+   * `station`/`nachPosition` tragen beide die eigene Runde-4-Position: Das
+   * Element bleibt ja gerade bei derselben Person stehen, es gibt keinen
+   * Schritt auf eine Folgeposition. Genau daran unterscheidet firestore.rules
+   * die beiden Eintragstypen (siehe historienEintragErlaubt()).
+   */
   async function schreibeWuerfelZwischenwurf({
-    code, rundenNummer, elementId, wurfAnzahl, letzterWurf,
+    code, rundenNummer, elementId, wurfAnzahl, letzterWurf, position, ausgefuehrtVon,
   }, db) {
-    const elementRef = db.collection('spiele').doc(code)
-      .collection('runden').doc(String(rundenNummer))
-      .collection('elemente').doc(elementId);
+    if (typeof position !== 'number') {
+      const fehler = new Error('position ist erforderlich.');
+      fehler.code = 'POSITION_FEHLT';
+      throw fehler;
+    }
+    const rundenRef = db.collection('spiele').doc(code)
+      .collection('runden').doc(String(rundenNummer));
+    const elementRef = rundenRef.collection('elemente').doc(elementId);
+    const bewegungRef = rundenRef.collection('bewegungen').doc();
+
+    const batch = db.batch();
     // `position` bewusst NICHT im Update enthalten (bleibt dadurch automatisch
     // unverändert) - erfüllt rundeVierWuerfelZwischenwurfErlaubt() in
     // firestore.rules ("request.resource.data.position == resource.data.position").
-    await elementRef.update({ wurfAnzahl: wurfAnzahl, letzterWurf: letzterWurf });
+    batch.update(elementRef, { wurfAnzahl: wurfAnzahl, letzterWurf: letzterWurf });
+    batch.set(bewegungRef, {
+      art: 'wuerfelversuch',
+      station: position,
+      kartenId: elementId,
+      uid: ausgefuehrtVon,
+      wann: firebase.firestore.FieldValue.serverTimestamp(),
+      nachPosition: position,
+      stapel: null,
+    });
+    await batch.commit();
   }
 
   // ---- Rundenende (alle zwölf Elemente auf Position 6) + Kennzahlen/Qualität ----
 
   async function pruefeUndSetzeRundenEndeRundeVier({
     code, rundenNummer, elemente, rundenPhase,
-    durchlaufzeitStart, bearbeitungszeitStart, bewegungsLog,
+    durchlaufzeitStart, bearbeitungszeitStart,
   }, db) {
     const ZIEL_POSITION = 6;
     const alleFertig = Array.isArray(elemente) && elemente.length === 12
@@ -459,6 +516,20 @@
 
     if (!alleFertig || rundenPhase === 'beendet') {
       return false;
+    }
+
+    const rundenRef = db.collection('spiele').doc(code).collection('runden').doc(String(rundenNummer));
+
+    // BUGFIX-016: Auch Runde 4 rechnet jetzt aus der fuer alle gleichen,
+    // serverseitigen Bewegungshistorie statt aus dem fluechtigen, lokalen
+    // bewegungsLogRundeVier - identische Behebung wie in rundenEnde.js, dort
+    // ausfuehrlich begruendet. Gemeinsame Hilfsfunktionen bewusst
+    // wiederverwendet statt kopiert.
+    let historie = [];
+    try {
+      historie = await window.FlowGame.ladeBewegungsHistorie(rundenRef);
+    } catch (leseFehler) {
+      console.warn('BUGFIX-016: Bewegungshistorie (Runde 4) nicht lesbar, Kennzahlen werden als unvollstaendig gekennzeichnet.', leseFehler);
     }
 
     const jetzt = Date.now();
@@ -477,7 +548,7 @@
       bearbeitungszeitStart: bearbeitungszeitStart,
       bearbeitungszeitEnde: jetzt,
       karten: kartenForm,
-      bewegungsLog: bewegungsLog,
+      bewegungsLog: historie,
     });
 
     // FEATURE-010 (AK6, technische Entscheidung flow-game-impl,
@@ -497,6 +568,28 @@
         delete kennzahlen.proStation[station].wartezeitNachher;
       });
     }
+
+    // BUGFIX-016 (AK5/AK9): Stationen mit nachweislich lueckenhafter
+    // Historie bekommen keine stillschweigend zu niedrige Zahl, sondern eine
+    // ehrliche Fehlanzeige. Runde 4 startet - anders als die Runden 1-3 -
+    // auf Position 1 (siehe starteRundeVier(): alle zwoelf Elemente werden
+    // mit position: 1 angelegt), deshalb hier startPosition 1. Zwoelf
+    // Elemente x fuenf Weitergaben (Position 2..6) = 60 Weitergaben, je zwoelf
+    // pro Station.
+    //
+    // NACHARBEIT ZUR ZWEITPRUEFUNG: Die Wuerfelversuche aus
+    // schreibeWuerfelZwischenwurf() liegen in derselben Historie und gehen
+    // deshalb oben in anzahlBewegungen/beteiligungsspanne mit ein (Stephans
+    // Entscheidung "Alle Versuche muessen mitzaehlen"). Fuer die
+    // Vollstaendigkeitspruefung werden sie dagegen ausgeklammert - ihre
+    // Anzahl schwankt und ist aus dem Spielstand nicht ableitbar (Begruendung
+    // im Kopf von kennzeichneUnvollstaendigeStationen()).
+    kennzahlen.kennzahlenVollstaendig = window.FlowGame.kennzeichneUnvollstaendigeStationen(
+      kennzahlen,
+      historie,
+      elemente.map(function (e) { return e.position; }),
+      1,
+    );
 
     // Qualitäts-Kennzahl (AK 15/16): ausschliesslich über die sechs
     // Länderkarten, nachträglich, wie in der Spec vorgesehen.
@@ -520,7 +613,6 @@
       proKarte: qualitaetRoh.proKarte,
     };
 
-    const rundenRef = db.collection('spiele').doc(code).collection('runden').doc(String(rundenNummer));
     try {
       await rundenRef.update(Object.assign({
         phase: 'beendet',

@@ -24,6 +24,8 @@
     "test:static:bugfix-014": "jest tests/game-bugfix-014-createGame-browser.integration.test.js tests/game-connection-retry.static.test.js tests/game-connection-retry.logic.test.js tests/game-connection-retry.integration.test.js",
     "test:static:feature-010": "jest tests/game-waittime.logic.test.js",
     "test:emulator:feature-010": "firebase emulators:exec --only firestore \"jest tests/game-waittime.security.rules.test.js\"",
+    "test:static:bugfix-016": "jest tests/game-bugfix-016-bewegungshistorie-browser.integration.test.js tests/game-task-004-kennzahlen-browser.integration.test.js tests/game-feature-010-wartezeit-kennzahlen.integration.test.js",
+    "test:emulator:bugfix-016": "firebase emulators:exec --only firestore \"jest tests/game-bugfix-016-bewegungshistorie.security.rules.test.js tests/game-drag-drop.security.rules.test.js tests/game-evaluation.security.rules.test.js\"",
     "test:emulator:feature-018": "firebase emulators:exec --only firestore \"jest tests/game-feature-018-host-mitspielen.security.rules.test.js\"",
     "test:emulator:feature-011": "firebase emulators:exec --only firestore \"jest tests/game-feature-011-host-zurueckerlangen.security.rules.test.js\"",
     "test:static:feature-011": "jest tests/game-feature-011-host-zurueckerlangen.logic.test.js tests/game-feature-011-host-zurueckerlangen.static.test.js",

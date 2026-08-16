@@ -227,6 +227,74 @@ service cloud.firestore {
         && stapelTorOffen(spielId, runde, vonPosition, vorherigerStapel);
     }
 
+    // BUGFIX-016: Unveraenderliche Bewegungshistorie unter
+    // runden/{runde}/bewegungen/{bewegungId}. Jede Kartenbewegung (Runden 1-3,
+    // kartenBewegung.js) bzw. jeder Kettenfortschritt (Runde 4, rundeVier.js)
+    // legt im SELBEN, atomaren Schreibvorgang zusaetzlich einen solchen
+    // Eintrag an. Das Rundenende rechnet die Pro-Station-Kennzahlen danach aus
+    // dieser fuer alle gleichen Historie statt aus dem fluechtigen, nur lokal
+    // mitgeschnittenen Log des zufaellig schnellsten Clients.
+    //
+    // Zusaetzliche get()-Last: keine. Alle drei hier gelesenen Dokumente
+    // (spiele, teilnehmende, runden) werden im selben Batch bereits von der
+    // Karten- bzw. Element-Regel gelesen; Firestore beantwortet wiederholte
+    // Zugriffe auf dasselbe Dokument innerhalb einer Auswertung aus dem Cache.
+    //
+    // Zustaendigkeit spiegelbildlich zur bestehenden Bewegungsregel: Station
+    // einer Bewegung ist max(nachPosition - 1, 1) (Sonderfall Auftragseingang
+    // -> Station 1, exakt wie in bewegungErlaubt()). In den Runden 1-3 muss
+    // das der eigenen `station` entsprechen, in Runde 4 der eigenen
+    // `rundeVierPosition` (bewusst getrennte Felder, siehe
+    // rundeVierPositionVon() weiter unten) - dadurch koennen Beobachtende und
+    // fremde Stationen keinen Eintrag anlegen. Manipulationsschutz ist laut
+    // Stephans Entscheidung ausdruecklich NICHT Ziel dieses Tickets; diese
+    // Regel sichert die Datenintegritaet der Kennzahlen (servergesetzte Zeit,
+    // richtige Zuordnung, Unveraenderlichkeit).
+    // NACHARBEIT ZUR ZWEITPRUEFUNG (2026-08-14, Stephans Entscheidung woertlich:
+    // "Alle Versuche muessen mitzaehlen"): Es gibt jetzt ZWEI Eintragsarten,
+    // unterschieden durch das Feld `art`:
+    //
+    //   'weitergabe'     - der bisherige Fall: die Karte/das Element geht einen
+    //                      Schritt weiter, Station = max(nachPosition - 1, 1).
+    //                      Eintraege aus der ersten Umsetzung tragen das Feld
+    //                      noch nicht; sie sind ausnahmslos Weitergaben,
+    //                      deshalb der Standardwert im get() unten.
+    //   'wuerfelversuch' - Runde 4, misslungener Wurf (<=3): das Element bleibt
+    //                      bei DERSELBEN Person stehen. Es gibt also keinen
+    //                      Schritt auf eine Folgeposition - station und
+    //                      nachPosition sind beide die eigene
+    //                      Runde-4-Position. Genau daran ist ein Wuerfelversuch
+    //                      von einer Weitergabe unterscheidbar; ein als
+    //                      Wuerfelversuch getarnter Weitergabe-Eintrag (station
+    //                      != nachPosition) wird abgelehnt.
+    //
+    // Die Schutzzusagen sind fuer beide Arten dieselben: nur die handelnde
+    // Person, eigene Kennung, servergesetzte Uhrzeit, nachtraeglich weder
+    // aenderbar noch loeschbar (siehe match-Block unten), lesbar fuer
+    // Teilnehmende desselben Spiels. Zusaetzliche get()-Last: keine.
+    function historienEintragErlaubt(spielId, runde) {
+      let teilnehmer = get(/databases/$(database)/documents/spiele/$(spielId)/teilnehmende/$(request.auth.uid)).data;
+      let eigeneStation = teilnehmer.get('station', null);
+      let eigeneRundeVierPosition = teilnehmer.get('rundeVierPosition', null);
+      let daten = request.resource.data;
+      let art = daten.get('art', 'weitergabe');
+      return get(/databases/$(database)/documents/spiele/$(spielId)/runden/$(runde)).data.get('dorAbgeschlossen', false) == true
+        && art in ['weitergabe', 'wuerfelversuch']
+        && daten.uid == request.auth.uid
+        && daten.wann == request.time
+        && daten.nachPosition is int
+        && daten.nachPosition >= 1
+        && daten.nachPosition <= 6
+        && (art == 'wuerfelversuch'
+          // Wuerfelversuch: bleibt bei derselben Person, deshalb station ==
+          // nachPosition, und ausschliesslich die eigene Runde-4-Position.
+          ? (daten.station == daten.nachPosition
+            && daten.station == eigeneRundeVierPosition)
+          // Weitergabe: unveraendert die bisherige Zuordnungsregel.
+          : (daten.station == (daten.nachPosition <= 2 ? 1 : daten.nachPosition - 1)
+            && (daten.station == eigeneStation || daten.station == eigeneRundeVierPosition)));
+    }
+
     // FEATURE-004: Runde 4 (Kontextwechsel). Wiederverwendet die bestehende
     // runden/{runde}-Struktur oben UNVERÄNDERT (DoR, Host-Rundenstart,
     // servergesetzte Zeitstempel, Fall-B-Rundenende) – siehe "Wiederverwendungs-
@@ -789,6 +857,28 @@ service cloud.firestore {
             && bewegungErlaubt(spielId, runde, kartenId);
 
           allow delete: if false;
+        }
+
+        // BUGFIX-016: unveraenderliche Bewegungshistorie (Begruendung und
+        // Zustaendigkeitsregel siehe historienEintragErlaubt() weiter oben).
+        match /bewegungen/{bewegungId} {
+          // Lesen: alle Teilnehmenden des Spiels - sonst koennte der
+          // Rundenende-Schreibvorgang die Kennzahlen gar nicht daraus
+          // berechnen. Die Sammlung enthaelt bewusst KEIN Dokument, das fuer
+          // eine teilnehmende Rolle unlesbar waere (siehe flow-game-impl
+          // Abschnitt 5c), deshalb ist eine ungefilterte Sammlungs-Abfrage
+          // hier zulaessig.
+          allow read: if istTeilnehmer(spielId)
+            && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data);
+
+          allow create: if request.auth != null
+            && istAktiv(get(/databases/$(database)/documents/spiele/$(spielId)).data)
+            && historienEintragErlaubt(spielId, runde);
+
+          // Unveraenderlich: einmal festgehalten, nie wieder geaendert oder
+          // geloescht - auch nicht von der Person, die den Eintrag angelegt
+          // hat. Genau darauf beruht die Verlaesslichkeit der Kennzahlen.
+          allow update, delete: if false;
         }
 
         // FEATURE-004: Runde 4 (Kontextwechsel) – Datenmodell und Helfer-

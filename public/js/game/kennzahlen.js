@@ -120,5 +120,11 @@
   }
 
   global.FlowGame = global.FlowGame || {};
-  Object.assign(global.FlowGame, { berechneKennzahlen });
+  // BUGFIX-016 (Nacharbeit Zweitprüfung, 2026-08-14): alsMillis wird zusätzlich
+  // veröffentlicht, damit die Vollständigkeitsprüfung in rundenEnde.js
+  // NACHWEISLICH denselben Maßstab an einen Zeitwert anlegt wie diese
+  // Berechnung hier (Zeile "filter((ms) => ms != null)") - eine zweite,
+  // nachgebaute Kopie derselben Regel könnte auseinanderlaufen und genau die
+  // stille Lücke wieder aufreissen, die die Zweitprüfung gefunden hat.
+  Object.assign(global.FlowGame, { berechneKennzahlen, alsMillis });
 })(window);
